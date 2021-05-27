@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/url"
 	"regexp"
@@ -106,6 +107,7 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 		return nil, err
 	}
 	createVerifyEmailReq.AddHeader(suckhttp.Content_Type, "text/plain")
+	createVerifyEmailReq.AddHeader(suckhttp.Accept, "text/plain")
 	createVerifyEmailReq.Body = []byte(userCode)
 	createVerifyEmailResp, err := conf.createVerifyEmail.Send(createVerifyEmailReq)
 	if err != nil {
@@ -118,7 +120,18 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 		l.Debug("Responce from createVerifyEmail", t)
 		return nil, nil
 	}
+
+	uuid := string(createVerifyEmailResp.GetBody())
+	if uuid == "" {
+		l.Error("CreateVerifyEmail responce", errors.New("responce body is null"))
+		return nil, nil
+	}
 	//
+
+	// createEmailMessage request
+	..
+	//
+
 	// tarantool update
 	userDataMarshalled, err := json.Marshal(&userData{Login: userMailHashed, Mail: userMail, Name: userI, Surname: userF, Otch: userO, Password: userPasswordHashed})
 	if err != nil {

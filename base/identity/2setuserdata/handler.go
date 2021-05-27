@@ -60,7 +60,7 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	update := bson.M{"$set": &upsertData, "$currentDate": bson.M{"lastmodified": true}}
+	update := bson.M{"$set": bson.M{"data": &upsrtData}, "$currentDate": bson.M{"lastmodified": true}}
 
 	_, err = conf.mgoColl.Upsert(&bson.M{"_id": upsertData["_id"], "deleted": bson.M{"$exists": false}}, update)
 	if err != nil {

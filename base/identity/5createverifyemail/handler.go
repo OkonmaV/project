@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"strings"
 	"thin-peak/logs/logger"
 	"time"
@@ -42,8 +44,8 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	code := string(r.Body)
-	if code == "" {
+	mail := string(r.Body)
+	if mail == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -51,12 +53,39 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	if err != nil {
 		return nil, err
 	}
-	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, uuid, 0})
+
+	mailHashed, err := getMD5(mail)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{mailHashed, uuid.String(), 0})
 	if err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 			return suckhttp.NewResponse(403, "Forbidden"), err
 		}
 		return nil, err
 	}
-	return suckhttp.NewResponse(200, "OK"), nil
+
+	resp := suckhttp.NewResponse(200, "OK")
+	var body []byte
+	var contentType string
+	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
+		body = uuid.Bytes()
+		contentType = "text/plain"
+	}
+
+	resp.SetBody(body)
+	resp.AddHeader(suckhttp.Content_Type, contentType)
+
+	return resp, nil
+}
+
+func getMD5(str string) (string, error) {
+	hash := md5.New()
+	_, err := hash.Write([]byte(str))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }

@@ -62,7 +62,7 @@ func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{info["hash"], info["password"]})
 	if err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
-			return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
+			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
 	}

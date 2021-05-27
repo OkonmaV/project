@@ -66,8 +66,7 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	}
 
 	var userData map[string]interface{}
-	err = json.Unmarshal([]byte(trntlRes[0].Data), &userData)
-	if err != nil {
+	if err = json.Unmarshal([]byte(trntlRes[0].Data), &userData); err != nil {
 		return nil, err
 	}
 	delete(userData, "password")
@@ -81,8 +80,7 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	emailVerifyReqInfo := make(map[string]interface{}, 2)
 	emailVerifyReqInfo["code"] = code
 	emailVerifyReqInfo["uuid"] = uuid
-	emailVerifyReq.Body, err = json.Marshal(emailVerifyReqInfo)
-	if err != nil {
+	if emailVerifyReq.Body, err = json.Marshal(emailVerifyReqInfo); err != nil {
 		return nil, err
 	}
 
@@ -105,20 +103,17 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	}
 	userRegistrationReq.AddHeader(suckhttp.Content_Type, "application/json")
 
-	userRegistrationReqInfo := make(map[string]interface{}, 2)
 	var ok bool
-	userRegistrationReqInfo["hash"], ok = userData["_id"]
-	if !ok {
+	userRegistrationReqInfo := make(map[string]interface{}, 2)
+	if userRegistrationReqInfo["hash"], ok = userData["_id"]; !ok {
 		l.Debug("Get userHash", "No hash field founded in tarantool.regcodes")
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	userRegistrationReqInfo["password"], ok = userData["password"]
-	if !ok {
+	if userRegistrationReqInfo["password"], ok = userData["password"]; !ok {
 		l.Debug("Get userPassword", "No password field founded in tarantool.regcodes")
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	userRegistrationReq.Body, err = json.Marshal(userRegistrationReqInfo)
-	if err != nil {
+	if userRegistrationReq.Body, err = json.Marshal(userRegistrationReqInfo); err != nil {
 		return nil, err
 	}
 
