@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net/url"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -32,43 +33,37 @@ func (c *GetUserData) Close() error {
 
 func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") {
-		l.Debug("Content-type", "Wrong content-type at POST")
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
-	if len(r.Body) == 0 {
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-	var reqData map[string][]string
-	err := json.Unmarshal(r.Body, &reqData)
+	// AUTH?
+
+	reqData, err := url.ParseQuery(r.Uri.RawQuery)
 	if err != nil {
+		l.Error("Err parsing query", err)
 		return suckhttp.NewResponse(400, "Bad request"), err
 	}
 
-	if _, ok := reqData["fields"]; !ok {
-		l.Debug("Request json", "\"fields\" field is nil")
+	if i, ok := reqData["fields"]; !ok || len(i) != 0 {
+		l.Debug("Request query", "\"fields\" dosnt exist or empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	if _, ok := reqData["_id"]; !ok {
-		l.Debug("Request json", "\"_id\" field is nil")
+	if i, ok := reqData["_id"]; !ok || len(i) != 0 {
+		l.Debug("Request query", "\"_id\" dosnt exist or empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	var mgoRes map[string]interface{}
-	err = conf.mgoColl.FindId(reqData["_id"]).One(&mgoRes)
-	if err != nil {
+	if err = conf.mgoColl.FindId(reqData["_id"][0]).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(400, "Bad request"), err
+			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 		return nil, err
 	}
-
-	result := make(map[string]interface{})
+ 	var smth// я хз как вытащить данные, при учете что они лежат во вложенном в документ data. впиливать структуру в mgoRes?????
+	result := make(map[string]interface{}, len(reqData["fields"]))
 	var ok bool
 	for _, field := range reqData["fields"] {
 		result[field], ok = mgoRes[field]
 		if !ok {
-			return suckhttp.NewResponse(400, "Bad request"), nil // ??
+			return suckhttp.NewResponse(400, "Bad request"), nil // ???????
 		}
 	}
 
@@ -78,7 +73,8 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
 		body, err = json.Marshal(result)
 		if err != nil {
-			return nil, err
+			l.Error("Marshalling result", err)
+			return nil, nil
 		}
 		contentType = "application/json"
 	}

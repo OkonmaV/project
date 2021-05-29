@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"strings"
 	"thin-peak/logs/logger"
 	"time"
@@ -12,16 +10,16 @@ import (
 	"github.com/tarantool/go-tarantool"
 )
 
-type CreateVerifyEmail struct {
+type CreateVerify struct {
 	trntlConn  *tarantool.Connection
 	trntlTable string
 }
 
-func (handler *CreateVerifyEmail) Close() error {
+func (handler *CreateVerify) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewCreateVerifyEmail(trntlAddr string, trntlTable string) (*CreateVerifyEmail, error) {
+func NewCreateVerify(trntlAddr string, trntlTable string) (*CreateVerify, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -34,35 +32,29 @@ func NewCreateVerifyEmail(trntlAddr string, trntlTable string) (*CreateVerifyEma
 		return nil, err
 	}
 	logger.Info("Tarantool", "Connected!")
-	return &CreateVerifyEmail{trntlConn: trntlConn, trntlTable: trntlTable}, nil
+	return &CreateVerify{trntlConn: trntlConn, trntlTable: trntlTable}, nil
 }
 
-func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *CreateVerify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
 		l.Debug("Content-type", "Wrong content-type at POST")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	mail := string(r.Body)
-	if mail == "" {
+	userId := string(r.Body)
+	if userId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	uuid, err := uuid.NewV4()
 	if err != nil {
-		return nil, err
+		return nil, err // err??
 	}
 
-	mailHashed, err := getMD5(mail)
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{mailHashed, uuid.String(), 0})
-	if err != nil {
+	if _, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{userId, uuid.String(), 0}); err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
-			return suckhttp.NewResponse(403, "Forbidden"), err
+			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
 	}
@@ -79,13 +71,4 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	resp.AddHeader(suckhttp.Content_Type, contentType)
 
 	return resp, nil
-}
-
-func getMD5(str string) (string, error) {
-	hash := md5.New()
-	_, err := hash.Write([]byte(str))
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }

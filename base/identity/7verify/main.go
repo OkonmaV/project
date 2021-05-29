@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-
 	"thin-peak/httpservice"
 )
 
@@ -13,7 +12,7 @@ type config struct {
 	TrntlTable   string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.createverifyemail"
+var thisServiceName httpservice.ServiceName = "conf.verify"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -22,7 +21,8 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCreateVerifyEmail(c.TrntlAddr, c.TrntlTable)
+
+	return NewVerify(c.TrntlAddr, c.TrntlTable)
 }
 
 func main() {

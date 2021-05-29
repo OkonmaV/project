@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"lib"
 	"net/url"
 	"strings"
@@ -46,7 +47,8 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	}
 	formValue, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return nil, err
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	login := formValue.Get("login")
 	password := formValue.Get("password")
@@ -65,6 +67,9 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	var trntlRes []interface{}
 	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes); err != nil {
+		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleNotFound {
+			return suckhttp.NewResponse(403, "Forbidden"), nil //TODO:check err
+		}
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
@@ -73,13 +78,21 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?hash=", hashLogin), r)
 	if err != nil {
-		return nil, err
+		l.Error("CreateRequestFrom", err)
+		return nil, nil
 	}
 	tokenResp, err := conf.tokenGenerator.Send(tokenReq)
 	if err != nil {
-		return nil, err
+		l.Error("Send req to tokengenerator", err)
+		return nil, nil
 	}
-	if i, _ := tokenResp.GetStatus(); i != 200 {
+	if i, t := tokenResp.GetStatus(); i != 200 {
+		l.Error("Resp from tokengenerator", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
+		return nil, nil
+	}
+
+	if len(tokenResp.GetBody()) == 0 {
+		l.Error("Resp from tokengenerator", errors.New("body is empty"))
 		return nil, nil
 	}
 

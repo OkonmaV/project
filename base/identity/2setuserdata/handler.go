@@ -47,23 +47,25 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		l.Debug("Content-type", "Wrong content-type at POST")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	if len(r.Body) == 0 {
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-	var upsertData map[string]interface{}
-	err := json.Unmarshal(r.Body, &upsertData)
-	if err != nil {
-		return suckhttp.NewResponse(400, "Bad request"), err
-	}
-	if _, ok := upsertData["_id"]; !ok {
-		l.Debug("Request json", "\"_id\" field is nil")
+
+	userId := r.Uri.Query().Get("id") //
+	if userId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	update := bson.M{"$set": bson.M{"data": &upsrtData}, "$currentDate": bson.M{"lastmodified": true}}
+	if len(r.Body) == 0 {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
+	}
 
-	_, err = conf.mgoColl.Upsert(&bson.M{"_id": upsertData["_id"], "deleted": bson.M{"$exists": false}}, update)
-	if err != nil {
+	var upsertData map[string]interface{}
+	if err := json.Unmarshal(r.Body, &upsertData); err != nil {
+		l.Error("Unmarshalling r.Body", err)
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+
+	update := bson.M{"$set": bson.M{"data": &upsertData}, "$currentDate": bson.M{"lastmodified": true}}
+
+	if _, err := conf.mgoColl.Upsert(&bson.M{"_id": userId, "deleted": bson.M{"$exists": false}}, update); err != nil {
 		return nil, err
 	}
 

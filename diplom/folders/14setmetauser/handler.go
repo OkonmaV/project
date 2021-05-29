@@ -48,14 +48,16 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
 	fid := formValues.Get("fid")
-	fnewmeta := formValues.Get("fnewmeta")
+	fnewmeta := formValues.Get("fnewmetaid")
 	fnewmetatype, err := strconv.Atoi(formValues.Get("fnewmeta"))
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+		//l.Error() ????????????????????????
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 	if fid == "" || fnewmeta == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -72,8 +74,7 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		Remove:    false,
 	}
 
-	_, err = conf.mgoColl.Find(query).Apply(change, nil)
-	if err != nil {
+	if _, err = conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}

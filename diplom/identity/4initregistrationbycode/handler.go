@@ -15,13 +15,13 @@ import (
 	"thin-peak/httpservice"
 
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
 )
 
 var emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 type userData struct {
-	Login    string `json:"_id"`
 	Mail     string `json:"mail"`
 	Name     string `json:"name"`
 	Surname  string `json:"surname"`
@@ -65,7 +65,8 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 	}
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
 	userCode := formValues.Get("code")
@@ -92,53 +93,56 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 	if !isEmailValid(userMail) {
 		return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
 	}
-	userMailHashed, err := getMD5(userMail)
-	if err != nil {
-		return nil, err
-	}
+
 	userPasswordHashed, err := getMD5(userPassword)
 	if err != nil {
-		return nil, err
+		l.Error("Getting md5", err)
+		return nil, nil
 	}
 
 	// createVerifyEmail request
 	createVerifyEmailReq, err := conf.createVerifyEmail.CreateRequestFrom(suckhttp.POST, "", r)
 	if err != nil {
-		return nil, err
+		l.Error("CreateRequestFrom", err)
+		return nil, nil
 	}
 	createVerifyEmailReq.AddHeader(suckhttp.Content_Type, "text/plain")
 	createVerifyEmailReq.AddHeader(suckhttp.Accept, "text/plain")
 	createVerifyEmailReq.Body = []byte(userCode)
 	createVerifyEmailResp, err := conf.createVerifyEmail.Send(createVerifyEmailReq)
 	if err != nil {
-		return nil, err
+		l.Error("Send req to createverifyemailreq", err)
+		return nil, nil
 	}
 	if i, t := createVerifyEmailResp.GetStatus(); i != 200 {
-		if i == 403 {
-			return createVerifyEmailResp, nil
-		}
-		l.Debug("Responce from createVerifyEmail", t)
+		l.Error("Resp from createverifyemailreq", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
+		return nil, nil
+	}
+
+	if len(createVerifyEmailResp.GetBody()) == 0 {
+		l.Error("Resp from createverifyemailreq", errors.New("body is empty"))
 		return nil, nil
 	}
 
 	uuid := string(createVerifyEmailResp.GetBody())
 	if uuid == "" {
-		l.Error("CreateVerifyEmail responce", errors.New("responce body is null"))
+		l.Error("Resp from createverifyemailreq", errors.New("responce body is empty"))
 		return nil, nil
 	}
 	//
 
 	// createEmailMessage request
-	..
+	var smth //TODOется
 	//
 
 	// tarantool update
-	userDataMarshalled, err := json.Marshal(&userData{Login: userMailHashed, Mail: userMail, Name: userI, Surname: userF, Otch: userO, Password: userPasswordHashed})
+	userDataMarshalled, err := json.Marshal(&userData{Mail: userMail, Name: userI, Surname: userF, Otch: userO, Password: userPasswordHashed})
 	if err != nil {
-		return nil, err
+		l.Error("Marshalling userData", err)
+		return nil, nil
 	}
-	err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, []interface{}{[]interface{}{"=", "data", string(userDataMarshalled)}}).Err()
-	if err != nil {
+
+	if err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, []interface{}{[]interface{}{"=", "data", string(userDataMarshalled)}}).Err(); err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

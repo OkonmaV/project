@@ -34,7 +34,8 @@ func (conf *CookieTokenGenerator) Handle(r *suckhttp.Request, l *logger.Logger) 
 
 	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: hashLogin}).SignedString(conf.jwtKey)
 	if err != nil {
-		return nil, err
+		l.Error("Generating new jwtToken", err)
+		return nil, nil
 	}
 
 	resp := suckhttp.NewResponse(200, "OK")

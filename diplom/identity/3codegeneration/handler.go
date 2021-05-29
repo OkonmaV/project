@@ -65,6 +65,7 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	var body []byte
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
 		body = []byte(strconv.Itoa(code))
+		resp.AddHeader(suckhttp.Content_Type, "text/plain")
 	}
 	resp.SetBody(body)
 	return resp, nil

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"strings"
 	"thin-peak/logs/logger"
 	"time"
@@ -42,25 +41,21 @@ func (c *UserRegistration) Close() error {
 
 func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	if len(r.Body) == 0 {
-		return suckhttp.NewResponse(400, "Bad Request"), nil
+
+	login := r.Uri.Query().Get("login")
+	if login == "" {
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	var info map[string]string
-	err := json.Unmarshal(r.Body, &info)
-	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+	password := string(r.Body)
+	if password == "" {
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	if info["hash"] == "" || info["password"] == "" {
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-
-	_, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{info["hash"], info["password"]})
-	if err != nil {
+	if _, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{login, password}); err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

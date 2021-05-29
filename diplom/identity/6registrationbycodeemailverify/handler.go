@@ -1,13 +1,17 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -47,9 +51,9 @@ func NewCreateVerifyEmail(trntlAddr string, trntlTable string, emailVerify *http
 
 func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	code, err := strconv.Atoi(r.Uri.Query().Get("code"))
+	codee, err := strconv.Atoi(r.Uri.Query().Get("code")) //TODO: откуда код?
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad request"), err
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	uuid := r.Uri.Query().Get("uuid")
 	if uuid == "" {
@@ -57,32 +61,39 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	}
 	// get userData from regcodes table
 	var trntlRes []tuple
-	err = conf.trntlConn.SelectTyped(conf.trntlTable, "primary", 0, 1, tarantool.IterEq, []interface{}{code}, &trntlRes)
-	if err != nil {
+
+	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "primary", 0, 1, tarantool.IterEq, []interface{}{code}, &trntlRes); err != nil {
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	var userData map[string]interface{}
+	var userData map[string]string
 	if err = json.Unmarshal([]byte(trntlRes[0].Data), &userData); err != nil {
 		return nil, err
 	}
-	delete(userData, "password")
-	//
-	// emailVerify req
-	emailVerifyReq, err := conf.emailVerify.CreateRequestFrom(suckhttp.POST, "", r)
+
+	userMail, ok := userData["_id"]
+	if !ok {
+		l.Error("Get userHash", errors.New("No hash field founded in tarantool.regcodes"))
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	userMailHashed, err := getMD5(userMail)
 	if err != nil {
-		return nil, err
+		l.Error("Getting md5", err)
+		return nil, nil
 	}
-	emailVerifyReq.AddHeader(suckhttp.Content_Type, "application/json")
-	emailVerifyReqInfo := make(map[string]interface{}, 2)
-	emailVerifyReqInfo["code"] = code
-	emailVerifyReqInfo["uuid"] = uuid
-	if emailVerifyReq.Body, err = json.Marshal(emailVerifyReqInfo); err != nil {
-		return nil, err
+	//
+
+	// emailVerify req
+	emailVerifyReq, err := conf.emailVerify.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/?id=", userMailHashed), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return nil, nil
 	}
+	emailVerifyReq.Body = []byte(uuid)
+	emailVerifyReq.AddHeader(suckhttp.Content_Type, "text/plain")
 
 	emailVerifyResp, err := conf.emailVerify.Send(emailVerifyReq)
 	if err != nil {
@@ -96,62 +107,66 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 		return nil, nil
 	}
 	//
-	// userRegistration req
-	userRegistrationReq, err := conf.userRegistration.CreateRequestFrom(suckhttp.POST, "", r)
-	if err != nil {
-		return nil, err
-	}
-	userRegistrationReq.AddHeader(suckhttp.Content_Type, "application/json")
 
-	var ok bool
-	userRegistrationReqInfo := make(map[string]interface{}, 2)
-	if userRegistrationReqInfo["hash"], ok = userData["_id"]; !ok {
-		l.Debug("Get userHash", "No hash field founded in tarantool.regcodes")
+	// userRegistration req
+	userPassword, ok := userData["password"]
+	if !ok {
+		l.Error("Get userPassword", errors.New("No password field founded in tarantool.regcodes"))
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	if userRegistrationReqInfo["password"], ok = userData["password"]; !ok {
-		l.Debug("Get userPassword", "No password field founded in tarantool.regcodes")
-		return suckhttp.NewResponse(403, "Forbidden"), nil
+	delete(userData, "password")
+
+	userRegistrationReq, err := conf.userRegistration.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/?login=", userMailHashed), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return nil, nil
 	}
-	if userRegistrationReq.Body, err = json.Marshal(userRegistrationReqInfo); err != nil {
-		return nil, err
-	}
+	userRegistrationReq.Body = []byte(userPassword)
+	userRegistrationReq.AddHeader(suckhttp.Content_Type, "text/plain")
 
 	userRegistrationResp, err := conf.userRegistration.Send(userRegistrationReq)
 	if err != nil {
-		return nil, err
+		l.Error("Send req to userregistration", err)
+		return nil, nil
 	}
 	if i, t := userRegistrationResp.GetStatus(); i != 200 {
-		if i == 403 {
-			return emailVerifyResp, nil
-		}
-		l.Debug("Responce from userRegistration", t)
+		l.Error("Resp from userregistration", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
 		return nil, nil
 	}
 	//
+
 	// setUserData req
 	setUserDataReq, err := conf.setUserData.CreateRequestFrom(suckhttp.POST, "", r)
 	if err != nil {
-		return nil, err
+		l.Error("CreateRequestFrom", err)
+		return nil, nil // ????????????? not OK?????
 	}
 	setUserDataReq.AddHeader(suckhttp.Content_Type, "application/json")
 
 	setUserDataReq.Body, err = json.Marshal(userData)
 	if err != nil {
-		return nil, err
+		l.Error("Marshalling userData", err)
+		return nil, nil // ????????????? not OK?????
 	}
 
 	setUserDataResp, err := conf.setUserData.Send(setUserDataReq)
 	if err != nil {
-		return nil, err // ????????????? not OK?????
+		l.Error("Send req to setuserdata", err)
+		return nil, nil // ????????????? not OK?????
 	}
 	if i, t := setUserDataResp.GetStatus(); i != 200 {
-		if i == 403 {
-			return emailVerifyResp, nil
-		}
-		l.Debug("Responce from setUserData", t)
+		l.Error("Resp from setuserdata", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
 		return nil, nil // ????????????? not OK?????
 	}
 
 	return suckhttp.NewResponse(200, "OK"), nil
+}
+
+func getMD5(str string) (string, error) {
+	hash := md5.New()
+	_, err := hash.Write([]byte(str))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }

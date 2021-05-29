@@ -43,7 +43,8 @@ func (conf *DeleteFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
 	fid := formValues.Get("fid")
@@ -66,8 +67,7 @@ func (conf *DeleteFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		Remove:    false,
 	}
 
-	_, err = conf.mgoColl.Find(query).Apply(change, nil)
-	if err != nil {
+	if _, err = conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

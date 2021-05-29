@@ -73,7 +73,8 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	}
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 	//contextFolderId = formValues.Get("contextfid")
 
@@ -88,30 +89,37 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	metaId := getRandId()
 	if metaId == "" {
-		return nil, errors.New("returned empty string")
+		l.Error("Generating uid", errors.New("returned empty string"))
+		return nil, nil
 	}
 
 	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, "", r)
 	if err != nil {
-		return nil, err
+		l.Error("CreateRequestFrom", err)
+		return nil, nil
 	}
 	codeGenerationReq.Body = []byte(metaId)
 	codeGenerationReq.AddHeader(suckhttp.Content_Type, "text/plain")
 	codeGenerationReq.AddHeader(suckhttp.Accept, "text/plain")
 	codeGenerationResp, err := conf.codeGeneration.Send(codeGenerationReq)
 	if err != nil {
-		return nil, err
+		l.Error("Send req to codegeneration", err)
+		return nil, nil
 	}
 
 	if i, t := codeGenerationResp.GetStatus(); i != 200 {
-		return nil, errors.New(suckutils.ConcatTwo("Responce from codegeneration is", t))
+		l.Error("Resp from codegeneration", errors.New(suckutils.ConcatTwo("Responce from codegeneration is", t)))
+		return nil, nil
 	}
 
 	code := codeGenerationResp.GetBody()
-	// if len(code)==0 ??
+	if len(codeGenerationResp.GetBody()) == 0 {
+		l.Error("Resp from codegeneration", errors.New("body is empty"))
+		return nil, nil
+	}
 
-	err = conf.mgoColl.Insert(&metauser{MetaId: metaId, Surname: metaSurname, Name: metaName})
-	if err != nil {
+	if err = conf.mgoColl.Insert(&metauser{MetaId: metaId, Surname: metaSurname, Name: metaName}); err != nil {
+		//TODO: err when founded?
 		return nil, err
 	}
 
@@ -121,7 +129,8 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		var err error
 		body, err = json.Marshal(&metauser{MetaId: metaId, Code: string(code), Surname: metaSurname, Name: metaName})
 		if err != nil {
-			return resp, err // ??
+			l.Error("Marshalling inserted data", err)
+			return resp, nil // ??
 		}
 		resp.AddHeader(suckhttp.Content_Type, "application/json")
 	}

@@ -60,7 +60,8 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), err
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
 	froot := formValues.Get("frootid")
@@ -79,8 +80,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	query := &bson.M{"_id": froot, "deleted": bson.M{"$exists": false}}
 	var foo interface{}
 
-	err = conf.mgoColl.Find(query).One(&foo)
-	if err != nil {
+	if err = conf.mgoColl.Find(query).One(&foo); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
@@ -88,8 +88,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 	//
 
-	err = conf.mgoColl.Insert(&folder{Id: getRandId(), RootsId: []string{froot}, Name: fname, Metas: []meta{{Type: 0, Id: metaid}}, LastModified: time.Now()})
-	if err != nil {
+	if err = conf.mgoColl.Insert(&folder{Id: getRandId(), RootsId: []string{froot}, Name: fname, Metas: []meta{{Type: 0, Id: metaid}}, LastModified: time.Now()}); err != nil {
 		return nil, err
 	}
 

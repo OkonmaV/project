@@ -21,10 +21,6 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 
 	// AUTH
 
-	if !strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
-
 	tokenString := r.Uri.Query().Get("token")
 	if tokenString == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -34,15 +30,24 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		return conf.jwtKey, nil
 	})
 	if err != nil {
-		return nil, err
+		l.Error("Parsing token string", err)
+		return nil, nil
 	}
 
-	body, err := json.Marshal(&res)
-	if err != nil {
-		return nil, err
-	}
 	resp := suckhttp.NewResponse(200, "OK")
+	var body []byte
+	var contentType string
+	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
+		body, err = json.Marshal(res)
+		if err != nil {
+			l.Error("Marshalling decoded data", err)
+			return nil, nil
+		}
+		contentType = "application/json"
+	}
+
 	resp.SetBody(body)
+	resp.AddHeader(suckhttp.Content_Type, contentType)
 
 	return resp, nil
 
