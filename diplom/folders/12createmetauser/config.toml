@@ -1,8 +1,0 @@
-Configurator = "tcp:127.0.0.1:8090"
-Listen = "tcp:127.0.0.1:8098"
-TrntlAddr = "127.0.0.1:3301"
-TrntlTable = "regcodes"
-TrntlCodesTable = "regcodes"
-MgoDB = "folders"
-MgoAddr = "127.0.0.1"
-MgoColl = "metausers"
