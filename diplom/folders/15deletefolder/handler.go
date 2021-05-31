@@ -45,6 +45,7 @@ func (conf *DeleteFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 
 	// TODO: AUTH
+	// Я думаю, что было бы правильным, где-то в авторизаторе вести логи действий пользователя. Например, здесь будет записан запрос на удаление от текущего пользователя
 
 	// TODO: get metauser
 	metaid := "randmetaid"

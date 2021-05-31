@@ -41,7 +41,7 @@ func (conf *SetMetaUser) Close() error {
 }
 
 func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
-
+	// Используем метод PATCH со всеми вытекающими. FolderId берем из Uri.Path, metauserid из QueryString
 	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -73,6 +73,7 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		Remove:    false,
 	}
 
+	// Добавь проверку на измененность документа. В случае, если пользователь уже был добавлен, возвращаем 200 OK, а если добавился то 201 Created
 	if _, err = conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(400, "Bad request"), nil
