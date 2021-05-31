@@ -45,7 +45,7 @@ func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	login := r.Uri.Query().Get("login")
+	login := strings.TrimSpace(r.Uri.Query().Get("login"))
 	if login == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

@@ -48,7 +48,7 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	userId := r.Uri.Query().Get("id") //
+	userId := strings.TrimSpace(r.Uri.Query().Get("id"))
 	if userId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -62,8 +62,8 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		l.Error("Unmarshalling r.Body", err)
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
-	update := bson.M{"$set": bson.M{"data": &upsertData}, "$currentDate": bson.M{"lastmodified": true}}
+	юю // MD5 отдельным полемs
+	update := bson.M{"$set": bson.M{"data": &upsertData}}
 
 	if _, err := conf.mgoColl.Upsert(&bson.M{"_id": userId, "deleted": bson.M{"$exists": false}}, update); err != nil {
 		return nil, err

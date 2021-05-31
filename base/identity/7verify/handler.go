@@ -53,9 +53,6 @@ func (conf *Verify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Res
 	// tarantool select
 	var trntlRes []interface{}
 	if err := conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{userId, uuid}, trntlRes); err != nil {
-		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil //TODO:check err
-		}
 		return nil, err
 	}
 

@@ -23,7 +23,7 @@ func NewCookieTokenGenerator(jwtKey string) (*CookieTokenGenerator, error) {
 func (conf *CookieTokenGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// NO AUTH?
-
+..//GET
 	var jwtToken string
 
 	hashLogin := r.Uri.Query().Get("hash")

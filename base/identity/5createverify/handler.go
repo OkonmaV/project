@@ -37,7 +37,7 @@ func NewCreateVerify(trntlAddr string, trntlTable string) (*CreateVerify, error)
 
 func (conf *CreateVerify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") { ..PUT
 		l.Debug("Content-type", "Wrong content-type at POST")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -52,7 +52,7 @@ func (conf *CreateVerify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		return nil, err // err??
 	}
 
-	if _, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{userId, uuid.String(), 0}); err != nil {
+	if _, err = conf.trntlConn.Insert(conf.trntlTable, []interface{}{userId, uuid.String(), 0}); err != nil { .............Upsert
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

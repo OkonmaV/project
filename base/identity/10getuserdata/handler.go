@@ -34,7 +34,7 @@ func (c *GetUserData) Close() error {
 func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// AUTH?
-
+ // check GET
 	reqData, err := url.ParseQuery(r.Uri.RawQuery)
 	if err != nil {
 		l.Error("Err parsing query", err)
@@ -45,13 +45,13 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		l.Debug("Request query", "\"fields\" dosnt exist or empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	if i, ok := reqData["_id"]; !ok || len(i) != 0 {
+	if i, ok := reqData["id"]; !ok || len(i) != 0 {
 		l.Debug("Request query", "\"_id\" dosnt exist or empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	var mgoRes map[string]interface{}
-	if err = conf.mgoColl.FindId(reqData["_id"][0]).One(&mgoRes); err != nil {
+	var mgoRes map[string]interface{} // через селектор пихаем поля
+	if err = conf.mgoColl.FindId(reqData["_id"][0]).Select().One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
