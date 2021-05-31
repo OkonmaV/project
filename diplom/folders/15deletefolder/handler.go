@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net/url"
-	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -37,17 +35,11 @@ func (conf *DeleteFolder) Close() error {
 
 func (conf *DeleteFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
-		return suckhttp.NewResponse(400, "Bad request"), nil
+	if r.GetMethod() != suckhttp.DELETE {
+		return suckhttp.NewResponse(405, "Method not allowed"), nil
 	}
 
-	formValues, err := url.ParseQuery(string(r.Body))
-	if err != nil {
-		l.Error("Parsing r.Body", err)
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-
-	fid := formValues.Get("fid")
+	fid := r.Uri.Path //??????????????????????????????????????????????????????????????????????????????????????????????????
 	if fid == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -61,13 +53,13 @@ func (conf *DeleteFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	query := &bson.M{"_id": fid, "deleted": bson.M{"$exists": false}}
 
 	change := mgo.Change{
-		Update:    bson.M{"$set": bson.M{"deleted.bymeta": metaid}, "$currentDate": bson.M{"deleted.date": true, "lastmodified": true}},
+		Update:    bson.M{"$set": bson.M{"deleted.by": metaid}, "$currentDate": bson.M{"deleted.date": true}},
 		Upsert:    false,
 		ReturnNew: true,
 		Remove:    false,
 	}
 
-	if _, err = conf.mgoColl.Find(query).Apply(change, nil); err != nil {
+	if _, err := conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

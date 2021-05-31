@@ -52,23 +52,22 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	fid := formValues.Get("fid")
+	folderid := formValues.Get("folderid")
 	fnewmeta := formValues.Get("fnewmetaid")
-	fnewmetatype, err := strconv.Atoi(formValues.Get("fnewmeta"))
+	fnewmetatype, err := strconv.Atoi(formValues.Get("fnewmetatype"))
 	if err != nil {
-		//l.Error() ????????????????????????
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
-	if fid == "" || fnewmeta == "" {
+	if folderid == "" || fnewmeta == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	// TODO: AUTH
 
-	query := &bson.M{"_id": fid, "deleted": bson.M{"$exists": false}}
+	query := &bson.M{"_id": folderid, "deleted": bson.M{"$exists": false}}
 
 	change := mgo.Change{
-		Update:    bson.M{"$addToSet": bson.M{"metas": &meta{Type: fnewmetatype, Id: fid}}, "$currentDate": bson.M{"lastmodified": true}},
+		Update:    bson.M{"$addToSet": bson.M{"metas": &meta{Type: fnewmetatype, Id: folderid}}},
 		Upsert:    false,
 		ReturnNew: true,
 		Remove:    false,

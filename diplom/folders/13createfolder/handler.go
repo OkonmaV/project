@@ -1,8 +1,7 @@
 package main
 
 import (
-	"net/url"
-	"strings"
+	"errors"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -48,25 +47,15 @@ func (conf *CreateFolder) Close() error {
 	return nil
 }
 
-func getRandId() string {
-	return xid.New().String()
-}
-
 func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
-		return suckhttp.NewResponse(400, "Bad request"), nil
+	if r.GetMethod() != suckhttp.PUT {
+		return suckhttp.NewResponse(405, "Method not allowed"), nil
 	}
 
-	formValues, err := url.ParseQuery(string(r.Body))
-	if err != nil {
-		l.Error("Parsing r.Body", err)
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-
-	froot := formValues.Get("frootid")
-	fname := formValues.Get("fname")
-	if froot == "" || fname == "" {
+	folderRootId := r.Uri.Path //?????????????????????????????????????????????????????????????????????
+	folderName := r.Uri.Query().Get("name")
+	if folderName == "" || folderRootId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -76,11 +65,11 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	metaid := "randmetaid"
 	//
 
-	// проверяем корень??? удел AUTH???
-	query := &bson.M{"_id": froot, "deleted": bson.M{"$exists": false}}
+	// check root
+	query := &bson.M{"_id": folderRootId, "deleted": bson.M{"$exists": false}}
 	var foo interface{}
 
-	if err = conf.mgoColl.Find(query).One(&foo); err != nil {
+	if err := conf.mgoColl.Find(query).Select(bson.M{"_id": 1}).One(&foo); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
@@ -88,9 +77,20 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 	//
 
-	if err = conf.mgoColl.Insert(&folder{Id: getRandId(), RootsId: []string{froot}, Name: fname, Metas: []meta{{Type: 0, Id: metaid}}, LastModified: time.Now()}); err != nil {
+	newfolderId := xid.New()
+	if newfolderId.IsNil() {
+		return nil, errors.New("get new rand id returned nil")
+	}
+	query = &bson.M{"name": folderName, "rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
+	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId.String(), RootsId: []string{folderRootId}, Name: folderName, Metas: []meta{{Type: 0, Id: metaid}}}}
+
+	changeInfo, err := conf.mgoColl.Upsert(query, change)
+	if err != nil {
 		return nil, err
 	}
+	if changeInfo.Matched != 0 {
+		return suckhttp.NewResponse(409, "Conflict"), nil
+	}
 
-	return suckhttp.NewResponse(200, "OK"), nil
+	return suckhttp.NewResponse(201, "Created").SetBody(newfolderId.Bytes()), nil
 }
