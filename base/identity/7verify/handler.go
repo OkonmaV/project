@@ -36,7 +36,7 @@ func NewVerify(trntlAddr string, trntlTable string) (*Verify, error) {
 
 func (conf *Verify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") || r.GetMethod() != suckhttp.POST {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

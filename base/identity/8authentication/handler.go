@@ -42,7 +42,7 @@ func NewAuthentication(trntlAddr string, trntlTable string, tokenGenerator *http
 
 func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.POST {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	formValue, err := url.ParseQuery(string(r.Body))
@@ -67,16 +67,13 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	var trntlRes []interface{}
 	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes); err != nil {
-		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil //TODO:check err
-		}
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?hash=", hashLogin), r)
+	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, hashLogin, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil

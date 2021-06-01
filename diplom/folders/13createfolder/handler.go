@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -67,8 +68,8 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		return suckhttp.NewResponse(405, "Method not allowed"), nil
 	}
 
-	folderRootId := r.Uri.Path              //????????????????????????????????????????????????????????????????????? Что не нравится? Если это ObjectId, то надо сделать проверку, что это именно он
-	folderName := r.Uri.Query().Get("name") // Trim всегда делай в таких моментах
+	folderRootId := r.Uri.Path
+	folderName := strings.TrimSpace(r.Uri.Query().Get("name")) // Trim всегда делай в таких моментах
 	if folderName == "" || folderRootId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -81,7 +82,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 
 	// check root
 	query := &bson.M{"_id": folderRootId, "deleted": bson.M{"$exists": false}}
-	var foo interface{} // Это работает?
+	var foo interface{}
 
 	if err := conf.mgoColl.Find(query).Select(bson.M{"_id": 1}).One(&foo); err != nil {
 		if err == mgo.ErrNotFound {
@@ -104,6 +105,9 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	if changeInfo.Matched != 0 {
 		return suckhttp.NewResponse(409, "Conflict"), nil
 	}
-
-	return suckhttp.NewResponse(201, "Created").SetBody(newfolderId.Bytes()), nil
+	resp := suckhttp.NewResponse(201, "Created")
+	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
+		resp.SetBody(newfolderId.Bytes())
+	}
+	return resp, nil
 }

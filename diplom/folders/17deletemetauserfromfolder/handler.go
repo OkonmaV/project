@@ -1,8 +1,6 @@
 package main
 
 import (
-	"net/url"
-	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -37,18 +35,12 @@ func (conf *DeleteMetaUserFromFolder) Close() error {
 
 func (conf *DeleteMetaUserFromFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+	if r.GetMethod() != suckhttp.DELETE {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	formValues, err := url.ParseQuery(string(r.Body))
-	if err != nil {
-		l.Error("Parsing r.Body", err)
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-
-	fid := formValues.Get("fid")
-	deletionMetaId := formValues.Get("fdeletemetaid")
+	fid := r.Uri.Path
+	deletionMetaId := r.Uri.Query().Get("fdeletemetaid")
 	if fid == "" || deletionMetaId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -58,13 +50,13 @@ func (conf *DeleteMetaUserFromFolder) Handle(r *suckhttp.Request, l *logger.Logg
 	query := &bson.M{"_id": fid, "deleted": bson.M{"$exists": false}, "metas": bson.M{"$not": bson.M{"$eq": bson.M{"metaid": deletionMetaId, "metatype": 0}}}}
 
 	change := mgo.Change{
-		Update:    bson.M{"$pull": bson.M{"metas": bson.M{"metaid": deletionMetaId /*, "type": bson.M{"$ne": 0}*/}}, "$currentDate": bson.M{"lastmodified": true}},
+		Update:    bson.M{"$pull": bson.M{"metas": bson.M{"metaid": deletionMetaId}}, "$currentDate": bson.M{"lastmodified": true}},
 		Upsert:    false,
 		ReturnNew: true,
 		Remove:    false,
 	}
 
-	if _, err = conf.mgoColl.Find(query).Apply(change, nil); err != nil {
+	if _, err := conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

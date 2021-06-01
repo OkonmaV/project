@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"net/url"
 	"strconv"
 	"strings"
 	"thin-peak/logs/logger"
@@ -42,25 +41,19 @@ func (conf *SetMetaUser) Close() error {
 }
 
 func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
-	// Используем метод PATCH со всеми вытекающими. FolderId берем из Uri.Path, metauserid из QueryString
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+
+	if r.GetMethod() != suckhttp.HttpMethod("PATCH") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	formValues, err := url.ParseQuery(string(r.Body))
-	if err != nil {
-		l.Error("Parsing r.Body", err)
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
-
-	folderid := formValues.Get("folderid")
-	fnewmeta := formValues.Get("fnewmetaid")
-	fnewmetatype, err := strconv.Atoi(formValues.Get("fnewmetatype"))
-	if err != nil {
-		return suckhttp.NewResponse(400, "Bad Request"), nil
-	}
+	folderid := r.Uri.Path
+	fnewmeta := strings.TrimSpace(r.Uri.Query().Get("fnewmetaid"))
 	if folderid == "" || fnewmeta == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	fnewmetatype, err := strconv.Atoi(r.Uri.Query().Get("fnewmetatype"))
+	if err != nil {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
 	// TODO: AUTH
@@ -74,7 +67,6 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		Remove:    false,
 	}
 
-	// Добавь проверку на измененность документа. В случае, если пользователь уже был добавлен, возвращаем 200 OK, а если добавился то 201 Created
 	changeInfo, err := conf.mgoColl.UpdateAll(query, change)
 	if err != nil {
 		return nil, err

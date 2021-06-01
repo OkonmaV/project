@@ -93,13 +93,13 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		return nil, nil
 	}
 
-	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, "", r)
+	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, metaId, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil
 	}
-	codeGenerationReq.Body = []byte(metaId) ...// + f+i
-	codeGenerationReq.AddHeader(suckhttp.Content_Type, "text/plain")
+	codeGenerationReq.Body = []byte(suckutils.ConcatFour("surname=", metaSurname, "&name=", metaName))
+	codeGenerationReq.AddHeader(suckhttp.Content_Type, "application/x-www-form-urlencoded")
 	codeGenerationReq.AddHeader(suckhttp.Accept, "text/plain")
 	codeGenerationResp, err := conf.codeGeneration.Send(codeGenerationReq)
 	if err != nil {

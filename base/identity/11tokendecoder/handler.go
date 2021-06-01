@@ -20,8 +20,10 @@ func NewTokenDecoder(jwtKey string) (*TokenDecoder, error) {
 func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// AUTH
-..//GET
-	tokenString := r.Uri.Query().Get("token")
+	if r.GetMethod() != suckhttp.GET {
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	tokenString := r.Uri.Path
 	if tokenString == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
