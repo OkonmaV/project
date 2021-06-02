@@ -38,8 +38,7 @@ func NewCodeGeneration(trntlAddr string, trntlTable string) (*CodeGeneration, er
 
 func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.POST {
-		l.Debug("Content-type", "Wrong content-type at POST")
+	if r.GetMethod() != suckhttp.POST {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	metaId := r.Uri.Path

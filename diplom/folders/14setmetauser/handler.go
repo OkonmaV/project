@@ -60,12 +60,7 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 
 	query := &bson.M{"_id": folderid, "deleted": bson.M{"$exists": false}}
 
-	change := mgo.Change{
-		Update:    bson.M{"$addToSet": bson.M{"metas": &meta{Type: fnewmetatype, Id: folderid}}},
-		Upsert:    false,
-		ReturnNew: true,
-		Remove:    false,
-	}
+	change := bson.M{"$addToSet": bson.M{"metas": &meta{Type: fnewmetatype, Id: folderid}}}
 
 	changeInfo, err := conf.mgoColl.UpdateAll(query, change)
 	if err != nil {

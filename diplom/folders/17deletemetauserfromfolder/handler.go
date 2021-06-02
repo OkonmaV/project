@@ -50,9 +50,9 @@ func (conf *DeleteMetaUserFromFolder) Handle(r *suckhttp.Request, l *logger.Logg
 	query := &bson.M{"_id": fid, "deleted": bson.M{"$exists": false}, "metas": bson.M{"$not": bson.M{"$eq": bson.M{"metaid": deletionMetaId, "metatype": 0}}}}
 
 	change := mgo.Change{
-		Update:    bson.M{"$pull": bson.M{"metas": bson.M{"metaid": deletionMetaId}}, "$currentDate": bson.M{"lastmodified": true}},
+		Update:    bson.M{"$pull": bson.M{"metas": bson.M{"metaid": deletionMetaId}}},
 		Upsert:    false,
-		ReturnNew: true,
+		ReturnNew: false,
 		Remove:    false,
 	}
 
