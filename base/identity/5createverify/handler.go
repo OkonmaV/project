@@ -37,11 +37,11 @@ func NewCreateVerify(trntlAddr string, trntlTable string) (*CreateVerify, error)
 
 func (conf *CreateVerify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") || r.GetMethod() != suckhttp.PUT { //..PUT
+	if r.GetMethod() != suckhttp.PUT {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	userId := string(r.Body)
+	userId := r.Uri.Path
 	if userId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

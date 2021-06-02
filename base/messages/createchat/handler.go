@@ -6,10 +6,9 @@ import (
 	"time"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/rs/xid"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 type chat struct {
@@ -61,8 +60,8 @@ func (conf *CreateChat) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	var query primitive.M
-	var update primitive.M
+	var query bson.M
+	var update bson.M
 	switch chatType {
 	case 1: //tet-a-tet
 
@@ -83,7 +82,7 @@ func (conf *CreateChat) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 		}
 
 		//query = bson.M{"type": chatType, "users": bson.M{"$elemMatch": bson.M{"userid": userId, "type": 0}}, "name": chatName}
-		query = bson.M{"type": chatType, "users.0.userid": "userId", "users.0.type": 0}
+		query = bson.M{"type": chatType, "users.0.userid": "userId", "users.0.type": 0, "name": chatName}
 		update = bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: chatType, Users: []user{{UserId: userId, Type: 0, StartDateTime: time.Now()}}}}
 
 	default:

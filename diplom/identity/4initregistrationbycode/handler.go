@@ -30,7 +30,15 @@ type userData struct {
 	Password string `json:"password"`
 	//MetaId   string `json:"metaid,omitempty"`
 }
-
+type tuple struct {
+	Code    int
+	Data    string
+	MetaId  string
+	Surname string
+	Name    string
+	Hash    string
+	Status  int
+}
 type InitRegistrationByCode struct {
 	trntlConn         *tarantool.Connection
 	trntlTable        string
@@ -59,7 +67,7 @@ func NewInitRegistrationByCode(trntlAddr string, trntlTable string, createVerify
 
 func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.POST {
 		l.Debug("Content-type", "Wrong content-type at POST")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -86,12 +94,14 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 	if len(userPassword) < 8 || len(userPassword) > 30 {
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
-
-	//userPosition := formValues.Get("position") // TODO: users position
-
 	userMail := formValues.Get("mail")
 	if !isEmailValid(userMail) {
 		return suckhttp.NewResponse(400, "Bad Request"), nil // TODO: bad request ли?
+	}
+	userMailHashed, err := getMD5(userMail)
+	if err != nil {
+		l.Error("Getting md5", err)
+		return nil, nil
 	}
 
 	userPasswordHashed, err := getMD5(userPassword)
@@ -100,15 +110,35 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 		return nil, nil
 	}
 
+	// tarantool update
+	userDataMarshalled, err := json.Marshal(&userData{Mail: userMail, Name: userI, Surname: userF, Otch: userO})
+	if err != nil {
+		l.Error("Marshalling userData", err)
+		return nil, nil
+	}
+
+	update := []interface{}{[]interface{}{"=", "data", string(userDataMarshalled)}, []interface{}{"+", "status", 1}, []interface{}{"=", "hash", userMailHashed}, []interface{}{"=", "password", userPasswordHashed}}
+	var trntlRes []tuple
+	if err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, update).GetTyped(&trntlRes); err != nil {
+		return nil, err // добавить поле статус и перенести апдейт в начало . проверка на дудос!!! второй операцией
+	}
+
+	if len(trntlRes) == 0 {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
+	if trntlRes[0].Status > 5 {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	//
+
 	// createVerifyEmail request
-	createVerifyEmailReq, err := conf.createVerifyEmail.CreateRequestFrom(suckhttp.POST, "", r)
+	createVerifyEmailReq, err := conf.createVerifyEmail.CreateRequestFrom(suckhttp.PUT, userMailHashed, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil
 	}
-	createVerifyEmailReq.AddHeader(suckhttp.Content_Type, "text/plain")
 	createVerifyEmailReq.AddHeader(suckhttp.Accept, "text/plain")
-	createVerifyEmailReq.Body = []byte(userCode)
 	createVerifyEmailResp, err := conf.createVerifyEmail.Send(createVerifyEmailReq)
 	if err != nil {
 		l.Error("Send req to createverifyemailreq", err)
@@ -119,36 +149,17 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 		return nil, nil
 	}
 
-	if len(createVerifyEmailResp.GetBody()) == 0 {
-		l.Error("Resp from createverifyemailreq", errors.New("body is empty"))
-		return nil, nil
-	}
-
 	uuid := string(createVerifyEmailResp.GetBody())
 	if uuid == "" {
-		l.Error("Resp from createverifyemailreq", errors.New("responce body is empty"))
+		l.Error("Resp from createverifyemailreq", errors.New("body is empty"))
 		return nil, nil
 	}
 	//
 
 	// createEmailMessage request
-	var smth //TODOется
+	//var smth //TODOется
 	//
 
-	// tarantool update
-	userDataMarshalled, err := json.Marshal(&userData{Mail: userMail, Name: userI, Surname: userF, Otch: userO, Password: userPasswordHashed})
-	if err != nil {
-		l.Error("Marshalling userData", err)
-		return nil, nil
-	}
-
-	if err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, []interface{}{[]interface{}{"=", "data", string(userDataMarshalled)}}).Err(); err != nil {
-		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleNotFound { .....// добавить поле статус и перенести апдейт в начало . проверка на дудос!!! второй операцией
-			return suckhttp.NewResponse(403, "Forbidden"), nil
-		}
-		return nil, err
-	}
-	//
 	return suckhttp.NewResponse(200, "OK"), nil
 }
 

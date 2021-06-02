@@ -67,7 +67,7 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		delete(upsertData, "login")
 		update = bson.M{"$set": bson.M{"data": &upsertData}, "$addToSet": bson.M{"logins": newLogin}}
 	} else {
-		update = bson.M{"$set": bson.M{"data": &upsertData}, "$addToSet": bson.M{"logins": newLogin}}
+		update = bson.M{"$set": bson.M{"data": &upsertData}}
 	}
 
 	changeInfo, err := conf.mgoColl.Upsert(&bson.M{"_id": userId, "deleted": bson.M{"$exists": false}}, update)

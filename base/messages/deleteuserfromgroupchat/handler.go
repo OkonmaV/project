@@ -4,8 +4,8 @@ import (
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 type DeleteUserFromGroupChat struct {

@@ -24,9 +24,13 @@ type CreateVerifyEmail struct {
 }
 
 type tuple struct {
-	Code   int
-	Data   string
-	MetaId int
+	Code    int
+	Data    string
+	MetaId  string
+	Surname string
+	Name    string
+	Hash    string
+	Status  int
 }
 
 func (handler *CreateVerifyEmail) Close() error {
@@ -51,7 +55,10 @@ func NewCreateVerifyEmail(trntlAddr string, trntlTable string, emailVerify *http
 
 func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	codee, err := strconv.Atoi(r.Uri.Query().Get("code")) //TODO: откуда код?
+	if r.GetMethod() != suckhttp.POST { //POST ????
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	hash, err := strconv.Atoi(r.Uri.Query().Get("hash"))
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -59,35 +66,31 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	if uuid == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
+
 	// get userData from regcodes table
 	var trntlRes []tuple
 
-	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "primary", 0, 1, tarantool.IterEq, []interface{}{code}, &trntlRes); err != nil {
+	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hash}, &trntlRes); err != nil {
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	var userData map[string]string
+	var userData map[string]interface{}
 	if err = json.Unmarshal([]byte(trntlRes[0].Data), &userData); err != nil {
 		return nil, err
 	}
 
-	userMail, ok := userData["_id"]
-	if !ok {
-		l.Error("Get userHash", errors.New("No hash field founded in tarantool.regcodes"))
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
-	userMailHashed, err := getMD5(userMail)
-	if err != nil {
-		l.Error("Getting md5", err)
+	userMailHashed := trntlRes[0].Hash
+	if userMailHashed == "" {
+		l.Error("Getting hash from regcodes", errors.New("hash is nil"))
 		return nil, nil
 	}
 	//
 
 	// emailVerify req
-	emailVerifyReq, err := conf.emailVerify.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/?id=", userMailHashed), r)
+	emailVerifyReq, err := conf.emailVerify.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/?id=", userMailHashed), r) ///////
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil
