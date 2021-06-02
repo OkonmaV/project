@@ -41,11 +41,11 @@ func (c *UserRegistration) Close() error {
 
 func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") || r.GetMethod() != suckhttp.PUT {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	login := strings.TrimSpace(r.Uri.Query().Get("login"))
+	login := r.Uri.Path
 	if login == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -55,7 +55,7 @@ func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	if _, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{login, password}); err != nil {
+	if err := conf.trntlConn.UpsertAsync(conf.trntlTable, []interface{}{login, password}, []interface{}{[]interface{}{"=", "password", password}}).Err(); err != nil {
 		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

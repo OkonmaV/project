@@ -31,13 +31,14 @@ type userData struct {
 	//MetaId   string `json:"metaid,omitempty"`
 }
 type tuple struct {
-	Code    int
-	Data    string
-	MetaId  string
-	Surname string
-	Name    string
-	Hash    string
-	Status  int
+	Code     int
+	Data     string
+	MetaId   string
+	Surname  string
+	Name     string
+	Hash     string
+	Password string
+	Status   int
 }
 type InitRegistrationByCode struct {
 	trntlConn         *tarantool.Connection
@@ -117,11 +118,8 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 		return nil, nil
 	}
 
-	update := []interface{}{[]interface{}{"=", "data", string(userDataMarshalled)}, []interface{}{"+", "status", 1}, []interface{}{"=", "hash", userMailHashed}, []interface{}{"=", "password", userPasswordHashed}}
 	var trntlRes []tuple
-	if err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, update).GetTyped(&trntlRes); err != nil {
-		return nil, err // добавить поле статус и перенести апдейт в начало . проверка на дудос!!! второй операцией
-	}
+	conf.trntlConn.GetTyped(conf.trntlTable, "primary", []interface{}{userCode}, &trntlRes) // for check status
 
 	if len(trntlRes) == 0 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
@@ -130,6 +128,17 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 	if trntlRes[0].Status > 5 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
+
+	trntlRes = nil
+	update := []interface{}{[]interface{}{"=", "data", string(userDataMarshalled)}, []interface{}{"+", "status", 1}, []interface{}{"=", "hash", userMailHashed}, []interface{}{"=", "password", userPasswordHashed}}
+
+	if err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, update).GetTyped(&trntlRes); err != nil { // TODO: нужен ли здесь геттайпед? может лучше просто ошибку возвращать?
+		return nil, err
+	}
+	if len(trntlRes) == 0 {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
 	//
 
 	// createVerifyEmail request

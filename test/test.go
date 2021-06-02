@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/big-larry/mgo"
-	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -35,7 +34,7 @@ func changer() (r *lib.Cookie) {
 }
 
 type codesTuple struct {
-	Code int
+	MetaId string `msgpack:"metaid"`
 }
 type folder struct {
 	//Id bson.ObjectId `bson:"_id"`
@@ -76,13 +75,20 @@ func main() {
 	})
 	// fmt.Println("errConn: ", err)
 	// //ertrt := &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", "regcodes", "'"), Code: tarantool.ErrTupleFound}
+
+	err = trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
+	fmt.Println("errUpsert:", err)
+
 	var trntlRes []interface{}
-	err = trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{}).Err()
+
+	//err = trntlConn.UpdateAsync("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "metaid"}}).Err()
+	trntlConn.GetTyped("regcodes", "primary", []interface{}{28258}, &trntlRes)
 	fmt.Println("err:", err)
-	err = trntlConn.SelectTyped("regcodes", "primary", 0, 1, tarantool.IterEq, []interface{}{28258}, &trntlRes)
+	fmt.Println("resTrntl:", trntlRes)
+	fmt.Println()
+
+	//err = trntlConn.SelectTyped("regcodes", "primary", 0, 1, tarantool.IterEq, []interface{}{28258}, &trntlRes)
 	// //_, err = trntlConn.Update("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "h"}, []interface{}{"=", "metaname", "hh"}})
-	fmt.Println("err:", err)
-	fmt.Println("res:", len(trntlRes))
 
 	mgoSession, err := mgo.Dial("127.0.0.1")
 	if err != nil {
@@ -96,9 +102,11 @@ func main() {
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
-	query2 := bson.M{"users.userid": "userId"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
+	var upsertData map[string]interface{}
+	query2 := bson.M{"_id": "c2rfhul5dddaqoe5v8s0"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
+	update := bson.M{"$set": bson.M{"data": &upsertData}}
 	change2 := mgo.Change{
-		Update:    bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
+		Update:    update, //bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
 		Upsert:    true,
 		ReturnNew: true,
 		Remove:    false,
@@ -108,6 +116,13 @@ func main() {
 	fmt.Println("errfind: ", err)
 	fmt.Println("changeingo: ", changeInfo)
 	fmt.Println("res: ", mgoRes)
+	fmt.Println(upsertData == nil)
+
+	mapa := make(map[string]interface{})
+	mapa["f"] = "somestring"
+	stringa := []byte(mapa["f"].(string))
+	fmt.Println("byte: ", stringa)
+	fmt.Println("string: ", string(stringa))
 
 	// err = nil
 	// //bar := structs.Map(ffolder)

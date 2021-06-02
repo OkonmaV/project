@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -18,26 +16,27 @@ import (
 type CreateVerifyEmail struct {
 	trntlConn        *tarantool.Connection
 	trntlTable       string
-	emailVerify      *httpservice.InnerService
+	verify           *httpservice.InnerService
 	userRegistration *httpservice.InnerService
 	setUserData      *httpservice.InnerService
 }
 
 type tuple struct {
-	Code    int
-	Data    string
-	MetaId  string
-	Surname string
-	Name    string
-	Hash    string
-	Status  int
+	Code     int
+	Data     string
+	MetaId   string
+	Surname  string
+	Name     string
+	Hash     string
+	Password string
+	Status   int
 }
 
 func (handler *CreateVerifyEmail) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewCreateVerifyEmail(trntlAddr string, trntlTable string, emailVerify *httpservice.InnerService, userRegistration *httpservice.InnerService, setUserData *httpservice.InnerService) (*CreateVerifyEmail, error) {
+func NewCreateVerifyEmail(trntlAddr string, trntlTable string, verify *httpservice.InnerService, userRegistration *httpservice.InnerService, setUserData *httpservice.InnerService) (*CreateVerifyEmail, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -50,7 +49,7 @@ func NewCreateVerifyEmail(trntlAddr string, trntlTable string, emailVerify *http
 		return nil, err
 	}
 	logger.Info("Tarantool", "Connected!")
-	return &CreateVerifyEmail{trntlConn: trntlConn, trntlTable: trntlTable, emailVerify: emailVerify, userRegistration: userRegistration, setUserData: setUserData}, nil
+	return &CreateVerifyEmail{trntlConn: trntlConn, trntlTable: trntlTable, verify: verify, userRegistration: userRegistration, setUserData: setUserData}, nil
 }
 
 func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -79,7 +78,8 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 
 	var userData map[string]interface{}
 	if err = json.Unmarshal([]byte(trntlRes[0].Data), &userData); err != nil {
-		return nil, err
+		l.Error("Unmarshalling userData", err)
+		return nil, nil
 	}
 
 	userMailHashed := trntlRes[0].Hash
@@ -89,37 +89,35 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	}
 	//
 
-	// emailVerify req
-	emailVerifyReq, err := conf.emailVerify.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/?id=", userMailHashed), r) ///////
+	// verify req
+	verifyReq, err := conf.verify.CreateRequestFrom(suckhttp.POST, userMailHashed, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil
 	}
-	emailVerifyReq.Body = []byte(uuid)
-	emailVerifyReq.AddHeader(suckhttp.Content_Type, "text/plain")
-
-	emailVerifyResp, err := conf.emailVerify.Send(emailVerifyReq)
+	verifyReq.AddHeader(suckhttp.Content_Type, "text/plain")
+	verifyReq.Body = []byte(uuid)
+	verifyResp, err := conf.verify.Send(verifyReq)
 	if err != nil {
 		return nil, err
 	}
-	if i, t := emailVerifyResp.GetStatus(); i != 200 {
+	if i, t := verifyResp.GetStatus(); i != 200 {
 		if i == 403 {
-			return emailVerifyResp, nil
+			return verifyResp, nil
 		}
-		l.Debug("Responce from emailVerify", t)
+		l.Debug("Responce from verify", t)
 		return nil, nil
 	}
 	//
 
 	// userRegistration req
-	userPassword, ok := userData["password"]
-	if !ok {
-		l.Error("Get userPassword", errors.New("No password field founded in tarantool.regcodes"))
+	userPassword := trntlRes[0].Password
+	if userPassword == "" {
+		l.Error("Getting password from regcodes", errors.New("password is nil"))
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	delete(userData, "password")
 
-	userRegistrationReq, err := conf.userRegistration.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/?login=", userMailHashed), r)
+	userRegistrationReq, err := conf.userRegistration.CreateRequestFrom(suckhttp.PUT, userMailHashed, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil
@@ -139,37 +137,38 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	//
 
 	// setUserData req
-	setUserDataReq, err := conf.setUserData.CreateRequestFrom(suckhttp.POST, "", r)
+	userData["newlogin"] = trntlRes[0].Hash
+	if userPassword == "" {
+		l.Error("Getting hash from regcodes", errors.New("hash is nil"))
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	userData["metaid"] = trntlRes[0].MetaId
+	if userPassword == "" {
+		l.Error("Getting metaid from regcodes", errors.New("metaid is nil"))
+		return nil, nil
+	}
+
+	setUserDataReq, err := conf.setUserData.CreateRequestFrom(suckhttp.HttpMethod("PATCH"), userMailHashed, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
-		return nil, nil // ????????????? not OK?????
+		return nil, nil
 	}
 	setUserDataReq.AddHeader(suckhttp.Content_Type, "application/json")
 
-	setUserDataReq.Body, err = json.Marshal(userData)
-	if err != nil {
+	if setUserDataReq.Body, err = json.Marshal(userData); err != nil {
 		l.Error("Marshalling userData", err)
-		return nil, nil // ????????????? not OK?????
+		return nil, nil
 	}
 
 	setUserDataResp, err := conf.setUserData.Send(setUserDataReq)
 	if err != nil {
 		l.Error("Send req to setuserdata", err)
-		return nil, nil // ????????????? not OK?????
+		return nil, nil
 	}
 	if i, t := setUserDataResp.GetStatus(); i != 200 {
 		l.Error("Resp from setuserdata", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
-		return nil, nil // ????????????? not OK?????
+		return nil, nil
 	}
 
 	return suckhttp.NewResponse(200, "OK"), nil
-}
-
-func getMD5(str string) (string, error) {
-	hash := md5.New()
-	_, err := hash.Write([]byte(str))
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }

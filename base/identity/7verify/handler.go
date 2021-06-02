@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -35,7 +36,7 @@ func NewVerify(trntlAddr string, trntlTable string) (*Verify, error) {
 
 func (conf *Verify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.GET {
+	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -44,7 +45,7 @@ func (conf *Verify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Res
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	uuid := r.Uri.Query().Get("uuid")
+	uuid := string(r.Body)
 	if uuid == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

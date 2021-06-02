@@ -52,7 +52,7 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	var code int
 	for {
 		code = int(rnd.Int31n(90000) + 10000)
-		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, "", metaId, metaSurname, metaName, "", 0})
+		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, "", metaId, metaSurname, metaName, "", "", 0})
 		if err != nil {
 			if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 				continue
