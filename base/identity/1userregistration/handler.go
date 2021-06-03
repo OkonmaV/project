@@ -46,6 +46,7 @@ func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	}
 
 	login := r.Uri.Path
+	login = strings.Trim(login, "/")
 	if login == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -56,9 +57,6 @@ func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	}
 
 	if err := conf.trntlConn.UpsertAsync(conf.trntlTable, []interface{}{login, password}, []interface{}{[]interface{}{"=", "password", password}}).Err(); err != nil {
-		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil
-		}
 		return nil, err
 	}
 

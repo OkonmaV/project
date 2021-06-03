@@ -32,11 +32,11 @@ type userData struct {
 }
 type tuple struct {
 	Code     int
+	Hash     string
 	Data     string
 	MetaId   string
 	Surname  string
 	Name     string
-	Hash     string
 	Password string
 	Status   int
 }
@@ -119,10 +119,8 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 	}
 
 	var trntlRes []tuple
-	conf.trntlConn.GetTyped(conf.trntlTable, "primary", []interface{}{userCode}, &trntlRes) // for check status
-
-	if len(trntlRes) == 0 {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
+	if err = conf.trntlConn.GetTyped(conf.trntlTable, "primary", []interface{}{userCode}, &trntlRes); err != nil { // for check status
+		return nil, err
 	}
 
 	if trntlRes[0].Status > 5 {
@@ -141,7 +139,7 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 
 	//
 
-	// createVerifyEmail request
+	// createVerify request
 	createVerifyEmailReq, err := conf.createVerifyEmail.CreateRequestFrom(suckhttp.PUT, userMailHashed, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)

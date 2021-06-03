@@ -14,7 +14,7 @@ type config struct {
 }
 
 var thisServiceName httpservice.ServiceName = "conf.initregistrationbycode"
-var createVerifyEmailServiceName httpservice.ServiceName = "conf.createverifyemail"
+var createVerifyServiceName httpservice.ServiceName = "conf.createverify"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -23,9 +23,9 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewInitRegistrationByCode(c.TrntlAddr, c.TrntlTable, connectors[createVerifyEmailServiceName])
+	return NewInitRegistrationByCode(c.TrntlAddr, c.TrntlTable, connectors[createVerifyServiceName])
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, createVerifyEmailServiceName)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{}, createVerifyServiceName)
 }

@@ -23,11 +23,11 @@ type CreateVerifyEmail struct {
 
 type tuple struct {
 	Code     int
+	Hash     string
 	Data     string
 	MetaId   string
 	Surname  string
 	Name     string
-	Hash     string
 	Password string
 	Status   int
 }
@@ -137,18 +137,13 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	//
 
 	// setUserData req
-	userData["newlogin"] = trntlRes[0].Hash
-	if userPassword == "" {
-		l.Error("Getting hash from regcodes", errors.New("hash is nil"))
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
 	userData["metaid"] = trntlRes[0].MetaId
 	if userPassword == "" {
 		l.Error("Getting metaid from regcodes", errors.New("metaid is nil"))
 		return nil, nil
 	}
 
-	setUserDataReq, err := conf.setUserData.CreateRequestFrom(suckhttp.HttpMethod("PATCH"), userMailHashed, r)
+	setUserDataReq, err := conf.setUserData.CreateRequestFrom(suckhttp.PUT, userMailHashed, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return nil, nil
@@ -165,7 +160,7 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 		l.Error("Send req to setuserdata", err)
 		return nil, nil
 	}
-	if i, t := setUserDataResp.GetStatus(); i != 200 {
+	if i, t := setUserDataResp.GetStatus(); i/100 != 2 {
 		l.Error("Resp from setuserdata", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
 		return nil, nil
 	}

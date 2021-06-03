@@ -13,7 +13,7 @@ type config struct {
 	TrntlTable   string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.createverifyemail"
+var thisServiceName httpservice.ServiceName = "conf.registrationbycodeemailverify"
 var verifyServiceName httpservice.ServiceName = "conf.verify"
 var userRegistrationServiceName httpservice.ServiceName = "conf.userregistration"
 var setUserDataServiceName httpservice.ServiceName = "conf.setuserdata"

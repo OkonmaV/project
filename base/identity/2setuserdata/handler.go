@@ -43,12 +43,13 @@ func (c *SetUserData) Close() error {
 
 func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || r.GetMethod() != suckhttp.HttpMethod("PATCH") {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || r.GetMethod() != suckhttp.PUT {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	userId := r.Uri.Path
-	if userId == "" {
+	userLogin := r.Uri.Path
+	userLogin = strings.Trim(userLogin, "/")
+	if userLogin == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -62,19 +63,9 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	update := make(bson.M)
-	if newLogin, ok := upsertData["newlogin"]; ok {
-		delete(upsertData, "newlogin")
-		update["$addToSet"] = bson.M{"logins": newLogin}
-	}
-	if metaId, ok := upsertData["metaid"]; ok {
-		delete(upsertData, "metaid")
-		update["$setOnInsert"] = bson.M{"metaid": metaId}
-	}
-	if len(upsertData) != 0 {
-		update["$set"] = bson.M{"data": &upsertData}
-	}
-	changeInfo, err := conf.mgoColl.Upsert(&bson.M{"_id": userId, "deleted": bson.M{"$exists": false}}, update)
+	update := bson.M{"$set": bson.M{"data": &upsertData}, "$setOnInsert": bson.M{"logins": []string{userLogin}}}
+
+	changeInfo, err := conf.mgoColl.Upsert(&bson.M{"logins": userLogin, "deleted": bson.M{"$exists": false}}, update)
 	if err != nil {
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"thin-peak/httpservice"
@@ -67,8 +68,7 @@ func getRandId() string {
 
 func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
-		l.Debug("Content-type", "Wrong content-type at POST")
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.POST {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	formValues, err := url.ParseQuery(string(r.Body))
@@ -92,7 +92,7 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		l.Error("Generating uid", errors.New("returned empty string"))
 		return nil, nil
 	}
-
+	l.Debug("AAAAAAAAAAAA", "start")
 	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, metaId, r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
@@ -106,12 +106,13 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		l.Error("Send req to codegeneration", err)
 		return nil, nil
 	}
-
+	fmt.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	if i, t := codeGenerationResp.GetStatus(); i != 200 {
+		fmt.Println(i, t)
 		l.Error("Resp from codegeneration", errors.New(suckutils.ConcatTwo("Responce from codegeneration is", t)))
 		return nil, nil
 	}
-
+	fmt.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	code := codeGenerationResp.GetBody()
 	if len(codeGenerationResp.GetBody()) == 0 {
 		l.Error("Resp from codegeneration", errors.New("body is empty"))
