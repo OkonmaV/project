@@ -63,6 +63,16 @@ type user struct {
 	StartDateTime time.Time `bson:"startdatetime"`
 	EndDateTime   time.Time `bson:"enddatetime,omitempty"`
 }
+type tuple struct {
+	Code     int
+	Hash     string
+	Data     string
+	MetaId   string
+	Surname  string
+	Name     string
+	Password string
+	Status   int
+}
 
 func main() {
 
@@ -79,10 +89,10 @@ func main() {
 	err = trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
 	fmt.Println("errUpsert:", err)
 
-	var trntlRes []interface{}
-
+	var trntlRes tuple
+	err = trntlConn.UpsertAsync("auth", []interface{}{"login", "password"}, []interface{}{[]interface{}{"=", "password", "password"}}).Err()
 	//err = trntlConn.UpdateAsync("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "metaid"}}).Err()
-	trntlConn.GetTyped("regcodes", "primary", []interface{}{28258}, &trntlRes)
+	//trntlConn.GetTyped("regcodes", "primary", []interface{}{28258}, &trntlRes)
 	fmt.Println("err:", err)
 	fmt.Println("resTrntl:", trntlRes)
 	fmt.Println()

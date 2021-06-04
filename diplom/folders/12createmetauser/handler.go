@@ -90,33 +90,30 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	metaId := getRandId()
 	if metaId == "" {
 		l.Error("Generating uid", errors.New("returned empty string"))
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	l.Debug("AAAAAAAAAAAA", "start")
-	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, metaId, r)
+	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, suckutils.Concat("/", metaId, "?surname=", metaSurname, "&name=", metaName), r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	codeGenerationReq.Body = []byte(suckutils.ConcatFour("surname=", metaSurname, "&name=", metaName))
-	codeGenerationReq.AddHeader(suckhttp.Content_Type, "application/x-www-form-urlencoded")
 	codeGenerationReq.AddHeader(suckhttp.Accept, "text/plain")
 	codeGenerationResp, err := conf.codeGeneration.Send(codeGenerationReq)
 	if err != nil {
 		l.Error("Send req to codegeneration", err)
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	fmt.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
 	if i, t := codeGenerationResp.GetStatus(); i != 200 {
-		fmt.Println(i, t)
+		fmt.Println(metaId, metaSurname, metaName)
 		l.Error("Resp from codegeneration", errors.New(suckutils.ConcatTwo("Responce from codegeneration is", t)))
-		return nil, nil
+		return codeGenerationResp, nil
 	}
-	fmt.Println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+
 	code := codeGenerationResp.GetBody()
 	if len(codeGenerationResp.GetBody()) == 0 {
 		l.Error("Resp from codegeneration", errors.New("body is empty"))
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	if err = conf.mgoColl.Insert(&metauser{MetaId: metaId, Surname: metaSurname, Name: metaName}); err != nil {

@@ -41,6 +41,7 @@ func (conf *Verify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Res
 	}
 
 	userId := r.Uri.Path
+	userId = strings.Trim(userId, "/")
 	if userId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
