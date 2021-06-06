@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -56,6 +57,7 @@ func (conf *DeleteChat) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 	//
 
 	chatId := r.Uri.Path
+	chatId = strings.Trim(chatId, "/")
 	if chatId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

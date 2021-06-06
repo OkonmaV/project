@@ -7,10 +7,11 @@ import (
 )
 
 type config struct {
-	Configurator string
-	Listen       string
-	TrntlAddr    string
-	TrntlTable   string
+	Configurator       string
+	Listen             string
+	TrntlAddr          string
+	TrntlTable         string
+	TrntlTableRegcodes string
 }
 
 var thisServiceName httpservice.ServiceName = "conf.registrationbycodeemailverify"
@@ -25,7 +26,7 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCreateVerifyEmail(c.TrntlAddr, c.TrntlTable, connectors[verifyServiceName], connectors[userRegistrationServiceName], connectors[setUserDataServiceName])
+	return NewCreateVerifyEmail(c.TrntlAddr, c.TrntlTable, c.TrntlTableRegcodes, connectors[verifyServiceName], connectors[userRegistrationServiceName], connectors[setUserDataServiceName])
 }
 
 func main() {

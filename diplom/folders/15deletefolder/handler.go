@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -40,6 +41,7 @@ func (conf *DeleteFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 
 	fid := r.Uri.Path
+	fid = strings.Trim(fid, "/")
 	if fid == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

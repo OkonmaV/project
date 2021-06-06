@@ -6,15 +6,14 @@ import (
 )
 
 type config struct {
-	Configurator     string
-	Listen           string
-	MgoDB            string
-	MgoAddr          string
-	MgoColl          string
-	MgoCollMetausers string
+	Configurator string
+	Listen       string
+	MgoDB        string
+	MgoAddr      string
+	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.setmetauser"
+var thisServiceName httpservice.ServiceName = "conf.createquiz"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -24,7 +23,7 @@ func (c *config) GetConfiguratorAddress() string {
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
 
-	return NewSetMetaUser(c.MgoDB, c.MgoAddr, c.MgoColl, c.MgoCollMetausers)
+	return NewCreateQuiz(c.MgoDB, c.MgoAddr, c.MgoColl)
 }
 
 func main() {

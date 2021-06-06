@@ -6,8 +6,9 @@ import (
 	"time"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
+	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
 type chatInfo struct {
@@ -104,7 +105,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	mgoColl := mgoSession.DB("main").C("chats")
+	mgoColl := mgoSession.DB("messages").C("chats")
 	//ffolder := &folder{Id: "7777", Name: "NAME"}
 	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
 	//err = mgoColl.Insert(ffolder)
@@ -113,19 +114,13 @@ func main() {
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
 	var upsertData map[string]interface{}
-	query2 := bson.M{"_id": "c2rfhul5dddaqoe5v8s0"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
-	update := bson.M{"$set": bson.M{"data": &upsertData}}
-	change2 := mgo.Change{
-		Update:    update, //bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
-		Upsert:    true,
-		ReturnNew: true,
-		Remove:    false,
-	}
-	var mgoRes map[string]interface{}
-	changeInfo, err := mgoColl.Find(query2).Apply(change2, &mgoRes)
+	query2 := bson.M{"_id": "c2tg1et5ddd4n3riknr0", "users.userid": "testid"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
+	var mgores map[string]interface{}
+
+	err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
 	fmt.Println("errfind: ", err)
-	fmt.Println("changeingo: ", changeInfo)
-	fmt.Println("res: ", mgoRes)
+	fmt.Println("mgores: ", mgores)
+
 	fmt.Println(upsertData == nil)
 
 	mapa := make(map[string]interface{})
@@ -133,6 +128,9 @@ func main() {
 	stringa := []byte(mapa["f"].(string))
 	fmt.Println("byte: ", stringa)
 	fmt.Println("string: ", string(stringa))
+	fmt.Println("byte: ", bson.NewObjectId())
+	fmt.Println("byte: ", xid.New().String())
+	fmt.Println("byte: ", bson.NewObjectId().Hex())
 
 	// err = nil
 	// //bar := structs.Map(ffolder)

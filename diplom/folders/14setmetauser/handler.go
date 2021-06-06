@@ -12,8 +12,9 @@ import (
 )
 
 type SetMetaUser struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+	mgoSession       *mgo.Session
+	mgoColl          *mgo.Collection
+	mgoCollMetausers *mgo.Collection
 }
 
 type meta struct {
@@ -21,17 +22,18 @@ type meta struct {
 	Id   string `bson:"metaid"`
 }
 
-func NewSetMetaUser(mgodb string, mgoAddr string, mgoColl string) (*SetMetaUser, error) {
+func NewSetMetaUser(mgodb string, mgoAddr string, mgoColl string, mgoCollMetausers string) (*SetMetaUser, error) {
 
 	mgoSession, err := mgo.Dial(mgoAddr)
 	if err != nil {
 		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-
+	logger.Info("Mongo", "Connected!")
 	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
+	mgoCollectionMetausers := mgoSession.DB(mgodb).C(mgoCollMetausers)
 
-	return &SetMetaUser{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
+	return &SetMetaUser{mgoSession: mgoSession, mgoColl: mgoCollection, mgoCollMetausers: mgoCollectionMetausers}, nil
 
 }
 
@@ -47,6 +49,7 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 	}
 
 	folderid := r.Uri.Path
+	folderid = strings.Trim(folderid, "/")
 	fnewmeta := strings.TrimSpace(r.Uri.Query().Get("fnewmetaid"))
 	if folderid == "" || fnewmeta == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -58,9 +61,16 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 
 	// TODO: AUTH
 
-	query := &bson.M{"_id": folderid, "deleted": bson.M{"$exists": false}}
+	if err := conf.mgoCollMetausers.Find(bson.M{"_id": fnewmeta}).Select(bson.M{"_id": 1}).One(nil); err != nil {
+		if err == mgo.ErrNotFound {
+			return suckhttp.NewResponse(403, "Forbidden"), nil
+		}
+		return nil, err
+	}
 
-	change := bson.M{"$addToSet": bson.M{"metas": &meta{Type: fnewmetatype, Id: folderid}}}
+	query := bson.M{"_id": folderid, "deleted": bson.M{"$exists": false}}
+
+	change := bson.M{"$addToSet": bson.M{"metas": &meta{Id: folderid, Type: fnewmetatype}}}
 
 	changeInfo, err := conf.mgoColl.UpdateAll(query, change)
 	if err != nil {
@@ -77,6 +87,6 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 	case 0:
 		return suckhttp.NewResponse(200, "OK"), nil
 	default:
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 }

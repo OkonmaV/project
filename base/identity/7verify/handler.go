@@ -13,6 +13,10 @@ type Verify struct {
 	trntlConn  *tarantool.Connection
 	trntlTable string
 }
+type tuple struct {
+	Hash string
+	Uuid string
+}
 
 func (handler *Verify) Close() error {
 	return handler.trntlConn.Close()
@@ -53,7 +57,7 @@ func (conf *Verify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Res
 
 	// tarantool select
 	var trntlRes []interface{}
-	if err := conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{userId, uuid}, trntlRes); err != nil {
+	if err := conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{userId, uuid}, &trntlRes); err != nil {
 		return nil, err
 	}
 

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"thin-peak/logs/logger"
-	"time"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
@@ -17,11 +16,10 @@ type CreateFolder struct {
 	mgoColl    *mgo.Collection
 }
 type folder struct {
-	Id           string    `bson:"_id"`
-	RootsId      []string  `bson:"rootsid"`
-	Name         string    `bson:"name"`
-	Metas        []meta    `bson:"metas"`
-	LastModified time.Time `bson:"lastmodified"`
+	Id      string   `bson:"_id"`
+	RootsId []string `bson:"rootsid"`
+	Name    string   `bson:"name"`
+	Metas   []meta   `bson:"metas"`
 }
 
 type meta struct {
@@ -69,6 +67,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 
 	folderRootId := r.Uri.Path
+	folderRootId = strings.Trim(folderRootId, "/")
 	folderName := strings.TrimSpace(r.Uri.Query().Get("name")) // Trim всегда делай в таких моментах
 	if folderName == "" || folderRootId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -82,9 +81,8 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 
 	// check root
 	query := &bson.M{"_id": folderRootId, "deleted": bson.M{"$exists": false}}
-	var foo interface{}
 
-	if err := conf.mgoColl.Find(query).Select(bson.M{"_id": 1}).One(&foo); err != nil {
+	if err := conf.mgoColl.Find(query).Select(bson.M{"_id": 1}).One(nil); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

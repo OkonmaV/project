@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -40,6 +41,7 @@ func (conf *DeleteMetaUserFromFolder) Handle(r *suckhttp.Request, l *logger.Logg
 	}
 
 	fid := r.Uri.Path
+	fid = strings.Trim(fid, "/")
 	deletionMetaId := r.Uri.Query().Get("fdeletemetaid")
 	if fid == "" || deletionMetaId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -62,6 +64,6 @@ func (conf *DeleteMetaUserFromFolder) Handle(r *suckhttp.Request, l *logger.Logg
 		}
 		return nil, err
 	}
-
+	// если ничего не удалило, т.к. метаюзера не было в массиве, то проверки на это нет и все равно 200
 	return suckhttp.NewResponse(200, "OK"), nil
 }

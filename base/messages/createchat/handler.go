@@ -21,7 +21,7 @@ type user struct {
 	UserId        string    `bson:"userid"`
 	Type          int       `bson:"type"`
 	StartDateTime time.Time `bson:"startdatetime"`
-	EndDateTime   time.Time `bson:"enddatetime"`
+	//EndDateTime   time.Time `bson:"enddatetime"`
 }
 
 type CreateChat struct {

@@ -41,6 +41,7 @@ func (conf *RenameFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 
 	fid := r.Uri.Path
+	fid = strings.Trim(fid, "/")
 	fnewname := strings.TrimSpace(r.Uri.Query().Get("fnewname"))
 	if fid == "" || fnewname == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil

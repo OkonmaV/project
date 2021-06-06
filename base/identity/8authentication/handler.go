@@ -58,11 +58,13 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 
 	hashLogin, err := lib.GetMD5(login)
 	if err != nil {
-		return nil, err
+		l.Error("Getting md5", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	hashPassword, err := lib.GetMD5(password)
 	if err != nil {
-		return nil, err
+		l.Error("Getting md5", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	var trntlRes []interface{}
@@ -73,24 +75,24 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, hashLogin, r)
+	tokenReq, err := conf.tokenGenerator.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", hashLogin), r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	tokenResp, err := conf.tokenGenerator.Send(tokenReq)
 	if err != nil {
 		l.Error("Send req to tokengenerator", err)
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	if i, t := tokenResp.GetStatus(); i != 200 {
 		l.Error("Resp from tokengenerator", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	if len(tokenResp.GetBody()) == 0 {
 		l.Error("Resp from tokengenerator", errors.New("body is empty"))
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	expires := time.Now().Add(20 * time.Hour).String()

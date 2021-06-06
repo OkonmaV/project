@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -40,6 +41,7 @@ func (conf *RenameChat) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 	//
 
 	chatId := r.Uri.Path
+	chatId = strings.Trim(chatId, "/")
 	if chatId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

@@ -2,8 +2,8 @@ package main
 
 import (
 	"errors"
+	"strings"
 	"thin-peak/logs/logger"
-	"time"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
@@ -11,10 +11,9 @@ import (
 )
 
 type user struct {
-	UserId        string    `bson:"userid"`
-	Type          int       `bson:"type"`
-	StartDateTime time.Time `bson:"startdatetime"`
-	EndDateTime   time.Time `bson:"enddatetime"`
+	UserId string `bson:"userid"`
+	Type   int    `bson:"type"`
+	//StartDateTime time.Time `bson:"startdatetime"`
 }
 
 type AddUserToGroupChat struct {
@@ -49,6 +48,7 @@ func (conf *AddUserToGroupChat) Handle(r *suckhttp.Request, l *logger.Logger) (*
 	//
 
 	chatId := r.Uri.Path
+	chatId = strings.Trim(chatId, "/")
 	if chatId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -57,17 +57,13 @@ func (conf *AddUserToGroupChat) Handle(r *suckhttp.Request, l *logger.Logger) (*
 	if addUserId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
+	l.Info(addUserId, "AAAAAAAA")
 
-	query := bson.M{"_id": chatId, "users": bson.M{"$elemMatch": bson.M{"userid": userId, "type": 0}}}
+	query := bson.M{"_id": chatId, "type": 2, "users": bson.M{"$elemMatch": bson.M{"userid": userId, "type": 0}}}
 
-	change := mgo.Change{
-		Update:    bson.M{"$addToSet": bson.M{"user": &user{UserId: addUserId, Type: 1}}},
-		Upsert:    true,
-		ReturnNew: false,
-		Remove:    false,
-	}
+	update := bson.M{"$addToSet": bson.M{"users": &user{UserId: addUserId, Type: 1}}}
 
-	changeInfo, err := conf.mgoColl.UpdateAll(query, change)
+	changeInfo, err := conf.mgoColl.UpdateAll(query, update)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +78,6 @@ func (conf *AddUserToGroupChat) Handle(r *suckhttp.Request, l *logger.Logger) (*
 	case 0:
 		return suckhttp.NewResponse(200, "OK"), nil
 	default:
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 }

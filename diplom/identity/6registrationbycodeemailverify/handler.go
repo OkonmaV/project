@@ -13,11 +13,12 @@ import (
 )
 
 type CreateVerifyEmail struct {
-	trntlConn        *tarantool.Connection
-	trntlTable       string
-	verify           *httpservice.InnerService
-	userRegistration *httpservice.InnerService
-	setUserData      *httpservice.InnerService
+	trntlConn          *tarantool.Connection
+	trntlTable         string
+	trntlTableRegcodes string
+	verify             *httpservice.InnerService
+	userRegistration   *httpservice.InnerService
+	setUserData        *httpservice.InnerService
 }
 
 type tuple struct {
@@ -35,7 +36,7 @@ func (handler *CreateVerifyEmail) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewCreateVerifyEmail(trntlAddr string, trntlTable string, verify *httpservice.InnerService, userRegistration *httpservice.InnerService, setUserData *httpservice.InnerService) (*CreateVerifyEmail, error) {
+func NewCreateVerifyEmail(trntlAddr string, trntlTable string, trntlTableRegcodes string, verify *httpservice.InnerService, userRegistration *httpservice.InnerService, setUserData *httpservice.InnerService) (*CreateVerifyEmail, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -48,7 +49,7 @@ func NewCreateVerifyEmail(trntlAddr string, trntlTable string, verify *httpservi
 		return nil, err
 	}
 	logger.Info("Tarantool", "Connected!")
-	return &CreateVerifyEmail{trntlConn: trntlConn, trntlTable: trntlTable, verify: verify, userRegistration: userRegistration, setUserData: setUserData}, nil
+	return &CreateVerifyEmail{trntlConn: trntlConn, trntlTable: trntlTable, trntlTableRegcodes: trntlTableRegcodes, verify: verify, userRegistration: userRegistration, setUserData: setUserData}, nil
 }
 
 func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -68,7 +69,7 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 	// get userData from regcodes table
 	var trntlRes []tuple
 
-	if err := conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hash}, &trntlRes); err != nil {
+	if err := conf.trntlConn.SelectTyped(conf.trntlTableRegcodes, "secondary", 0, 1, tarantool.IterEq, []interface{}{hash}, &trntlRes); err != nil {
 		return nil, err
 	}
 	if len(trntlRes) == 0 {
@@ -111,6 +112,7 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 
 	// userRegistration req
 	userPassword := trntlRes[0].Password
+	l.Info(userPassword, "AAAAAAAA")
 	if userPassword == "" {
 		l.Error("Getting password from regcodes", errors.New("password is nil"))
 		return suckhttp.NewResponse(403, "Forbidden"), nil

@@ -68,7 +68,7 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		body, err = json.Marshal(mgoRes)
 		if err != nil {
 			l.Error("Marshalling result", err)
-			return nil, nil
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		contentType = "application/json"
 	}

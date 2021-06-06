@@ -49,7 +49,8 @@ func (conf *CreateVerify) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 
 	uuid, err := uuid.NewV4()
 	if err != nil {
-		return nil, err // err??
+		l.Error("Creating UUID", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil // err??
 	}
 
 	if err = conf.trntlConn.UpsertAsync(conf.trntlTable, []interface{}{userId, uuid.String()}, []interface{}{[]interface{}{"=", "uuid", uuid.String()}}).Err(); err != nil {

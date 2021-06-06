@@ -24,6 +24,7 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	tokenString := r.Uri.Path
+	tokenString = strings.Trim(tokenString, "/")
 	if tokenString == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -33,7 +34,7 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	})
 	if err != nil {
 		l.Error("Parsing token string", err)
-		return nil, nil
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	resp := suckhttp.NewResponse(200, "OK")
@@ -43,7 +44,7 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		body, err = json.Marshal(res)
 		if err != nil {
 			l.Error("Marshalling decoded data", err)
-			return nil, nil
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		contentType = "application/json"
 	}

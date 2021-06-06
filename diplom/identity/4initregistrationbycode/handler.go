@@ -28,8 +28,6 @@ type userData struct {
 	Surname  string `json:"surname"`
 	Otch     string `json:"otch"`
 	Position string `json:"position"`
-	Password string `json:"password"`
-	//MetaId   string `json:"metaid,omitempty"`
 }
 type tuple struct {
 	Code     int

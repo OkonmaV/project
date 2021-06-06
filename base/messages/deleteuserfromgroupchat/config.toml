@@ -1,5 +1,5 @@
 Configurator = "tcp:127.0.0.1:8090"
-Listen = "tcp:127.0.0.1:8092"
-MgoDB = "chats"
+Listen = "tcp:127.0.0.1:8125"
+MgoDB = "messages"
 MgoAddr = "127.0.0.1"
 MgoColl = "chats"

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -38,6 +39,7 @@ func (conf *DeleteUserFromGroupChat) Handle(r *suckhttp.Request, l *logger.Logge
 	//AUTH
 
 	chatId := r.Uri.Path
+	chatId = strings.Trim(chatId, "/")
 	if chatId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -47,23 +49,27 @@ func (conf *DeleteUserFromGroupChat) Handle(r *suckhttp.Request, l *logger.Logge
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	query := bson.M{"_id": chatId, "users": bson.M{"$elemMatch": bson.M{"userid": deletionUserId, "type": bson.M{"$ne": 0}}}} //тут плюсом проверка на то что чел не условный создатель чата
+	query := bson.M{"_id": chatId, "type": 2}
 
 	change := mgo.Change{
-		Update:    bson.M{"$pull": bson.M{"users": bson.M{"userid": deletionUserId}}},
-		Upsert:    true,
+		Update:    bson.M{"$pull": bson.M{"users": bson.M{"userid": deletionUserId, "type": bson.M{"$gt": 0}}}},
+		Upsert:    false,
 		ReturnNew: false,
 		Remove:    false,
 	}
 
-	if _, err := conf.mgoColl.Find(query).Apply(change, nil); err != nil {
+	changeInfo, err := conf.mgoColl.Find(query).Apply(change, nil)
+	if err != nil {
 		if err == mgo.ErrNotFound {
 			//l.Error("AUTH", errors.New("approved data doesn't match"))
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
 	}
-
-	return suckhttp.NewResponse(200, "OK"), nil
+	if changeInfo.Updated == 1 { //всегда =1
+		return suckhttp.NewResponse(200, "OK"), nil
+	} else {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 
 }
