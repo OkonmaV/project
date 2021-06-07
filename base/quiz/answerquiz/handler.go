@@ -29,7 +29,7 @@ type userresult struct {
 
 type useranswers struct {
 	QuestionId string   `bson:"question_id" json:"question_id"`
-	Type       int      `bson:"question_type" json:"question_type"` 
+	Type       int      `bson:"question_type" json:"question_type"`
 	AnswersIds []string `bson:"answer_ids,omitempty" json:"answer_ids,omitempty"`
 	Text       string   `bson:"answer_text,omitempty" json:"answer_text,omitempty"`
 }
@@ -55,7 +55,7 @@ func (conf *AnswerQuiz) Close() error {
 
 func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.POST ||!strings.Contains(r.GetHeader(suckhttp.Content_Type),"application/json")||len(r.Body)==0{
+	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -66,25 +66,21 @@ func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 	questId := strings.TrimSpace(r.Uri.Query().Get("questid"))
 
 	var userAnswers map[string]interface{}
-	err:=json.Unmarshal(r.Body,&userAnswers)
-	if err!=nil{
-		l.Error("Marshalling r.Body",err)
+	err := json.Unmarshal(r.Body, &userAnswers)
+	if err != nil {
+		l.Error("Marshalling r.Body", err)
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	
+
 	// TODO: AUTH
-	userId:="testuserid"
+	userId := "testuserid"
 	//
 
-	userAnswers["userid"]=userId
-	userAnswers["datetime"]=time.Now()
+	userAnswers["userid"] = userId
+	userAnswers["datetime"] = time.Now()
 
-
-	update:=bson.M{"$setOnInsert":bson.M{"_id":questId},"$set": bson.M{"": &userAnswers}}/////////////////////////
-	if err := conf.mgoColl.UpsertId(questId){
-		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil
-		}
+	update := bson.M{"$setOnInsert": bson.M{"_id": questId}, "$set": bson.M{"userresults": &userAnswers}}
+	if _, err = conf.mgoColl.UpsertId(questId, update); err != nil {
 		return nil, err
 	}
 

@@ -32,6 +32,7 @@ type question struct {
 type answer struct {
 	Id   string `bson:"answer_id"`
 	Text string `bson:"answer_text"`
+	//Scores int
 }
 
 func NewCreateQuiz(mgodb string, mgoAddr string, mgoColl string) (*CreateQuiz, error) {

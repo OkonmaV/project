@@ -77,7 +77,7 @@ type tuple struct {
 
 func main() {
 
-	trntlConn, err := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
+	trntlConn, _ := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
 		// User: ,
 		// Pass: ,
 		Timeout:       500 * time.Millisecond,
@@ -87,7 +87,7 @@ func main() {
 	// fmt.Println("errConn: ", err)
 	// //ertrt := &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", "regcodes", "'"), Code: tarantool.ErrTupleFound}
 
-	err = trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
+	err := trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
 	fmt.Println("errUpsert:", err)
 
 	var trntlRes tuple
@@ -105,7 +105,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	mgoColl := mgoSession.DB("messages").C("chats")
+	mgoColl := mgoSession.DB("test").C("test")
 	//ffolder := &folder{Id: "7777", Name: "NAME"}
 	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
 	//err = mgoColl.Insert(ffolder)
@@ -113,15 +113,11 @@ func main() {
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
-	var upsertData map[string]interface{}
-	query2 := bson.M{"_id": "c2tg1et5ddd4n3riknr0", "users.userid": "testid"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
-	var mgores map[string]interface{}
+	query2 := bson.M{"_id": "c2tg1et5ddd4n3riknr0"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
 
-	err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
-	fmt.Println("errfind: ", err)
-	fmt.Println("mgores: ", mgores)
-
-	update := bson.M{"$set": bson.M{"data.AAAAAAAAAAAAAAAAA.FFFF": &upsertData}}
+	//err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
+	str := "test\",\"data"
+	update := bson.M{"$set": bson.M{"data": &str}}
 	change2 := mgo.Change{
 		Update:    update, //bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
 		Upsert:    true,
@@ -130,7 +126,6 @@ func main() {
 	}
 	var mgoRes map[string]interface{}
 	_, _ = mgoColl.Find(query2).Apply(change2, &mgoRes)
-	fmt.Println(upsertData == nil)
 
 	mapa := make(map[string]interface{})
 	mapa["f"] = "somestring"
