@@ -22,7 +22,6 @@ type quiz struct {
 }
 
 type question struct {
-	//Id       string            `bson:"question_id"`
 	Type     int               `bson:"question_type"`
 	Position int               `bson:"question_position"`
 	Text     string            `bson:"question_text"`
@@ -30,7 +29,6 @@ type question struct {
 }
 
 type answer struct {
-	//Id   string `bson:"answer_id"`
 	Text string `bson:"answer_text"`
 	//Scores int
 }
@@ -69,7 +67,8 @@ func (conf *AnswerQuiz) Close() error {
 }
 
 func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
-
+	var ds suckhttp.HttpMethod
+	ds = "asd"
 	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
