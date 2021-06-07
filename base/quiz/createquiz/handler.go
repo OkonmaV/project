@@ -17,21 +17,21 @@ type CreateQuiz struct {
 type quiz struct {
 	Id        string     `bson:"_id"`
 	Name      string     `bson:"name"`
-	Questions []question `bson:"questions,omitempty"`
+	Questions []question `bson:"questions"`
 	CreatorId string     `bson:"creatorid"`
 }
 
 type question struct {
-	Id       string   `bson:"qid"`
-	Type     int      `bson:"qtype"`
-	Position int      `bson:"qposition"`
-	Text     string   `bson:"qtext"`
+	Id       string   `bson:"question_id"`
+	Type     int      `bson:"question_type"`
+	Position int      `bson:"question_position"`
+	Text     string   `bson:"question_text"`
 	Answers  []answer `bson:"answers"`
 }
 
 type answer struct {
-	Id   string `bson:"aid"`
-	Text string `bson:"atext"`
+	Id   string `bson:"answer_id"`
+	Text string `bson:"answer_text"`
 }
 
 func NewCreateQuiz(mgodb string, mgoAddr string, mgoColl string) (*CreateQuiz, error) {

@@ -11,7 +11,7 @@ import (
 	"github.com/big-larry/suckhttp"
 )
 
-type GetQuizResults struct {
+type AnswerQuiz struct {
 	mgoSession *mgo.Session
 	mgoColl    *mgo.Collection
 }
@@ -28,13 +28,13 @@ type userresult struct {
 }
 
 type useranswers struct {
-	QuestionId string   `bson:"question_id" json:"question_id"` //TODO: как брать текст вопросов и ответов?
-	Type       int      `bson:"question_type" json:"question_type"`
-	AnswersIds []string `bson:"answer_ids,omitempty" json:"answer_ids"`
-	Text       string   `bson:"answer_text,omitempty" json:"answer_text"`
+	QuestionId string   `bson:"question_id" json:"question_id"`
+	Type       int      `bson:"question_type" json:"question_type"` 
+	AnswersIds []string `bson:"answer_ids,omitempty" json:"answer_ids,omitempty"`
+	Text       string   `bson:"answer_text,omitempty" json:"answer_text,omitempty"`
 }
 
-func NewGetQuizResults(mgodb string, mgoAddr string, mgoColl string) (*GetQuizResults, error) {
+func NewAnswerQuiz(mgodb string, mgoAddr string, mgoColl string) (*AnswerQuiz, error) {
 
 	mgoSession, err := mgo.Dial(mgoAddr)
 	if err != nil {
@@ -44,18 +44,18 @@ func NewGetQuizResults(mgodb string, mgoAddr string, mgoColl string) (*GetQuizRe
 	logger.Info("Mongo", "Connected!")
 	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
 
-	return &GetQuizResults{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
+	return &AnswerQuiz{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
 
 }
 
-func (conf *GetQuizResults) Close() error {
+func (conf *AnswerQuiz) Close() error {
 	conf.mgoSession.Close()
 	return nil
 }
 
-func (conf *GetQuizResults) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.GET {
+	if r.GetMethod() != suckhttp.POST ||!strings.Contains(r.GetHeader(suckhttp.Content_Type),"application/json")||len(r.Body)==0{
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -63,18 +63,25 @@ func (conf *GetQuizResults) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	if quizId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	userId := strings.TrimSpace(r.Uri.Query().Get("userid"))
+	questId := strings.TrimSpace(r.Uri.Query().Get("questid"))
 
-	// TODO: AUTH
-	var mgoRes results
-	var selector bson.M
-	query := bson.M{"_id": quizId}
-
-	if userId != "" {
-		selector = bson.M{"usersresults.$": 1}
-		query["userresults.userid"] = userId
+	var userAnswers map[string]interface{}
+	err:=json.Unmarshal(r.Body,&userAnswers)
+	if err!=nil{
+		l.Error("Marshalling r.Body",err)
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	if err := conf.mgoColl.Find(bson.M{"_id": quizId}).Select(selector).One(&mgoRes); err != nil {
+	
+	// TODO: AUTH
+	userId:="testuserid"
+	//
+
+	userAnswers["userid"]=userId
+	userAnswers["datetime"]=time.Now()
+
+
+	update:=bson.M{"$setOnInsert":bson.M{"_id":questId},"$set": bson.M{"": &userAnswers}}/////////////////////////
+	if err := conf.mgoColl.UpsertId(questId){
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

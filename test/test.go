@@ -121,6 +121,15 @@ func main() {
 	fmt.Println("errfind: ", err)
 	fmt.Println("mgores: ", mgores)
 
+	update := bson.M{"$set": bson.M{"data.AAAAAAAAAAAAAAAAA.FFFF": &upsertData}}
+	change2 := mgo.Change{
+		Update:    update, //bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
+		Upsert:    true,
+		ReturnNew: true,
+		Remove:    false,
+	}
+	var mgoRes map[string]interface{}
+	_, _ = mgoColl.Find(query2).Apply(change2, &mgoRes)
 	fmt.Println(upsertData == nil)
 
 	mapa := make(map[string]interface{})

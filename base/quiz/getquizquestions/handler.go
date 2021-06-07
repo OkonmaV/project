@@ -22,16 +22,16 @@ type quiz struct {
 }
 
 type question struct {
-	Id       string   `bson:"qid" json:"qid"`
-	Type     int      `bson:"qtype" json:"qtype"`
-	Position int      `bson:"qposition" json:"position"`
-	Text     string   `bson:"qtext" json:"qtext"`
+	Id       string   `bson:"question_id" json:"question_id"`
+	Type     int      `bson:"question_type" json:"question_type"`
+	Position int      `bson:"question_position" json:"question_position"`
+	Text     string   `bson:"question_text" json:"question_text"`
 	Answers  []answer `bson:"answers" json:"answers"`
 }
 
 type answer struct {
-	Id   string `bson:"aid" json:"aid"`
-	Text string `bson:"atext" json:"atext,omitempty"`
+	Id   string `bson:"answer_id" json:"answer_id"`
+	Text string `bson:"answer_text" json:"answer_text,omitempty"`
 }
 
 func NewGetQuizQuestions(mgodb string, mgoAddr string, mgoColl string) (*GetQuizQuestions, error) {
