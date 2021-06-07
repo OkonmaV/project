@@ -129,7 +129,8 @@ func main() {
 
 	mapa := make(map[string]interface{})
 	mapa["f"] = "somestring"
-	stringa := []byte(mapa["f"].(string))
+	mapa["p"] = "ss"
+	stringa := []byte(mapa[[]string{mapa["f"], mapa["p"]}].(string))
 	fmt.Println("byte: ", stringa)
 	fmt.Println("string: ", string(stringa))
 	fmt.Println("byte: ", bson.NewObjectId())

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"net/url"
 	"strings"
 	"thin-peak/logs/logger"
 	"time"
@@ -16,24 +16,39 @@ type AnswerQuiz struct {
 	mgoColl    *mgo.Collection
 }
 
+//quiz
+type quiz struct {
+	Questions map[string]question `bson:"questions"`
+}
+
+type question struct {
+	//Id       string            `bson:"question_id"`
+	Type     int               `bson:"question_type"`
+	Position int               `bson:"question_position"`
+	Text     string            `bson:"question_text"`
+	Answers  map[string]answer `bson:"question_answers"`
+}
+
+type answer struct {
+	//Id   string `bson:"answer_id"`
+	Text string `bson:"answer_text"`
+	//Scores int
+}
+
+//
+//results
 type results struct {
 	QuizId       string       `bson:"_id" json:"quizid"`
 	Usersresults []userresult `bson:"usersresults" json:"usersresults"`
 }
 
 type userresult struct {
-	UserId      string        `bson:"userid" json:"userid"`
-	UserAnswers []useranswers `bson:"useranswers" json:"useranswers"`
-	Datetine    time.Time     `bson:"datetime" json:"datetime"`
+	UserId   string              `bson:"userid" json:"userid"`
+	Answers  map[string][]string `bson:"answers" json:"answers"`
+	Datetime time.Time           `bson:"datetime" json:"datetime"`
 }
 
-type useranswers struct {
-	QuestionId string   `bson:"question_id" json:"question_id"`
-	Type       int      `bson:"question_type" json:"question_type"`
-	AnswersIds []string `bson:"answer_ids,omitempty" json:"answer_ids,omitempty"`
-	Text       string   `bson:"answer_text,omitempty" json:"answer_text,omitempty"`
-}
-
+//
 func NewAnswerQuiz(mgodb string, mgoAddr string, mgoColl string) (*AnswerQuiz, error) {
 
 	mgoSession, err := mgo.Dial(mgoAddr)
@@ -55,7 +70,7 @@ func (conf *AnswerQuiz) Close() error {
 
 func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || len(r.Body) == 0 {
+	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -63,12 +78,9 @@ func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 	if quizId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	questId := strings.TrimSpace(r.Uri.Query().Get("questid"))
 
-	var userAnswers map[string]interface{}
-	err := json.Unmarshal(r.Body, &userAnswers)
+	values, err := url.ParseQuery(string(r.Body))
 	if err != nil {
-		l.Error("Marshalling r.Body", err)
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -76,26 +88,35 @@ func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 	userId := "testuserid"
 	//
 
-	userAnswers["userid"] = userId
-	userAnswers["datetime"] = time.Now()
+	var mgoRes quiz
+	if err = conf.mgoColl.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
+		if err == mgo.ErrNotFound {
+			return suckhttp.NewResponse(403, "Forbidden"), err
+		}
+		return nil, err
+	}
 
-	update := bson.M{"$setOnInsert": bson.M{"_id": questId}, "$set": bson.M{"userresults": &userAnswers}}
-	if _, err = conf.mgoColl.UpsertId(questId, update); err != nil {
+	var result userresult
+	result.Answers = make(map[string][]string)
+
+	for questionId, answers := range values {
+		if _, ok := mgoRes.Questions[questionId]; !ok {
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
+		result.Answers[questionId] = answers
+
+	}
+
+	result.UserId = userId
+	result.Datetime = time.Now()
+
+	update := bson.M{"$set": bson.M{"userresults": &result}}
+	if _, err = conf.mgoColl.UpsertId(quizId, update); err != nil {
 		return nil, err
 	}
 
 	var body []byte
 	var contentType string
-
-	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
-		var err error
-		body, err = json.Marshal(mgoRes)
-		if err != nil {
-			l.Error("Marshalling mongo responce", err)
-			return suckhttp.NewResponse(500, "Internal server error"), nil
-		}
-		contentType = "application/json"
-	}
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
 }
