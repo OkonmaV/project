@@ -18,6 +18,7 @@ type GetQuizResults struct {
 
 type results struct {
 	QuizId       string       `bson:"_id" json:"quizid"`
+	EntityId     string       `bson:"entityid" json:"entityid"`
 	Usersresults []userresult `bson:"usersresults" json:"usersresults"`
 }
 
@@ -28,10 +29,9 @@ type userresult struct {
 }
 
 type useranswers struct {
-	QuestionId string   `bson:"question_id" json:"question_id"` //TODO: как брать текст вопросов и ответов?
-	Type       int      `bson:"question_type" json:"question_type"`
-	AnswersIds []string `bson:"answer_ids,omitempty" json:"answer_ids"`
-	Text       string   `bson:"answer_text,omitempty" json:"answer_text"`
+	UserId   string              `bson:"userid" json:"userid"`
+	Answers  map[string][]string `bson:"answers" json:"answers"`
+	Datetime time.Time           `bson:"datetime" json:"datetime"`
 }
 
 func NewGetQuizResults(mgodb string, mgoAddr string, mgoColl string) (*GetQuizResults, error) {

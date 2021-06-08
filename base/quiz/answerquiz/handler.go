@@ -25,18 +25,14 @@ type question struct {
 	Type     int               `bson:"question_type"`
 	Position int               `bson:"question_position"`
 	Text     string            `bson:"question_text"`
-	Answers  map[string]answer `bson:"question_answers"`
-}
-
-type answer struct {
-	Text string `bson:"answer_text"`
-	//Scores int
+	Answers  map[string]string `bson:"question_answers"`
 }
 
 //
 //results
 type results struct {
 	QuizId       string       `bson:"_id" json:"quizid"`
+	EntityId     string       `bson:"entityid" json:"entityid"`
 	Usersresults []userresult `bson:"usersresults" json:"usersresults"`
 }
 
@@ -67,8 +63,7 @@ func (conf *AnswerQuiz) Close() error {
 }
 
 func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
-	var ds suckhttp.HttpMethod
-	ds = "asd"
+
 	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -114,8 +109,5 @@ func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 		return nil, err
 	}
 
-	var body []byte
-	var contentType string
-
-	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
+	return suckhttp.NewResponse(200, "OK"), nil
 }

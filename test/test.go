@@ -7,7 +7,6 @@ import (
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
-	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -74,6 +73,20 @@ type tuple struct {
 	Password string
 	Status   int
 }
+type quiz struct {
+	Questions map[string]question
+}
+type question struct {
+	Type     int      `bson:"question_type" json:"question_type"`
+	TypeTag  string   `bson:"-" json:"-"`
+	Position int      `bson:"question_position" json:"question_position"`
+	Text     string   `bson:"question_text" json:"question_text"`
+	Answers  []answer `bson:"answers" json:"answers"`
+}
+type answer struct {
+	Id   string `bson:"answer_id" json:"answer_id"`
+	Text string `bson:"answer_text" json:"answer_text,omitempty"`
+}
 
 func main() {
 
@@ -127,16 +140,39 @@ func main() {
 	var mgoRes map[string]interface{}
 	_, _ = mgoColl.Find(query2).Apply(change2, &mgoRes)
 
-	mapa := make(map[string]interface{})
-	mapa["f"] = "somestring"
-	mapa["p"] = "ss"
-	stringa := []byte(mapa[[]string{mapa["f"], mapa["p"]}].(string))
-	fmt.Println("byte: ", stringa)
-	fmt.Println("string: ", string(stringa))
-	fmt.Println("byte: ", bson.NewObjectId())
-	fmt.Println("byte: ", xid.New().String())
-	fmt.Println("byte: ", bson.NewObjectId().Hex())
+	// ans1 := []answer{}
+	// ans2 := []answer{}
+	// ans1 = append(ans1, answer{Id: "aid1", Text: "ANS1TEXT"}, answer{Id: "aid11", Text: "ANS11TEXT"})
+	// ans2 = append(ans2, answer{Id: "aid2", Text: "ANS2TEXT"}, answer{Id: "aid22", Text: "ANS22TEXT"})
 
+	// holo := make(map[string]question)
+	// holo["qid1"] = question{Type: 1, Text: "SOMETEXT1", Answers: ans1}
+	// holo["qid2"] = question{Type: 2, Text: "SOMETEXT2", Answers: ans2}
+	// holo["qid3"] = question{Type: 3, Text: "SOMETEXT111"}
+
+	// templData, err := ioutil.ReadFile("index.html")
+	// if err != nil {
+	// 	fmt.Println("templerr1:", err)
+	// 	return
+	// }
+
+	// templ, err := template.New("index").Parse(string(templData))
+	// if err != nil {
+	// 	fmt.Println("templerr2:", err)
+	// 	return
+	// }
+	// var body []byte
+	// buf := bytes.NewBuffer(body)
+	// err = templ.Execute(buf, holo)
+	// if err != nil {
+	// 	fmt.Println("templerr3:", err)
+	// 	return
+	// }
+
+	// fd := buf.String()
+
+	ds := []int{1, 2, 3, 4, 5}
+	fmt.Println("RES:", ds[2:])
 	// err = nil
 	// //bar := structs.Map(ffolder)
 	// //var b

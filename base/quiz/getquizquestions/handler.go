@@ -1,7 +1,9 @@
 package main
 
 import (
-	"encoding/json"
+	"bytes"
+	"html/template"
+	"io/ioutil"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -13,25 +15,20 @@ import (
 type GetQuizQuestions struct {
 	mgoSession *mgo.Session
 	mgoColl    *mgo.Collection
+	template   *template.Template
 }
 type quiz struct {
-	Id        string     `bson:"_id" json:"quizid"`
-	Name      string     `bson:"name" json:"quizname"`
-	Questions []question `bson:"questions" json:"questions"`
-	CreatorId string     `bson:"creatorid" json:"creatorid"`
+	Id        string              `bson:"_id" json:"quizid"`
+	Name      string              `bson:"name" json:"quizname"`
+	Questions map[string]question `bson:"questions" json:"questions"`
+	CreatorId string              `bson:"creatorid" json:"creatorid"`
 }
 
 type question struct {
-	Id       string   `bson:"question_id" json:"question_id"`
-	Type     int      `bson:"question_type" json:"question_type"`
-	Position int      `bson:"question_position" json:"question_position"`
-	Text     string   `bson:"question_text" json:"question_text"`
-	Answers  []answer `bson:"answers" json:"answers"`
-}
-
-type answer struct {
-	Id   string `bson:"answer_id" json:"answer_id"`
-	Text string `bson:"answer_text" json:"answer_text,omitempty"`
+	Type     int               `bson:"question_type" json:"question_type"`
+	Position int               `bson:"question_position" json:"question_position"`
+	Text     string            `bson:"question_text" json:"question_text"`
+	Answers  map[string]string `bson:"answers" json:"answers"`
 }
 
 func NewGetQuizQuestions(mgodb string, mgoAddr string, mgoColl string) (*GetQuizQuestions, error) {
@@ -44,7 +41,17 @@ func NewGetQuizQuestions(mgodb string, mgoAddr string, mgoColl string) (*GetQuiz
 	logger.Info("Mongo", "Connected!")
 	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
 
-	return &GetQuizQuestions{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
+	templData, err := ioutil.ReadFile("index.html")
+	if err != nil {
+		return nil, err
+	}
+
+	templ, err := template.New("index").Parse(string(templData))
+	if err != nil {
+		return nil, err
+	}
+
+	return &GetQuizQuestions{mgoSession: mgoSession, mgoColl: mgoCollection, template: templ}, nil
 
 }
 
@@ -77,14 +84,15 @@ func (conf *GetQuizQuestions) Handle(r *suckhttp.Request, l *logger.Logger) (*su
 	var body []byte
 	var contentType string
 
-	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
-		var err error
-		body, err = json.Marshal(mgoRes)
+	if len(mgoRes.Questions) != 0 {
+		buf := bytes.NewBuffer(body)
+		err := conf.template.Execute(buf, mgoRes.Questions)
 		if err != nil {
-			l.Error("Marshalling mongo responce", err)
-			return suckhttp.NewResponse(500, "Internal server error"), nil
+			l.Error("Template execution", err)
+			return suckhttp.NewResponse(500, "Internal server error"), err
 		}
-		contentType = "application/json"
+		body = buf.Bytes()
+		contentType = "text/html"
 	}
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
