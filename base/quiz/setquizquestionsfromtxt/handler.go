@@ -7,9 +7,9 @@ import (
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
-	"github.com/rs/xid"
 )
 
 type Handler struct {
@@ -80,48 +80,31 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	foo := strings.Split(string(fileData), "\n\n")
+	lines := strings.Split(strings.TrimSpace(string(fileData)), "\n")
 
-	lines := make([][]string, len(foo))
-	for i, bar := range foo {
-		lines[i] = strings.Split(bar, "\n")
-	}
-
-	questions := make(map[string]question)
-
-	for i, bar := range lines {
-		if len(bar) < 3 {
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
-		if bar[1] == "3" {
-
-			questions[xid.New().String()] = question{Type: 3, Position: i, Text: bar[2]}
-			continue
-
-		} else if bar[1] == "1" || bar[1] == "2" {
-
-			answers := make(map[string]string)
-			for i := 2; i < len(bar); i++ {
-				answers[xid.New().String()] = bar[i]
+	questions := make([]*question, 0)
+	var curquestion *question
+	for _, line := range lines {
+		if line == "" { // commit current question
+			//TODO new question
+			questions = append(questions, curquestion)
+			curquestion = nil
+		} else if curquestion == nil { // new question
+			space_position := strings.Index(line, " ")
+			if space_position == -1 {
+				//TODO error
 			}
-			h, _ := strconv.Atoi(bar[1])
-			questions[xid.New().String()] = question{Type: 3, Position: i, Text: bar[2]}
-		} else {
-			return suckhttp.NewResponse(400, "Bad request"), nil
+			t, err := strconv.Atoi(line[:space_position])
+			if err != nil {
+				// TODO error
+			}
+			curquestion = &question{Type: t, Text: strings.TrimSpace(line[space_position+1:]), Answers: make(map[string]string)}
+		} else { // answer
+			curquestion.Answers[bson.NewObjectId().Hex()] = strings.TrimSpace(line)
 		}
-
 	}
 
-	// file, err := os.Open(suckutils.ConcatTwo(fileName, ".txt"))
-	// if err != nil {
-	// 	return suckhttp.NewResponse(400, "Bad request"), nil
-	// }
-
-	// scaner := bufio.NewScanner(file)
-
-	// for scaner.Scan(){
-
-	// }
+	//TODO save
 
 	return suckhttp.NewResponse(200, "OK"), nil
 }
