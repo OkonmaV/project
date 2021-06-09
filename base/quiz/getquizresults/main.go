@@ -13,7 +13,7 @@ type config struct {
 	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.getquizresults"
+var thisServiceName httpservice.ServiceName = "quiz.getquizresults"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

@@ -1,0 +1,5 @@
+<ul>
+    {{- range  .}}
+    <li><input type="hidden" id="{{.Id}}" name="{{chatid}}" value="{{.Id}}" />{{.Name}}</li>
+    {{- end }}
+</ul>

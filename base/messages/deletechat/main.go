@@ -15,7 +15,7 @@ type config struct {
 	MgoCollForDeleted string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.deletechat"
+var thisServiceName httpservice.ServiceName = "messages.deletechat"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

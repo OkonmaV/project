@@ -16,8 +16,8 @@ type config struct {
 	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.createmetauser"
-var codegenerationServiceName httpservice.ServiceName = "conf.codegeneration"
+var thisServiceName httpservice.ServiceName = "folders.createmetauser"
+var codegenerationServiceName httpservice.ServiceName = "identity.codegeneration"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

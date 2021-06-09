@@ -11,7 +11,7 @@ type config struct {
 	JwtKey       string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.tokendecoder"
+var thisServiceName httpservice.ServiceName = "identity.tokendecoder"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

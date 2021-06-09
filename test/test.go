@@ -7,6 +7,7 @@ import (
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
+	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -118,7 +119,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	mgoColl := mgoSession.DB("test").C("test")
+	mgoColl := mgoSession.DB("main").C("users")
 	//ffolder := &folder{Id: "7777", Name: "NAME"}
 	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
 	//err = mgoColl.Insert(ffolder)
@@ -126,11 +127,11 @@ func main() {
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
-	query2 := bson.M{"_id": "c2tg1et5ddd4n3riknr0"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
+	query2 := bson.M{"_id": "sad"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
 
 	//err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
-	str := "test\",\"data"
-	update := bson.M{"$set": bson.M{"data": &str}}
+	str := "testdata"
+	update := bson.M{"$set": bson.M{"data": &str, "_id": xid.New().String()}}
 	change2 := mgo.Change{
 		Update:    update, //bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
 		Upsert:    true,
@@ -139,6 +140,17 @@ func main() {
 	}
 	var mgoRes map[string]interface{}
 	_, _ = mgoColl.Find(query2).Apply(change2, &mgoRes)
+
+	var mgoRes2 []interface{}
+
+	if err := mgoColl.Find(bson.M{}).All(&mgoRes2); err != nil {
+		if err == mgo.ErrNotFound {
+			fmt.Println(err)
+			return
+		}
+		fmt.Println(err)
+	}
+	fmt.Println("FIN:", mgoRes2)
 
 	// ans1 := []answer{}
 	// ans2 := []answer{}

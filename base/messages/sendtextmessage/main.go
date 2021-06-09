@@ -14,7 +14,7 @@ type config struct {
 	ClickhouseTable string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.sendtextmessage"
+var thisServiceName httpservice.ServiceName = "messages.sendtextmessage"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

@@ -39,17 +39,26 @@ type tuple struct {
 	Password string
 	Status   int
 }
-type InitRegistrationByCode struct {
+
+type emailrequestdata struct {
+	Email      string `json:"email"`
+	Hash       string `json:"hash"`
+	VerifyCode string `json:"verifycode"`
+	Name       string `json:"name"`
+}
+
+type Handler struct {
 	trntlConn         *tarantool.Connection
 	trntlTable        string
 	createVerifyEmail *httpservice.InnerService
+	createMail        *httpservice.InnerService
 }
 
-func (handler *InitRegistrationByCode) Close() error {
+func (handler *Handler) Close() error {
 	return handler.trntlConn.Close()
 }
 
-func NewInitRegistrationByCode(trntlAddr string, trntlTable string, createVerifyEmail *httpservice.InnerService) (*InitRegistrationByCode, error) {
+func NewHandler(trntlAddr string, trntlTable string, createVerifyEmail *httpservice.InnerService, createMail *httpservice.InnerService) (*Handler, error) {
 
 	trntlConn, err := tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
@@ -62,10 +71,10 @@ func NewInitRegistrationByCode(trntlAddr string, trntlTable string, createVerify
 		return nil, err
 	}
 	logger.Info("Tarantool", "Connected!")
-	return &InitRegistrationByCode{trntlConn: trntlConn, trntlTable: trntlTable, createVerifyEmail: createVerifyEmail}, nil
+	return &Handler{trntlConn: trntlConn, trntlTable: trntlTable, createVerifyEmail: createVerifyEmail, createMail: createMail}, nil
 }
 
-func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.POST {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -162,8 +171,30 @@ func (conf *InitRegistrationByCode) Handle(r *suckhttp.Request, l *logger.Logger
 	//
 
 	// createEmailMessage request
-	//var smth //TODOется
+	createMailReq, err := conf.createMail.CreateRequestFrom(suckhttp.POST, suckutils.ConcatTwo("/", userMailHashed), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return nil, nil
+	}
+
+	createMailReq.AddHeader(suckhttp.Content_Type, "application/json")
+	if createMailReq.Body, err = json.Marshal(emailrequestdata{Email: userMail, Hash: userMailHashed, VerifyCode: uuid, Name: userI}); err != nil {
+		l.Error("Marshalling emailrequestdata", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+
+	createMailResp, err := conf.createMail.Send(createMailReq)
+	if err != nil {
+		l.Error("Send req to createverifyemailreq", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+
+	if i, t := createMailResp.GetStatus(); i/100 != 2 {
+		l.Error("Resp from createmail", errors.New(suckutils.ConcatTwo("statuscode is ", t)))
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
 	//
+
 	return suckhttp.NewResponse(200, "OK"), nil
 }
 

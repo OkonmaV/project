@@ -14,7 +14,7 @@ type config struct {
 	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.renamechat"
+var thisServiceName httpservice.ServiceName = "messages.renamechat"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

@@ -13,7 +13,7 @@ type config struct {
 	TrntlTable   string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.codegeneration"
+var thisServiceName httpservice.ServiceName = "identity.codegeneration"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

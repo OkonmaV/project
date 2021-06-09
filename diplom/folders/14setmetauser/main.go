@@ -14,7 +14,7 @@ type config struct {
 	MgoCollMetausers string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.setmetauser"
+var thisServiceName httpservice.ServiceName = "folders.setmetauser"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

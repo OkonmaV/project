@@ -14,10 +14,10 @@ type config struct {
 	TrntlTableRegcodes string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.registrationbycodeemailverify"
-var verifyServiceName httpservice.ServiceName = "conf.verify"
-var userRegistrationServiceName httpservice.ServiceName = "conf.userregistration"
-var setUserDataServiceName httpservice.ServiceName = "conf.setuserdata"
+var thisServiceName httpservice.ServiceName = "identity.registrationbycodeemailverify"
+var verifyServiceName httpservice.ServiceName = "identity.verify"
+var userRegistrationServiceName httpservice.ServiceName = "identity.userregistration"
+var setUserDataServiceName httpservice.ServiceName = "identity.setuserdata"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

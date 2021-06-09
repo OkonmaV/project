@@ -2,17 +2,18 @@ package main
 
 import (
 	"context"
-
 	"thin-peak/httpservice"
 )
 
 type config struct {
 	Configurator string
 	Listen       string
-	JwtKey       string
+	MgoDB        string
+	MgoAddr      string
+	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "identity.tokengenerator"
+var thisServiceName httpservice.ServiceName = "folders.getfolders"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -21,7 +22,8 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	return NewCookieTokenGenerator(c.JwtKey)
+
+	return NewHandler(c.MgoDB, c.MgoAddr, c.MgoColl)
 }
 
 func main() {

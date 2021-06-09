@@ -18,10 +18,10 @@ type SendMessage struct {
 	clickhouseTable string
 }
 type chatInfo struct {
-	Id    string   `bson:"_id"`
-	Users []string `bson:"users"`
-	Name  string   `bson:"name"`
-	Type  int      `bson:"type"`
+	Id    string        `bson:"_id"`
+	Users []interface{} `bson:"users"`
+	Name  string        `bson:"name"`
+	Type  int           `bson:"type"`
 }
 
 func NewSendMessage(mgoAddr string, mgoColl string, clickhouseAddr string, clickhouseTable string) (*SendMessage, error) {

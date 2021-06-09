@@ -13,7 +13,7 @@ type config struct {
 	TrntlTable   string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.createverify"
+var thisServiceName httpservice.ServiceName = "identity.createverify"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

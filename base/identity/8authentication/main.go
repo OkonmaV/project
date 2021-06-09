@@ -12,8 +12,8 @@ type config struct {
 	TrntlTable   string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.authentication"
-var tokenGenServiceName httpservice.ServiceName = "conf.tokengenerator"
+var thisServiceName httpservice.ServiceName = "identity.authentication"
+var tokenGenServiceName httpservice.ServiceName = "identity.tokengenerator"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

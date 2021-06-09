@@ -13,7 +13,7 @@ type config struct {
 	MgoColl      string
 }
 
-var thisServiceName httpservice.ServiceName = "conf.renamefolder"
+var thisServiceName httpservice.ServiceName = "folders.renamefolder"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
