@@ -1,41 +1,75 @@
 package main
 
 import (
+	"encoding/json"
+	"errors"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 	"github.com/dgrijalva/jwt-go"
 )
 
 type claims struct {
-	Login string
+	Login   string
+	MetaId  string `json:"metaid"`
+	Role    int    `json:"role"`
+	Surname string `json:"surname"`
+	Name    string `json:"name"`
 	jwt.StandardClaims
 }
 
-type CookieTokenGenerator struct {
-	jwtKey []byte
+type Handler struct {
+	jwtKey      []byte
+	getUserData *httpservice.InnerService
 }
 
-func NewCookieTokenGenerator(jwtKey string) (*CookieTokenGenerator, error) {
-	return &CookieTokenGenerator{jwtKey: []byte(jwtKey)}, nil
+func NewHandler(jwtKey string, getuserdata *httpservice.InnerService) (*Handler, error) {
+	return &Handler{jwtKey: []byte(jwtKey), getUserData: getuserdata}, nil
 }
 
-func (conf *CookieTokenGenerator) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// NO AUTH?
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	var jwtToken string
 
-	hashLogin := r.Uri.Path
-	hashLogin = strings.Trim(hashLogin, "/")
+	hashLogin := strings.Trim(r.Uri.Path, "/")
 	if len(hashLogin) != 32 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &claims{Login: hashLogin}).SignedString(conf.jwtKey)
+	getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", hashLogin, "?fields=metaid,role,surname,name"), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	getUserDataReq.AddHeader(suckhttp.Accept, "application/json")
+	getUserDataResp, err := conf.getUserData.Send(getUserDataReq)
+	if err != nil {
+		l.Error("Send", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+
+	if i, t := getUserDataResp.GetStatus(); i != 200 {
+		l.Debug("Resp from getuserdata", t)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	if len(getUserDataResp.GetBody()) == 0 {
+		l.Error("Resp from getuserdata", errors.New("empty body at 200"))
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	var clms claims
+	if err := json.Unmarshal(getUserDataResp.GetBody(), &clms); err != nil {
+		l.Error("Unmarshal", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	clms.Login = hashLogin
+	//var jwtToken string
+	jwtToken, err := jwt.NewWithClaims(jwt.SigningMethodHS256, &clms).SignedString(conf.jwtKey)
 	if err != nil {
 		l.Error("Generating new jwtToken", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil

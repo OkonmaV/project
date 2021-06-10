@@ -10,24 +10,27 @@ import (
 )
 
 type TokenDecoder struct {
-	jwtKey []byte
+	jwtKey     []byte
+	cookieName string
 }
 
-func NewTokenDecoder(jwtKey string) (*TokenDecoder, error) {
-	return &TokenDecoder{jwtKey: []byte(jwtKey)}, nil
+func NewTokenDecoder(jwtKey, cookieName string) (*TokenDecoder, error) {
+	return &TokenDecoder{jwtKey: []byte(jwtKey), cookieName: cookieName}, nil
 }
 
 func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	// AUTH
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	tokenString := r.Uri.Path
-	tokenString = strings.Trim(tokenString, "/")
+	tokenString := strings.Trim(r.Uri.Path, "/")
+
 	if tokenString == "" {
-		return suckhttp.NewResponse(400, "Bad request"), nil
+		if tokenString, _ = r.GetCookie(conf.cookieName); tokenString == "" {
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
 	}
+
 	res := jwt.MapClaims{}
 	_, err := jwt.ParseWithClaims(tokenString, res, func(token *jwt.Token) (interface{}, error) {
 		return conf.jwtKey, nil
@@ -47,6 +50,21 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		contentType = "application/json"
+	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
+		if login, ok := res["Login"]; ok {
+			body = []byte(login.(string))
+		} else {
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		contentType = "text/plain; charset=utf-8"
+	} else {
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+
+	if login, ok := res["Login"]; ok {
+		resp.AddHeader("userhash", login.(string))
+	} else {
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	resp.SetBody(body)

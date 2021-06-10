@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -79,6 +80,11 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	//contextFolderId = formValues.Get("contextfid")
 
 	// TODO: AUTH
+	userRole := formValues.Get("role")
+	_, err = strconv.Atoi(formValues.Get("role"))
+	if err != nil {
+		return suckhttp.NewResponse(400, "Bad Request"), nil
+	}
 
 	metaSurname := formValues.Get("surname")
 	metaName := formValues.Get("name")
@@ -92,7 +98,7 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		l.Error("Generating uid", errors.New("returned empty string"))
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, suckutils.Concat("/", metaId, "?surname=", metaSurname, "&name=", metaName), r)
+	codeGenerationReq, err := conf.codeGeneration.CreateRequestFrom(suckhttp.POST, suckutils.Concat("/", metaId, "?surname=", metaSurname, "&name=", metaName, "&role=", userRole), r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil

@@ -45,7 +45,8 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	metaId = strings.Trim(metaId, "/")
 	metaSurname := r.Uri.Query().Get("surname")
 	metaName := r.Uri.Query().Get("name")
-	if metaId == "" || metaSurname == "" || metaName == "" {
+	userRole, err := strconv.Atoi(r.Uri.Query().Get("role"))
+	if metaId == "" || metaSurname == "" || metaName == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -53,7 +54,7 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	var code int
 	for {
 		code = int(rnd.Int31n(90000) + 10000)
-		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, "", "", metaId, metaSurname, metaName, "", 0})
+		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, "", "", metaId, metaSurname, metaName, "", userRole, 0})
 		if err != nil {
 			if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 				continue

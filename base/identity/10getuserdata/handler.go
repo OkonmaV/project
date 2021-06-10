@@ -43,18 +43,26 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		l.Error("Err parsing query", err)
 		return suckhttp.NewResponse(400, "Bad request"), err
 	}
+	if i, ok := reqData["fields"]; !ok || len(i) == 0 || i[0] == "" {
+		l.Debug("Request query", "\"fields\" doesnt exist or empty")
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+
+	var fields []string
+	if len(reqData["fields"]) == 1 {
+		fields = strings.Split(reqData["fields"][0], ",")
+	} else {
+		fields = reqData["fields"]
+	}
+
 	userId := strings.Trim(r.Uri.Path, "/")
 	if userId == "" {
 		l.Debug("Request path", "\"_id\" dosnt exist or empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	if i, ok := reqData["fields"]; !ok || len(i) == 0 || i[0] == "" {
-		l.Debug("Request query", "\"fields\" dosnt exist or empty")
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
 
 	var mgoRes map[string]interface{}
-	if err = conf.mgoColl.FindId(userId).Select(bson.M{"data": reqData["fields"]}).One(&mgoRes); err != nil {
+	if err = conf.mgoColl.FindId(userId).Select(bson.M{"data": fields}).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

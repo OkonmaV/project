@@ -29,6 +29,7 @@ type tuple struct {
 	Surname  string
 	Name     string
 	Password string
+	Role     int
 	Status   int
 }
 
@@ -112,7 +113,6 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 
 	// userRegistration req
 	userPassword := trntlRes[0].Password
-	l.Info(userPassword, "AAAAAAAA")
 	if userPassword == "" {
 		l.Error("Getting password from regcodes", errors.New("password is nil"))
 		return suckhttp.NewResponse(403, "Forbidden"), nil
@@ -139,10 +139,7 @@ func (conf *CreateVerifyEmail) Handle(r *suckhttp.Request, l *logger.Logger) (*s
 
 	// setUserData req
 	userData["metaid"] = trntlRes[0].MetaId
-	if userPassword == "" {
-		l.Error("Getting metaid from regcodes", errors.New("metaid is nil"))
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
+	userData["role"] = trntlRes[0].Role
 
 	setUserDataReq, err := conf.setUserData.CreateRequestFrom(suckhttp.PUT, suckutils.ConcatTwo("/", userMailHashed), r)
 	if err != nil {

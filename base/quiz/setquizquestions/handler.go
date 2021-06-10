@@ -20,12 +20,12 @@ import (
 
 type Handler struct {
 	mgoColl *mgo.Collection
-	auth    *httpservice.InnerService
+	auth    *httpservice.Authorizer
 }
 
 //quiz
 type quiz struct {
-	Id        string              `bson:"_id"`
+	Id        bson.ObjectId       `bson:"_id"`
 	Name      string              `bson:"name"`
 	Questions map[string]question `bson:"questions"`
 	CreatorId string              `bson:"creatorid"`
@@ -38,8 +38,12 @@ type question struct {
 	Answers  map[string]string `bson:"question_answers"`
 }
 
-func NewHandler(col *mgo.Collection, auth *httpservice.InnerService) (*Handler, error) {
-	return &Handler{mgoColl: col, auth: auth}, nil
+func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{mgoColl: col, auth: authorizer}, nil
 }
 
 var eq_ch []byte = []byte("=")
@@ -52,11 +56,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	quizId := strings.Trim(r.Uri.Path, "/")
-	if quizId == "" {
+	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
 	var data string
 
 	if strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
@@ -85,30 +88,22 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// TODO: AUTH
-	// Запрашиваем у авторизатора разрешение на createquiz для текущего пользователя
-	auth_req, err := conf.auth.CreateRequestFrom(suckhttp.GET, "/createquiz?perm=1", r)
+	k, _, err := conf.auth.GetAccess(r, l, "setquizquestions", 1)
 	if err != nil {
-		l.Error("Auth", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		return nil, err
 	}
-	auth_resp, err := conf.auth.Send(auth_req)
-	if err != nil {
-		l.Error("Auth", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-	if code, _ := auth_resp.GetStatus(); code/100 != 2 {
-		l.Warning("Auth", "Forbidden")
+	if !k {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
 	lines := strings.Split(strings.TrimSpace(data), "\n")
+	lines = append(lines, "")
 
-	questions := make([]*question, 0)
+	questions := make(map[string]*question)
 	var curquestion *question
 	for _, line := range lines {
 		if line == "" { // commit current question
-			questions = append(questions, curquestion)
+			questions[bson.NewObjectId().Hex()] = curquestion
 			curquestion = nil
 		} else if curquestion == nil { // new question
 			space_position := strings.Index(line, " ")
@@ -126,8 +121,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			curquestion.Answers[bson.NewObjectId().Hex()] = strings.TrimSpace(line)
 		}
 	}
-
-	//TODO save
+	update := bson.M{"$set": bson.M{"questions": questions}}
+	if err = conf.mgoColl.UpdateId(quizId, update); err != nil {
+		if err == mgo.ErrNotFound {
+			return suckhttp.NewResponse(403, "Forbidden"), nil
+		}
+		return nil, err
+	}
 
 	return suckhttp.NewResponse(200, "OK"), nil
 }

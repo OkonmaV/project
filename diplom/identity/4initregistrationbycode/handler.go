@@ -37,6 +37,7 @@ type tuple struct {
 	Surname  string
 	Name     string
 	Password string
+	Role     int
 	Status   int
 }
 

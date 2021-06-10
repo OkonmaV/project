@@ -65,7 +65,7 @@ func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 
 	update := bson.M{"$set": bson.M{"data": &upsertData}, "$setOnInsert": bson.M{"logins": []string{userLogin}}}
 
-	changeInfo, err := conf.mgoColl.Upsert(&bson.M{"logins": userLogin, "deleted": bson.M{"$exists": false}}, update)
+	changeInfo, err := conf.mgoColl.Upsert(bson.M{"_id": userLogin, "deleted": bson.M{"$exists": false}}, update) // TODO: many logins
 	if err != nil {
 		return nil, err
 	}

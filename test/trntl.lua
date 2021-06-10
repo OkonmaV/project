@@ -161,6 +161,7 @@ local function bootstrap()
     {name='metasurname',type='string'},
     {name='metaname',type='string'},
     {name='password',type='string'},
+    {name='role',type='integer'},
     {name='status',type='integer'}})
     space2:create_index('primary',{parts={'code'}})
     space2:create_index('secondary',{parts={'hash'}})

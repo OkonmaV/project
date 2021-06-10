@@ -7,7 +7,6 @@ import (
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
-	"github.com/rs/xid"
 	"github.com/tarantool/go-tarantool"
 )
 
@@ -89,6 +88,13 @@ type answer struct {
 	Text string `bson:"answer_text" json:"answer_text,omitempty"`
 }
 
+type question2 struct {
+	Type     int               `bson:"question_type"`
+	Position int               `bson:"question_position"`
+	Text     string            `bson:"question_text"`
+	Answers  map[string]string `bson:"question_answers"`
+}
+
 func main() {
 
 	trntlConn, _ := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
@@ -119,7 +125,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	mgoColl := mgoSession.DB("main").C("users")
+	mgoColl := mgoSession.DB("test").C("test")
 	//ffolder := &folder{Id: "7777", Name: "NAME"}
 	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
 	//err = mgoColl.Insert(ffolder)
@@ -127,30 +133,16 @@ func main() {
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
-	query2 := bson.M{"_id": "sad"} //bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
+	//bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
 
 	//err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
-	str := "testdata"
-	update := bson.M{"$set": bson.M{"data": &str, "_id": xid.New().String()}}
-	change2 := mgo.Change{
-		Update:    update, //bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: 1, Users: []user{{UserId: "userId", Type: 0, StartDateTime: time.Now()}, {UserId: "withUserId", Type: 0, StartDateTime: time.Now()}}}},
-		Upsert:    true,
-		ReturnNew: true,
-		Remove:    false,
-	}
-	var mgoRes map[string]interface{}
-	_, _ = mgoColl.Find(query2).Apply(change2, &mgoRes)
 
-	var mgoRes2 []interface{}
+	foo := make(map[string]string)
+	foo[bson.NewObjectId().Hex()] = "TESTE@"
+	g, _ := lib.GetMD5("test")
+	fmt.Println("HAAAAAAAAASH", g)
 
-	if err := mgoColl.Find(bson.M{}).All(&mgoRes2); err != nil {
-		if err == mgo.ErrNotFound {
-			fmt.Println(err)
-			return
-		}
-		fmt.Println(err)
-	}
-	fmt.Println("FIN:", mgoRes2)
+	fmt.Println(mgoColl.Insert(&question2{Type: 99, Text: "TEST", Answers: foo}))
 
 	// ans1 := []answer{}
 	// ans2 := []answer{}

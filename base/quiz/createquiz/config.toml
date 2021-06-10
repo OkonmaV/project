@@ -1,5 +1,5 @@
 Configurator = "tcp:127.0.0.1:8090"
-Listen = "tcp:127.0.0.1:8200"
+Listen = "tcp:127.0.0.1:8201"
 MgoDB = "quizes"
 MgoAddr = "127.0.0.1"
 MgoColl = "quizes"

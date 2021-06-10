@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"strconv"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -19,6 +20,7 @@ type folder struct {
 	Id      string   `bson:"_id"`
 	RootsId []string `bson:"rootsid"`
 	Name    string   `bson:"name"`
+	Type    int      `bson:"type"`
 	Metas   []meta   `bson:"metas"`
 }
 
@@ -66,10 +68,10 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		return suckhttp.NewResponse(405, "Method not allowed"), nil
 	}
 
-	folderRootId := r.Uri.Path
-	folderRootId = strings.Trim(folderRootId, "/")
-	folderName := strings.TrimSpace(r.Uri.Query().Get("name")) // Trim всегда делай в таких моментах
-	if folderName == "" || folderRootId == "" {
+	folderRootId := strings.Trim(r.Uri.Path, "/")
+	folderName := strings.TrimSpace(r.Uri.Query().Get("name"))
+	folderType, err := strconv.Atoi(strings.TrimSpace(r.Uri.Query().Get("type")))
+	if folderName == "" || folderRootId == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -79,7 +81,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	metaid := "randmetaid"
 	//
 
-	// check root
+	// checking root
 	query := &bson.M{"_id": folderRootId, "deleted": bson.M{"$exists": false}}
 
 	if err := conf.mgoColl.Find(query).Select(bson.M{"_id": 1}).One(nil); err != nil {
@@ -90,11 +92,11 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 
 	newfolderId := xid.New()
-	if newfolderId.IsNil() { // Такое может быть? Надо в New посмотреть... Я пока не могу :(
+	if newfolderId.IsNil() {
 		return nil, errors.New("get new rand id returned nil")
 	}
 	query = &bson.M{"name": folderName, "rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
-	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId.String(), RootsId: []string{folderRootId}, Name: folderName, Metas: []meta{{Type: 0, Id: metaid}}}}
+	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId.String(), RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: metaid}}}}
 
 	changeInfo, err := conf.mgoColl.Upsert(query, change)
 	if err != nil {
