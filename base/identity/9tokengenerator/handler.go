@@ -32,7 +32,6 @@ func NewHandler(jwtKey string, getuserdata *httpservice.InnerService) (*Handler,
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	// NO AUTH?
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

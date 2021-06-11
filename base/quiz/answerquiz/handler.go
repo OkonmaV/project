@@ -3,6 +3,7 @@ package main
 import (
 	"net/url"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -11,9 +12,10 @@ import (
 	"github.com/big-larry/suckhttp"
 )
 
-type AnswerQuiz struct {
+type Handler struct {
 	mgoSession *mgo.Session
 	mgoColl    *mgo.Collection
+	auth       *httpservice.Authorizer
 }
 
 //quiz
@@ -43,26 +45,20 @@ type userresult struct {
 }
 
 //
-func NewAnswerQuiz(mgodb string, mgoAddr string, mgoColl string) (*AnswerQuiz, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
+func NewHandler(col *mgo.Collection, authGet *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizerGet, err := httpservice.NewAuthorizer(thisServiceName, authGet, tokendecoder)
 	if err != nil {
-		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	return &AnswerQuiz{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
-
+	return &Handler{mgoColl: col, auth: authorizerGet}, nil
 }
 
-func (conf *AnswerQuiz) Close() error {
+func (conf *Handler) Close() error {
 	conf.mgoSession.Close()
 	return nil
 }
 
-func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -78,9 +74,13 @@ func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// TODO: AUTH
-	userId := "testuserid"
-	//
+	k, userId, err := conf.auth.GetAccess(r, l, "answerquiz", 1)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 
 	var mgoRes quiz
 	if err = conf.mgoColl.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {

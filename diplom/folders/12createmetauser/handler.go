@@ -9,21 +9,17 @@ import (
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
-	"time"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
-	"github.com/rs/xid"
-	"github.com/tarantool/go-tarantool"
 )
 
-type CreateMetauser struct {
-	trntlConn      *tarantool.Connection
-	trntlTable     string
-	mgoSession     *mgo.Session
+type Handler struct {
 	mgoColl        *mgo.Collection
 	codeGeneration *httpservice.InnerService
+	auth           *httpservice.Authorizer
 }
 
 type metauser struct {
@@ -33,41 +29,20 @@ type metauser struct {
 	Code    string `bson:"-" json:"regcode"`
 }
 
-func NewCreateMetauser(trntlAddr string, trntlTable string, mgodb string, mgoAddr string, mgoColl string, codeGeneration *httpservice.InnerService) (*CreateMetauser, error) {
-	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
-		// User: ,
-		// Pass: ,
-		Timeout:       500 * time.Millisecond,
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 4,
-	})
+func NewHandler(mgoColl *mgo.Collection, codeGeneration *httpservice.InnerService, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
-		logger.Error("Tarantool", err)
 		return nil, err
 	}
-	logger.Info("Tarantool", "Connected!")
 
-	mgoSession, err := mgo.Dial(mgoAddr)
-	if err != nil {
-		logger.Error("Mongo conn", err)
-		return nil, err
-	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	return &CreateMetauser{trntlConn: trntlConnection, trntlTable: trntlTable, mgoSession: mgoSession, mgoColl: mgoCollection, codeGeneration: codeGeneration}, nil
-}
-
-func (handler *CreateMetauser) Close() error {
-	handler.mgoSession.Close()
-	return handler.trntlConn.Close()
+	return &Handler{mgoColl: mgoColl, codeGeneration: codeGeneration, auth: authorizer}, nil
 }
 
 func getRandId() string {
-	return xid.New().String()
+	return bson.NewObjectId().Hex()
 }
 
-func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.POST {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -79,7 +54,14 @@ func (conf *CreateMetauser) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	}
 	//contextFolderId = formValues.Get("contextfid")
 
-	// TODO: AUTH
+	k, _, err := conf.auth.GetAccess(r, l, "createmetauser", 1)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
 	userRole := formValues.Get("role")
 	_, err = strconv.Atoi(formValues.Get("role"))
 	if err != nil {

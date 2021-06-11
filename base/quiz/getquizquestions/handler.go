@@ -63,7 +63,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	// AUTH
-	if _, ok := r.GetCookie("koki"); !ok {
+	if foo, ok := r.GetCookie("koki"); !ok || foo == "" {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 	//

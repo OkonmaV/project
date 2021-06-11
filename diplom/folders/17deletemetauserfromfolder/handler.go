@@ -2,6 +2,7 @@ package main
 
 import (
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -9,45 +10,38 @@ import (
 	"github.com/big-larry/suckhttp"
 )
 
-type DeleteMetaUserFromFolder struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+type Handler struct {
+	auth    *httpservice.Authorizer
+	mgoColl *mgo.Collection
 }
 
-func NewDeleteMetaUserFromFolder(mgodb string, mgoAddr string, mgoColl string) (*DeleteMetaUserFromFolder, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
+func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
-		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	return &DeleteMetaUserFromFolder{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
-
+	return &Handler{mgoColl: col, auth: authorizer}, nil
 }
 
-func (conf *DeleteMetaUserFromFolder) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *DeleteMetaUserFromFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.DELETE {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	fid := r.Uri.Path
-	fid = strings.Trim(fid, "/")
+	fid := strings.Trim(r.Uri.Path, "/")
 	deletionMetaId := r.Uri.Query().Get("fdeletemetaid")
 	if fid == "" || deletionMetaId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// TODO: AUTH
+	k, _, err := conf.auth.GetAccess(r, l, "folders", 1)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 
 	query := &bson.M{"_id": fid, "deleted": bson.M{"$exists": false}, "metas": bson.M{"$not": bson.M{"$eq": bson.M{"metaid": deletionMetaId, "metatype": 0}}}}
 

@@ -11,8 +11,7 @@ import (
 	"github.com/roistat/go-clickhouse"
 )
 
-type SendMessage struct {
-	mgoSession      *mgo.Session
+type Handler struct {
 	mgoColl         *mgo.Collection
 	clickhouseConn  *clickhouse.Conn
 	clickhouseTable string
@@ -24,38 +23,18 @@ type chatInfo struct {
 	Type  int           `bson:"type"`
 }
 
-func NewSendMessage(mgoAddr string, mgoColl string, clickhouseAddr string, clickhouseTable string) (*SendMessage, error) {
+func NewHandler(mgoColl *mgo.Collection, clickhouseConn *clickhouse.Conn, clickhouseTable string) (*Handler, error) {
 
-	mgoSession, err := mgo.Dial(mgoAddr)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB("main").C(mgoColl)
-
-	chConn := clickhouse.NewConn(clickhouseAddr, clickhouse.NewHttpTransport())
-	//"CREATE TABLE IF NOT EXISTS main.chats (time DateTime,chatID UUID,user String,text String) ENGINE = MergeTree() ORDER BY tuple()"
-	err = chConn.Ping()
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("Clickhouse", "Connected!")
-	return &SendMessage{mgoSession: mgoSession, mgoColl: mgoCollection, clickhouseConn: chConn, clickhouseTable: clickhouseTable}, nil
-
+	return &Handler{mgoColl: mgoColl, clickhouseConn: clickhouseConn, clickhouseTable: clickhouseTable}, nil
 }
 
-func (conf *SendMessage) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *SendMessage) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	chatId := r.Uri.Path
+	chatId := strings.Trim(r.Uri.Path, "/")
 	if chatId == "" {
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
@@ -77,12 +56,12 @@ func (conf *SendMessage) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 
 	query, err := clickhouse.BuildInsert(conf.clickhouseTable,
 		clickhouse.Columns{"time", "chatID", "user", "message", "type"},
-		clickhouse.Row{time.Now(), chatId, userId, message, 0})
+		clickhouse.Row{time.Now(), chatId, userId, message, 1})
 	if err != nil {
 		return nil, err
 	}
-	err = query.Exec(conf.clickhouseConn)
-	if err != nil {
+
+	if err = query.Exec(conf.clickhouseConn); err != nil {
 		return nil, err
 	}
 

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"html/template"
-	"modules/suckutils"
 	"strconv"
 	"strings"
 	"thin-peak/logs/logger"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckmail"
+	"github.com/big-larry/suckutils"
 )
 
 type Handler struct {

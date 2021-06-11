@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
 	"strings"
 	"text/template"
 	"thin-peak/logs/logger"
@@ -14,9 +13,8 @@ import (
 )
 
 type Handler struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
-	template   *template.Template
+	mgoColl  *mgo.Collection
+	template *template.Template
 }
 
 type folder struct {
@@ -26,33 +24,10 @@ type folder struct {
 	//Metas   []interface{} `bson:"metas"`
 }
 
-func NewHandler(mgodb string, mgoAddr string, mgoColl string) (*Handler, error) {
+func NewHandler(mgoColl *mgo.Collection, template *template.Template) (*Handler, error) {
 
-	mgoSession, err := mgo.Dial(mgoAddr)
-	if err != nil {
-		logger.Error("Mongo conn", err)
-		return nil, err
-	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
+	return &Handler{mgoColl: mgoColl, template: template}, nil
 
-	templData, err := ioutil.ReadFile("index.html")
-	if err != nil {
-		return nil, err
-	}
-
-	templ, err := template.New("index").Parse(string(templData))
-	if err != nil {
-		return nil, err
-	}
-
-	return &Handler{mgoSession: mgoSession, mgoColl: mgoCollection, template: templ}, nil
-
-}
-
-func (conf *Handler) Close() error {
-	conf.mgoSession.Close()
-	return nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -66,7 +41,11 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// TODO: AUTH
+	// AUTH
+	if foo, ok := r.GetCookie("koki"); !ok || foo == "" {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	//
 	mgoRes := []folder{}
 
 	if err := conf.mgoColl.Find(bson.M{"rootsid": rootId}).Select(bson.M{"rootsid": 0, "metas": 0}).All(&mgoRes); err != nil {

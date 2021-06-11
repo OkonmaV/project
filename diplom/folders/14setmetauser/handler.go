@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -11,10 +12,10 @@ import (
 	"github.com/big-larry/suckhttp"
 )
 
-type SetMetaUser struct {
-	mgoSession       *mgo.Session
+type Handler struct {
 	mgoColl          *mgo.Collection
 	mgoCollMetausers *mgo.Collection
+	auth             *httpservice.Authorizer
 }
 
 type meta struct {
@@ -22,27 +23,15 @@ type meta struct {
 	Id   string `bson:"metaid"`
 }
 
-func NewSetMetaUser(mgodb string, mgoAddr string, mgoColl string, mgoCollMetausers string) (*SetMetaUser, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
+func NewHandler(col *mgo.Collection, colMeta *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
-		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-	mgoCollectionMetausers := mgoSession.DB(mgodb).C(mgoCollMetausers)
-
-	return &SetMetaUser{mgoSession: mgoSession, mgoColl: mgoCollection, mgoCollMetausers: mgoCollectionMetausers}, nil
-
+	return &Handler{mgoColl: col, mgoCollMetausers: colMeta, auth: authorizer}, nil
 }
 
-func (conf *SetMetaUser) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.HttpMethod("PATCH") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -59,7 +48,13 @@ func (conf *SetMetaUser) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	// TODO: AUTH
+	k, _, err := conf.auth.GetAccess(r, l, "folders", 1)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 
 	if err := conf.mgoCollMetausers.Find(bson.M{"_id": fnewmeta}).Select(bson.M{"_id": 1}).One(nil); err != nil {
 		if err == mgo.ErrNotFound {

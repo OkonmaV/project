@@ -4,17 +4,17 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
-	"github.com/rs/xid"
 )
 
-type CreateFolder struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+type Handler struct {
+	mgoColl *mgo.Collection
+	auth    *httpservice.Authorizer
 }
 type folder struct {
 	Id      string   `bson:"_id"`
@@ -29,26 +29,19 @@ type meta struct {
 	Id   string `bson:"metaid"`
 }
 
-func NewCreateFolder(mgodb string, mgoAddr string, mgoColl string) (*CreateFolder, error) {
+type authreqdata struct {
+	MetaId string
+}
 
-	mgoSession, err := mgo.Dial(mgoAddr)
+func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
-		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	return &CreateFolder{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
-
+	return &Handler{mgoColl: col, auth: authorizer}, nil
 }
 
-func (conf *CreateFolder) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	// Мои комменты не удаляй!
 
@@ -62,7 +55,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	// 2. Проверяем есть ли root_id в базе (запрос One с минимальным количеством полей (_id) в монгу)
 	// 3. Делаем Upsert с запросом по имени папки, чтобы не клонровать одинаковые папки. Insert делается там, где нет иникального имени или типо того. Можно сделать уникалиный индекс и потом делать инсерт, но тогда мы часть логики возлагаем на БД и можем забыть создать индекс или не сделать его уникальным. Я предпочитаю сам алгоритм на разносить на разные сервисы...
 
-	//TODO: Захуячить в mgo функцию Exists(query)
+	//TODO: Сделать в mgo функцию Exists(query)
 
 	if r.GetMethod() != suckhttp.PUT {
 		return suckhttp.NewResponse(405, "Method not allowed"), nil
@@ -74,12 +67,19 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	if folderName == "" || folderRootId == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
-	// TODO: AUTH
-
-	// TODO: get metauser
-	metaid := "randmetaid"
-	//
+	//AUTH
+	userData := &authreqdata{}
+	k, err := conf.auth.GetAccessWithData(r, l, "folders", 1, userData)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	if userData.MetaId == "" {
+		l.Error("GetAccessWithData", errors.New("no metaid in resp"))
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
 
 	// checking root
 	query := &bson.M{"_id": folderRootId, "deleted": bson.M{"$exists": false}}
@@ -91,12 +91,10 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		return nil, err
 	}
 
-	newfolderId := xid.New()
-	if newfolderId.IsNil() {
-		return nil, errors.New("get new rand id returned nil")
-	}
+	newfolderId := bson.NewObjectId().Hex()
+
 	query = &bson.M{"name": folderName, "rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
-	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId.String(), RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: metaid}}}}
+	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId, RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: userData.MetaId}}}}
 
 	changeInfo, err := conf.mgoColl.Upsert(query, change)
 	if err != nil {
@@ -107,7 +105,7 @@ func (conf *CreateFolder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	}
 	resp := suckhttp.NewResponse(201, "Created")
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
-		resp.SetBody(newfolderId.Bytes())
+		resp.SetBody([]byte(newfolderId))
 	}
 	return resp, nil
 }

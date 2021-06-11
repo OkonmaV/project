@@ -9,12 +9,13 @@ import (
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 )
 
 type Handler struct {
 	mgoColl *mgo.Collection
 	authGet *httpservice.Authorizer
-	authSet *httpservice.Authorizer
+	authSet *httpservice.InnerService
 }
 type quiz struct {
 	Id        bson.ObjectId       `bson:"_id"`
@@ -35,11 +36,7 @@ func NewHandler(col *mgo.Collection, authGet *httpservice.InnerService, authSet 
 	if err != nil {
 		return nil, err
 	}
-	authorizerSet, err := httpservice.NewAuthorizer(thisServiceName, authSet, tokendecoder)
-	if err != nil {
-		return nil, err
-	}
-	return &Handler{mgoColl: col, authGet: authorizerGet, authSet: authorizerSet}, nil
+	return &Handler{mgoColl: col, authGet: authorizerGet, authSet: authSet}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -73,6 +70,21 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	if err = conf.mgoColl.Insert(&quiz{Id: quizId, Name: quizName, CreatorId: creatorId}); err != nil {
 		return nil, err
+	}
+
+	authSetReq, err := conf.authSet.CreateRequestFrom(suckhttp.POST, suckutils.Concat("/", creatorId, ".", quizId.Hex(), "?perm=1"), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	authSetResp, err := conf.authSet.Send(authSetReq)
+	if err != nil {
+		l.Error("Send", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	if i, t := authSetResp.GetStatus(); i/100 != 2 {
+		l.Debug("Resp from auth", t)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	resp := suckhttp.NewResponse(201, "Created")
