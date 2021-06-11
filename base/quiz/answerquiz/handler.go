@@ -68,8 +68,8 @@ func (conf *AnswerQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	quizId := strings.Trim(r.Uri.Path, "/")
-	if quizId == "" {
+	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

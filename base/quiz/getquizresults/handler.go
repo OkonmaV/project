@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -11,15 +12,15 @@ import (
 	"github.com/big-larry/suckhttp"
 )
 
-type GetQuizResults struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+type Handler struct {
+	mgoColl *mgo.Collection
+	auth    *httpservice.Authorizer
 }
 
 type results struct {
-	QuizId       string       `bson:"_id" json:"quizid"`
-	EntityId     string       `bson:"entityid" json:"entityid"`
-	Usersresults []userresult `bson:"usersresults" json:"usersresults"`
+	QuizId       bson.ObjectId `bson:"_id" json:"quizid"`
+	EntityId     string        `bson:"entityid" json:"entityid"`
+	Usersresults []userresult  `bson:"usersresults" json:"usersresults"`
 }
 
 type userresult struct {
@@ -34,38 +35,35 @@ type useranswers struct {
 	Datetime time.Time           `bson:"datetime" json:"datetime"`
 }
 
-func NewGetQuizResults(mgodb string, mgoAddr string, mgoColl string) (*GetQuizResults, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
+func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
-		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	return &GetQuizResults{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
-
+	return &Handler{mgoColl: col, auth: authorizer}, nil
 }
 
-func (conf *GetQuizResults) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *GetQuizResults) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	quizId := strings.Trim(r.Uri.Path, "/")
-	if quizId == "" {
+	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	userId := strings.TrimSpace(r.Uri.Query().Get("userid"))
 
 	// TODO: AUTH
+	// k, _, err := conf.auth.GetAccess(r, l, "getquizresults", 1)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
+
 	var mgoRes results
 	var selector bson.M
 	query := bson.M{"_id": quizId}

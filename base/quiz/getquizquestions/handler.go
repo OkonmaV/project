@@ -5,20 +5,21 @@ import (
 	"html/template"
 	"io/ioutil"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
-	"go.mongodb.org/mongo-driver/bson"
 )
 
-type GetQuizQuestions struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
-	template   *template.Template
+type Handler struct {
+	mgoColl  *mgo.Collection
+	template *template.Template
+	auth     *httpservice.Authorizer
 }
 type quiz struct {
-	Id        string              `bson:"_id" json:"quizid"`
+	Id        bson.ObjectId       `bson:"_id" json:"quizid"`
 	Name      string              `bson:"name" json:"quizname"`
 	Questions map[string]question `bson:"questions" json:"questions"`
 	CreatorId string              `bson:"creatorid" json:"creatorid"`
@@ -31,15 +32,11 @@ type question struct {
 	Answers  map[string]string `bson:"answers" json:"answers"`
 }
 
-func NewGetQuizQuestions(mgodb string, mgoAddr string, mgoColl string) (*GetQuizQuestions, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
-	if err != nil {
-		logger.Error("Mongo conn", err)
-		return nil, err
-	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
+func NewHandler(col *mgo.Collection /*, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService*/) (*Handler, error) {
+	// authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
 	templData, err := ioutil.ReadFile("index.html")
 	if err != nil {
@@ -51,27 +48,26 @@ func NewGetQuizQuestions(mgodb string, mgoAddr string, mgoColl string) (*GetQuiz
 		return nil, err
 	}
 
-	return &GetQuizQuestions{mgoSession: mgoSession, mgoColl: mgoCollection, template: templ}, nil
-
+	return &Handler{mgoColl: col /* auth: authorizer,*/, template: templ}, nil
 }
 
-func (conf *GetQuizQuestions) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *GetQuizQuestions) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	quizId := strings.Trim(r.Uri.Path, "/")
-	if quizId == "" {
+	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// TODO: AUTH
+	// AUTH
+	if _, ok := r.GetCookie("koki"); !ok {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	//
+
 	var mgoRes quiz
 
 	if err := conf.mgoColl.Find(bson.M{"_id": quizId, "deleted": bson.M{"$exists": false}}).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {

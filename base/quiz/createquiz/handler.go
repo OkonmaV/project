@@ -3,19 +3,21 @@ package main
 import (
 	"net/url"
 	"strings"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
-	"github.com/rs/xid"
 )
 
-type CreateQuiz struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+type Handler struct {
+	mgoColl *mgo.Collection
+	authGet *httpservice.Authorizer
+	authSet *httpservice.Authorizer
 }
 type quiz struct {
-	Id        string              `bson:"_id"`
+	Id        bson.ObjectId       `bson:"_id"`
 	Name      string              `bson:"name"`
 	Questions map[string]question `bson:"questions"`
 	CreatorId string              `bson:"creatorid"`
@@ -28,26 +30,19 @@ type question struct {
 	Answers  map[string]string `bson:"answers"`
 }
 
-func NewCreateQuiz(mgodb string, mgoAddr string, mgoColl string) (*CreateQuiz, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
+func NewHandler(col *mgo.Collection, authGet *httpservice.InnerService, authSet *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+	authorizerGet, err := httpservice.NewAuthorizer(thisServiceName, authGet, tokendecoder)
 	if err != nil {
-		logger.Error("Mongo conn", err)
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	return &CreateQuiz{mgoSession: mgoSession, mgoColl: mgoCollection}, nil
-
+	authorizerSet, err := httpservice.NewAuthorizer(thisServiceName, authSet, tokendecoder)
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{mgoColl: col, authGet: authorizerGet, authSet: authorizerSet}, nil
 }
 
-func (conf *CreateQuiz) Close() error {
-	conf.mgoSession.Close()
-	return nil
-}
-
-func (conf *CreateQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.PUT || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -63,20 +58,26 @@ func (conf *CreateQuiz) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// TODO: AUTH
-	creatorid := "creator"
-	//
+	k, creatorId, err := conf.authGet.GetAccess(r, l, "createquiz", 1)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 
-	quizId := xid.New()
+	// TODO:HOW TO SET?
+
+	quizId := bson.NewObjectId()
 	//нет проверки по имени
 
-	if err = conf.mgoColl.Insert(&quiz{Id: quizId.String(), Name: quizName, CreatorId: creatorid}); err != nil {
+	if err = conf.mgoColl.Insert(&quiz{Id: quizId, Name: quizName, CreatorId: creatorId}); err != nil {
 		return nil, err
 	}
 
 	resp := suckhttp.NewResponse(201, "Created")
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/plain") {
-		resp.SetBody(quizId.Bytes()).AddHeader(suckhttp.Content_Type, "text/plain")
+		resp.SetBody([]byte(quizId.Hex())).AddHeader(suckhttp.Content_Type, "text/plain")
 	}
 	return resp, nil
 }
