@@ -58,6 +58,7 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 			if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 				continue
 			} else {
+
 				return nil, err
 			}
 		}

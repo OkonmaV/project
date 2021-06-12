@@ -142,6 +142,10 @@ func main() {
 
 	fmt.Println(mgoColl.Insert(&question2{Type: 99, Text: "TEST", Answers: foo}))
 
+	sr := []string{}
+	sr = nil
+	fmt.Println("LEN", len(sr))
+
 	// ans1 := []answer{}
 	// ans2 := []answer{}
 	// ans1 = append(ans1, answer{Id: "aid1", Text: "ANS1TEXT"}, answer{Id: "aid11", Text: "ANS11TEXT"})

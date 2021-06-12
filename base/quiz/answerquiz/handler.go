@@ -10,12 +10,14 @@ import (
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 )
 
 type Handler struct {
 	mgoSession *mgo.Session
 	mgoColl    *mgo.Collection
-	auth       *httpservice.Authorizer
+	//auth       *httpservice.Authorizer
+	tokenDecoder *httpservice.InnerService
 }
 
 //quiz
@@ -45,12 +47,10 @@ type userresult struct {
 }
 
 //
-func NewHandler(col *mgo.Collection, authGet *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
-	authorizerGet, err := httpservice.NewAuthorizer(thisServiceName, authGet, tokendecoder)
-	if err != nil {
-		return nil, err
-	}
-	return &Handler{mgoColl: col, auth: authorizerGet}, nil
+
+func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService) (*Handler, error) {
+
+	return &Handler{mgoColl: col, tokenDecoder: tokendecoder}, nil
 }
 
 func (conf *Handler) Close() error {
@@ -74,14 +74,44 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	k, userId, err := conf.auth.GetAccess(r, l, quizId.Hex(), 1)
-	if err != nil {
-		return nil, err
-	}
-	if !k {
+	//AUTH
+
+	// k, userId, err := conf.auth.GetAccess(r, l, quizId.Hex(), 1)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
+	koki, ok := r.GetCookie("koki")
+	if !ok || len(koki) < 5 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
+	tokenDecoderReq, err := conf.tokenDecoder.CreateRequestFrom(suckhttp.GET, suckutils.Concat("/", koki), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	tokenDecoderReq.AddHeader(suckhttp.Accept, "text/plain")
+	tokenDecoderResp, err := conf.tokenDecoder.Send(tokenDecoderReq)
+	if err != nil {
+		l.Error("Send", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	if i, t := tokenDecoderResp.GetStatus(); i/100 != 2 {
+		l.Debug("Resp from tokendecoder", t)
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	//
+	var result userresult
+
+	if result.UserId = string(tokenDecoderResp.GetBody()); len(result.UserId) == 0 {
+		l.Debug("Resp from tokendecoder", "empty body")
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
+	//mongo insert
 	var mgoRes quiz
 	if err = conf.mgoColl.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
@@ -89,8 +119,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		}
 		return nil, err
 	}
-
-	var result userresult
+	//
 	result.Answers = make(map[string][]string)
 
 	for questionId, answers := range values {
@@ -101,7 +130,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	}
 
-	result.UserId = userId
 	result.Datetime = time.Now()
 
 	update := bson.M{"$set": bson.M{"userresults": &result}}

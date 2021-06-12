@@ -18,8 +18,6 @@ type config struct {
 }
 
 const thisServiceName httpservice.ServiceName = "quiz.getquizquestions"
-const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
-const authGetServiceName httpservice.ServiceName = "auth.get"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -36,7 +34,7 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	c.mgoSession = mgoSession
 	logger.Info("Mongo", "Connected!")
 	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
-	return NewHandler(mgoCollection) //, connectors[authGetServiceName], connectors[tokenDecoderServiceName])
+	return NewHandler(mgoCollection)
 }
 
 func (conf *config) Close() error {

@@ -23,6 +23,10 @@ type meta struct {
 	Id   string `bson:"metaid"`
 }
 
+type authreqdata struct {
+	Metaid string `json:"metaid"`
+}
+
 func NewHandler(col *mgo.Collection, colMeta *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
 	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {

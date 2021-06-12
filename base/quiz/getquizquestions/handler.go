@@ -5,7 +5,6 @@ import (
 	"html/template"
 	"io/ioutil"
 	"strings"
-	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
@@ -16,7 +15,6 @@ import (
 type Handler struct {
 	mgoColl  *mgo.Collection
 	template *template.Template
-	auth     *httpservice.Authorizer
 }
 type quiz struct {
 	Id        bson.ObjectId       `bson:"_id" json:"quizid"`
@@ -32,12 +30,7 @@ type question struct {
 	Answers  map[string]string `bson:"answers" json:"answers"`
 }
 
-func NewHandler(col *mgo.Collection /*, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService*/) (*Handler, error) {
-	// authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
-	// if err != nil {
-	// 	return nil, err
-	// }
-
+func NewHandler(col *mgo.Collection) (*Handler, error) {
 	templData, err := ioutil.ReadFile("index.html")
 	if err != nil {
 		return nil, err
@@ -48,7 +41,7 @@ func NewHandler(col *mgo.Collection /*, auth *httpservice.InnerService, tokendec
 		return nil, err
 	}
 
-	return &Handler{mgoColl: col /* auth: authorizer,*/, template: templ}, nil
+	return &Handler{mgoColl: col, template: templ}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -63,7 +56,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	// AUTH
-	if foo, ok := r.GetCookie("koki"); !ok || foo == "" {
+	if foo, ok := r.GetCookie("koki"); !ok || len(foo) < 5 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 	//

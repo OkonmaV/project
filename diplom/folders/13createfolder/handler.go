@@ -15,6 +15,7 @@ import (
 type Handler struct {
 	mgoColl *mgo.Collection
 	auth    *httpservice.Authorizer
+	authSet *httpservice.InnerService
 }
 type folder struct {
 	Id      string   `bson:"_id"`
@@ -30,15 +31,16 @@ type meta struct {
 }
 
 type authreqdata struct {
-	MetaId string `json:"metaid"`
+	Login  string `json:"Login"`
+	Metaid string `json:"metaid"`
 }
 
-func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
+func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, authSet *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
 	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{mgoColl: col, auth: authorizer}, nil
+	return &Handler{mgoColl: col, auth: authorizer, authSet: authSet}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -67,7 +69,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if folderName == "" || folderRootId == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	//AUTH
+	//check auth
 	userData := &authreqdata{}
 	k, err := conf.auth.GetAccessWithData(r, l, "folders", 1, userData)
 	if err != nil {
@@ -76,7 +78,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if !k {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	if userData.MetaId == "" {
+	if userData.Metaid == "" {
 		l.Error("GetAccessWithData", errors.New("no metaid in resp"))
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
@@ -93,8 +95,24 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	newfolderId := bson.NewObjectId().Hex()
 
+	// //set auth for new folder
+	// authSetReq, err := conf.authSet.CreateRequestFrom(suckhttp.POST, suckutils.Concat("/", userData.Login, ".", newfolderId, "?perm=1"), r)
+	// if err != nil {
+	// 	l.Error("CreateRequestFrom", err)
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
+	// authSetResp, err := conf.authSet.Send(authSetReq)
+	// if err != nil {
+	// 	l.Error("Send", err)
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
+	// if i, t := authSetResp.GetStatus(); i/100 != 2 {
+	// 	l.Debug("Resp from auth", t)
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
+
 	query = &bson.M{"name": folderName, "rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
-	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId, RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: userData.MetaId}}}}
+	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId, RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: userData.Metaid}}}}
 
 	changeInfo, err := conf.mgoColl.Upsert(query, change)
 	if err != nil {

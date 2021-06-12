@@ -30,12 +30,12 @@ type metauser struct {
 }
 
 func NewHandler(mgoColl *mgo.Collection, codeGeneration *httpservice.InnerService, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
-	// authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
-	// if err != nil {
-	// 	return nil, err
-	// }
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
+	if err != nil {
+		return nil, err
+	}
 
-	return &Handler{mgoColl: mgoColl, codeGeneration: codeGeneration}, nil
+	return &Handler{mgoColl: mgoColl, codeGeneration: codeGeneration, auth: authorizer}, nil
 }
 
 func getRandId() string {
@@ -54,13 +54,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//contextFolderId = formValues.Get("contextfid")
 
-	// k, _, err := conf.auth.GetAccess(r, l, "createmetauser", 1)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if !k {
-	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
-	// }
+	k, _, err := conf.auth.GetAccess(r, l, "createmetauser", 1)
+	if err != nil {
+		return nil, err
+	}
+	if !k {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 
 	userRole := formValues.Get("role")
 	_, err = strconv.Atoi(formValues.Get("role"))

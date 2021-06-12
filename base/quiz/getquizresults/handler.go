@@ -69,6 +69,8 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	query := bson.M{"_id": quizId}
 
 	if userId != "" {
+		//////////////////////////////////////////////////////////////////////////////
+
 		selector = bson.M{"usersresults.$": 1}
 		query["userresults.userid"] = userId
 	}
