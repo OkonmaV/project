@@ -23,11 +23,10 @@ import (
 var emailRegex = regexp.MustCompile("^[a-zA-Z0-9.!#$%&'*+\\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$")
 
 type userData struct {
-	Mail     string `json:"mail"`
-	Name     string `json:"name"`
-	Surname  string `json:"surname"`
-	Otch     string `json:"otch"`
-	Position string `json:"position"`
+	Mail    string `json:"mail"`
+	Name    string `json:"name"`
+	Surname string `json:"surname"`
+	Otch    string `json:"otch"`
 }
 type tuple struct {
 	Code     int
@@ -139,7 +138,11 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	var trntlRes []tuple
 	if err = conf.trntlConn.UpdateAsync(conf.trntlTable, "primary", []interface{}{userCode}, update).GetTyped(&trntlRes); err != nil { // TODO: нужен ли здесь геттайпед? может лучше просто ошибку возвращать?
-		return nil, err
+		if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
+			return suckhttp.NewResponse(403, "Forbidden"), nil
+		} else {
+			return nil, err
+		}
 	}
 	if len(trntlRes) == 0 {
 		return suckhttp.NewResponse(403, "Forbidden"), nil

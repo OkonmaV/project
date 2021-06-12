@@ -49,12 +49,11 @@ func (conf *CodeGeneration) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	if metaId == "" || metaSurname == "" || metaName == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
 	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
 	var code int
 	for {
 		code = int(rnd.Int31n(90000) + 10000)
-		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, "", "", metaId, metaSurname, metaName, "", userRole, 0})
+		_, err := conf.trntlConn.Insert(conf.trntlTable, []interface{}{code, strconv.Itoa(code), "", metaId, metaSurname, metaName, "", userRole, 0})
 		if err != nil {
 			if tarErr, ok := err.(tarantool.Error); ok && tarErr.Code == tarantool.ErrTupleFound {
 				continue

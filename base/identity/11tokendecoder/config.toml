@@ -1,4 +1,4 @@
 Configurator = "tcp:127.0.0.1:8090"
 Listen = "tcp:127.0.0.1:8312"
 JwtKey = "OLEG"
-Cookie = "login"
+Cookie = "koki"

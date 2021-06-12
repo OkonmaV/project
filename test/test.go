@@ -1,13 +1,13 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"lib"
 	"time"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
-	"github.com/tarantool/go-tarantool"
 )
 
 type chatInfo struct {
@@ -46,9 +46,7 @@ type folder struct {
 }
 
 type meta struct {
-	Type []int  `json:"type"`
-	Id   string `json:"id,omitempty"`
-	time time.Time
+	Meta string
 }
 
 type chat struct {
@@ -97,26 +95,26 @@ type question2 struct {
 
 func main() {
 
-	trntlConn, _ := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
-		// User: ,
-		// Pass: ,
-		Timeout:       500 * time.Millisecond,
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 4,
-	})
+	//trntlConn, _ := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
+	// // User: ,
+	// // Pass: ,
+	//Timeout:       500 * time.Millisecond,
+	//Reconnect:     1 * time.Second,
+	//MaxReconnects: 4,
+	//})
 	// fmt.Println("errConn: ", err)
 	// //ertrt := &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", "regcodes", "'"), Code: tarantool.ErrTupleFound}
 
-	err := trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
-	fmt.Println("errUpsert:", err)
+	//err := trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
+	//fmt.Println("errUpsert:", err)
 
-	var trntlRes tuple
-	err = trntlConn.UpsertAsync("auth", []interface{}{"login", "password"}, []interface{}{[]interface{}{"=", "password", "password"}}).Err()
+	//var trntlRes tuple
+	//err = trntlConn.UpsertAsync("auth", []interface{}{"login", "password"}, []interface{}{[]interface{}{"=", "password", "password"}}).Err()
 	//err = trntlConn.UpdateAsync("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "metaid"}}).Err()
 	//trntlConn.GetTyped("regcodes", "primary", []interface{}{28258}, &trntlRes)
-	fmt.Println("err:", err)
-	fmt.Println("resTrntl:", trntlRes)
-	fmt.Println()
+	//fmt.Println("err:", err)
+	//fmt.Println("resTrntl:", trntlRes)
+	//fmt.Println()
 
 	//err = trntlConn.SelectTyped("regcodes", "primary", 0, 1, tarantool.IterEq, []interface{}{28258}, &trntlRes)
 	// //_, err = trntlConn.Update("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "h"}, []interface{}{"=", "metaname", "hh"}})
@@ -177,6 +175,13 @@ func main() {
 
 	ds := []int{1, 2, 3, 4, 5}
 	fmt.Println("RES:", ds[2:])
+
+	df := make(map[string]string)
+	df["meta"] = "metaid"
+	j, err1 := json.Marshal(df)
+	var l meta
+	err = json.Unmarshal(j, &l)
+	fmt.Println("AAAAA", df, string(j), l, err1, err)
 	// err = nil
 	// //bar := structs.Map(ffolder)
 	// //var b

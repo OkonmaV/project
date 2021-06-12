@@ -74,7 +74,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	k, userId, err := conf.auth.GetAccess(r, l, "answerquiz", 1)
+	k, userId, err := conf.auth.GetAccess(r, l, quizId.Hex(), 1)
 	if err != nil {
 		return nil, err
 	}

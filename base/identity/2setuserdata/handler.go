@@ -43,12 +43,11 @@ func (c *SetUserData) Close() error {
 
 func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || r.GetMethod() != suckhttp.PUT {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || r.GetMethod() != suckhttp.PUT || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	userLogin := r.Uri.Path
-	userLogin = strings.Trim(userLogin, "/")
+	userLogin := strings.Trim(r.Uri.Path, "/")
 	if userLogin == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

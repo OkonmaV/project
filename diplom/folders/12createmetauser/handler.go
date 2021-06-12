@@ -30,12 +30,12 @@ type metauser struct {
 }
 
 func NewHandler(mgoColl *mgo.Collection, codeGeneration *httpservice.InnerService, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
-	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
-	if err != nil {
-		return nil, err
-	}
+	// authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	return &Handler{mgoColl: mgoColl, codeGeneration: codeGeneration, auth: authorizer}, nil
+	return &Handler{mgoColl: mgoColl, codeGeneration: codeGeneration}, nil
 }
 
 func getRandId() string {
@@ -54,13 +54,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//contextFolderId = formValues.Get("contextfid")
 
-	k, _, err := conf.auth.GetAccess(r, l, "createmetauser", 1)
-	if err != nil {
-		return nil, err
-	}
-	if !k {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
+	// k, _, err := conf.auth.GetAccess(r, l, "createmetauser", 1)
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
 
 	userRole := formValues.Get("role")
 	_, err = strconv.Atoi(formValues.Get("role"))
@@ -90,6 +90,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if err != nil {
 		l.Error("Send req to codegeneration", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+
+	if codeGenerationResp == nil {
+		l.Info("nil", "resp")
 	}
 
 	if i, t := codeGenerationResp.GetStatus(); i != 200 {

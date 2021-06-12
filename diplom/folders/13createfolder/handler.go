@@ -30,7 +30,7 @@ type meta struct {
 }
 
 type authreqdata struct {
-	MetaId string
+	MetaId string `json:"metaid"`
 }
 
 func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {

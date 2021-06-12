@@ -54,21 +54,24 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 	} else {
 		fields = reqData["fields"]
 	}
+	l.Warning("F", fields[0])
 
 	userId := strings.Trim(r.Uri.Path, "/")
 	if userId == "" {
-		l.Debug("Request path", "\"_id\" dosnt exist or empty")
+		l.Debug("Request path", "empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	var mgoRes map[string]interface{}
-	if err = conf.mgoColl.FindId(userId).Select(bson.M{"data": fields}).One(&mgoRes); err != nil {
+	if err = conf.mgoColl.FindId(userId).Select(bson.M{"data": bson.M{"metaid": 1}}).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
 	}
-
+	if mgoRes == nil {
+		l.Warning("F", "F")
+	}
 	resp := suckhttp.NewResponse(200, "OK")
 	var body []byte
 	var contentType string

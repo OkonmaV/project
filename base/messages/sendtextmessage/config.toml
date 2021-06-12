@@ -1,5 +1,5 @@
 Configurator = "tcp:127.0.0.1:8090"
-Listen = "tcp:127.0.0.1:8101"
+Listen = "tcp:127.0.0.1:8103"
 MgoAddr = "127.0.0.1"
 MgoColl = "chats"
 ClickhouseAddr  = "8123"

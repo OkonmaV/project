@@ -12,7 +12,7 @@ type config struct {
 	Cookie       string
 }
 
-var thisServiceName httpservice.ServiceName = "token.decoder"
+var thisServiceName httpservice.ServiceName = "identity.tokendecoder"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
