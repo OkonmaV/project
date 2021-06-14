@@ -1,36 +1,16 @@
-<ul>
-    <li>
-        <div>SOMETEXT1</div>    
-        <ul>     
-            <li><input type="checkbox" id="aid1" name="qid1" value="aid1" /><label for="aid1">ANS1TEXT</label></li>        
-            <li><input type="checkbox" id="aid11" name="qid1" value="aid11" /><label for="aid11">ANS11TEXT</label></li>
-        </ul>
-    <li>
-        <div>SOMETEXT2</div>
-        <ul>
-            <li><input type="radio" id="aid2" name="qid2" value="aid2" /><label for="aid2">ANS2TEXT</label></li>
-            
-            <li><input type="radio" id="aid22" name="qid2" value="aid22" /><label for="aid22">ANS22TEXT</label></li>
-        </ul>
-    <li>
-        <div>SOMETEXT111</div>
-        <textarea name="qid111"></textarea>
-</li>
+<!DOCTYPE html>
+<html>
+<body>
+    <meta http-equiv="X-Frame-Options" content="sameorigin"/>
+<h1>The textarea form attribute</h1>
 
-<ul>
-    <li>
-        <div>SOMETEXT1</div>
-        <ul>
-            <li><input type="checkbox" id="aid1" name="qid1" value="aid1" /><label for="aid1">ANS1TEXT</label></li>
-            <li><input type="checkbox" id="aid11" name="qid1" value="aid11" /><label for="aid11">ANS11TEXT</label></li>
-        </ul>
-    <li>
-        <div>SOMETEXT2</div>
-        <ul>
-            <li><input type="radio" id="aid2" name="qid2" value="aid2" /><label for="aid2">ANS2TEXT</label></li>
-            <li><input type="radio" id="aid22" name="qid2" value="aid22" /><label for="aid22">ANS22TEXT</label></li>
-        </ul>
-    <li>
-        <div>SOMETEXT111</div>
-        <textarea name="qid3"></textarea>
-</li>
+<form action="http://127.0.0.1:8204/60c68d1fcfda2e4a312bb501" id="usrform">
+  Name: <input type="text" name="usrname">
+  <input type="submit">
+</form>
+<br>
+<textarea rows="4" cols="50" name="data" form="usrform">
+Enter text here...</textarea>
+
+
+</body>

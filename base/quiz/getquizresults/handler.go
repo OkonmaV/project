@@ -35,12 +35,8 @@ type useranswers struct {
 	Datetime time.Time           `bson:"datetime" json:"datetime"`
 }
 
-func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
-	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
-	if err != nil {
-		return nil, err
-	}
-	return &Handler{mgoColl: col, auth: authorizer}, nil
+func NewHandler(col *mgo.Collection) (*Handler, error) {
+	return &Handler{mgoColl: col}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -49,32 +45,32 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
-	if err != nil {
+	query := make(map[string]interface{})
+	var selector bson.M
+	var err error
+
+	quizId := strings.Trim(r.Uri.Path, "/")
+	if quizId != "" {
+
+		query["_id"], err = bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+		if err != nil {
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
+		query := bson.M{"_id": quizId}
+
+		if userId := strings.TrimSpace(r.Uri.Query().Get("userid")); userId != "" { //TODO: take id from cookie?
+			selector = bson.M{"usersresults.$": 1}
+			query["userresults.userid"] = userId
+		}
+	} else if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
+		query["entityid"] = entityId
+	} else {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	userId := strings.TrimSpace(r.Uri.Query().Get("userid"))
 
-	// TODO: AUTH
-	// k, _, err := conf.auth.GetAccess(r, l, "getquizresults", 1)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// if !k {
-	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
-	// }
+	var mgoRes []results
 
-	var mgoRes results
-	var selector bson.M
-	query := bson.M{"_id": quizId}
-
-	if userId != "" {
-		//////////////////////////////////////////////////////////////////////////////
-
-		selector = bson.M{"usersresults.$": 1}
-		query["userresults.userid"] = userId
-	}
-	if err := conf.mgoColl.Find(bson.M{"_id": quizId}).Select(selector).One(&mgoRes); err != nil {
+	if err := conf.mgoColl.Find(query).Select(selector).All(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
@@ -82,7 +78,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	var body []byte
-	var contentType string
+	var contentType string...
 
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
 		var err error

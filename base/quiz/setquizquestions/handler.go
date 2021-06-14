@@ -65,6 +65,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
 		t := bytes.Split(r.Body, amp_ch)
 		for _, d := range t {
+			l.Info("some", string(d)) //////////////////////////////////////
 			v := bytes.SplitN(d, eq_ch, 1)
 			if bytes.Equal(v[0], field_name) {
 				if unescapedString, err := url.QueryUnescape(string(v[1])); err == nil {

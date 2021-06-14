@@ -54,6 +54,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//contextFolderId = formValues.Get("contextfid")
 
+	//AUTH
 	k, _, err := conf.auth.GetAccess(r, l, "createmetauser", 1)
 	if err != nil {
 		return nil, err
@@ -61,7 +62,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if !k {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-
+	//
 	userRole := formValues.Get("role")
 	_, err = strconv.Atoi(formValues.Get("role"))
 	if err != nil {

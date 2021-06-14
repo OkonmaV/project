@@ -12,7 +12,6 @@ import (
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
-	"github.com/rs/xid"
 )
 
 type chat struct {
@@ -29,26 +28,21 @@ type user struct {
 	//EndDateTime   time.Time `bson:"enddatetime"`
 }
 
+type cookieData struct {
+	UserId  string `json:"Login"`
+	Surname string `json:"surname"`
+	Name    string `json:"name"`
+}
+
 type Handler struct {
-	mgoSession  *mgo.Session
-	mgoColl     *mgo.Collection
-	getUserData *httpservice.InnerService
+	mgoColl      *mgo.Collection
+	getUserData  *httpservice.InnerService
+	tokenDecoder *httpservice.InnerService
 }
 
-func NewHandler(mgodb string, mgoAddr string, mgoColl string, getUserData *httpservice.InnerService) (*Handler, error) {
+func NewHandler(col *mgo.Collection, getUserData *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
 
-	mgoSession, err := mgo.Dial(mgoAddr)
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("Mongo", "Connected!")
-
-	return &Handler{mgoSession: mgoSession, mgoColl: mgoSession.DB(mgodb).C(mgoColl), getUserData: getUserData}, nil
-}
-
-func (c *Handler) Close() error {
-	c.mgoSession.Close()
-	return nil
+	return &Handler{mgoColl: col, tokenDecoder: tokendecoder, getUserData: getUserData}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -58,9 +52,40 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	//AUTH
-	userId := "testOwner"
-	userName := "name"
-	userSurname := "sur"
+	koki, ok := r.GetCookie("koki")
+	if !ok || len(koki) < 5 {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
+	tokenDecoderReq, err := conf.tokenDecoder.CreateRequestFrom(suckhttp.GET, suckutils.Concat("/", koki), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	tokenDecoderReq.AddHeader(suckhttp.Accept, "application/json")
+	tokenDecoderResp, err := conf.tokenDecoder.Send(tokenDecoderReq)
+	if err != nil {
+		l.Error("Send", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	if i, t := tokenDecoderResp.GetStatus(); i/100 != 2 {
+		l.Debug("Resp from tokendecoder", t)
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	if len(tokenDecoderResp.GetBody()) == 0 {
+		l.Debug("Resp from tokendecoder", "empty body")
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	userData := &cookieData{}
+
+	if err = json.Unmarshal(tokenDecoderResp.GetBody(), userData); err != nil {
+		l.Error("Unmarshal", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	if userData.Name == "" || userData.UserId == "" || userData.Surname == "" {
+		// TODO: delete cookie here
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 	//
 
 	chatType, err := strconv.Atoi(r.Uri.Query().Get("chattype"))
@@ -104,10 +129,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			l.Error("Getuserdata resp", errors.New("empty requested data"))
 			return suckhttp.NewResponse(500, "Internal server error"), nil
 		}
-		users := []user{{UserId: userId, ChatName: suckutils.ConcatThree(withUserData["surname"], " ", withUserData["name"]), Type: 0, StartDateTime: time.Now()}, {UserId: withUserId, ChatName: suckutils.ConcatThree(userSurname, " ", userName), Type: 0, StartDateTime: time.Now()}}
+		users := []user{{UserId: userData.UserId, ChatName: suckutils.ConcatThree(withUserData["surname"], " ", withUserData["name"]), Type: 1, StartDateTime: time.Now()}, {UserId: withUserId, ChatName: suckutils.ConcatThree(userData.Surname, " ", userData.Name), Type: 1, StartDateTime: time.Now()}}
 		//alternative: query = bson.M{"type": chatType, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": userId}}, {"$elemMatch": bson.M{"userid": withUserId}}}}}
-		query = bson.M{"type": chatType, "$or": []bson.M{{"users.0.userid": userId, "users.1.userid": withUserId}, {"users.0.userid": withUserId, "users.1.userid": userId}}}
-		update = bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: chatType, Users: users}}
+		query = bson.M{"type": chatType, "$or": []bson.M{{"users.0.userid": userData.UserId, "users.1.userid": withUserId}, {"users.0.userid": withUserId, "users.1.userid": userData.UserId}}}
+		update = bson.M{"$setOnInsert": &chat{Id: bson.NewObjectId().Hex(), Type: chatType, Users: users}}
 
 	case 2: //group
 
@@ -118,7 +143,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 		//alternative: query = bson.M{"type": chatType, "users": bson.M{"$elemMatch": bson.M{"userid": userId, "type": 0}}, "name": chatName}
 		query = bson.M{"type": chatType, "users.0.userid": "userId", "users.0.type": 0, "name": chatName}
-		update = bson.M{"$setOnInsert": &chat{Id: xid.New().String(), Type: chatType, Users: []user{{UserId: userId, Type: 0, StartDateTime: time.Now()}}}}
+		update = bson.M{"$setOnInsert": &chat{Id: bson.NewObjectId().Hex(), Type: chatType, Users: []user{{UserId: userData.UserId, Type: 1, StartDateTime: time.Now()}}}}
 
 	default:
 		return suckhttp.NewResponse(400, "Bad request"), nil
@@ -141,5 +166,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	} else {
 		return suckhttp.NewResponse(200, "OK").SetBody([]byte(mgoRes["_id"])), nil
 	}
+	// ??????????????? REDIRECT?????????
 
 }

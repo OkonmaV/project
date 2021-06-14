@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"lib"
 	"time"
@@ -123,7 +122,7 @@ func main() {
 	if err != nil {
 		return
 	}
-	mgoColl := mgoSession.DB("test").C("test")
+	mgoColl := mgoSession.DB("messages").C("chats")
 	//ffolder := &folder{Id: "7777", Name: "NAME"}
 	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
 	//err = mgoColl.Insert(ffolder)
@@ -137,14 +136,10 @@ func main() {
 
 	foo := make(map[string]string)
 	foo[bson.NewObjectId().Hex()] = "TESTE@"
-	g, _ := lib.GetMD5("test")
-	fmt.Println("HAAAAAAAAASH", g)
 
-	fmt.Println(mgoColl.Insert(&question2{Type: 99, Text: "TEST", Answers: foo}))
-
-	sr := []string{}
-	sr = nil
-	fmt.Println("LEN", len(sr))
+	fmt.Println("HAAAAAAAAASH", time.Now().Format("2006.01.02 15:04:05"))
+	var mgores interface{}
+	fmt.Println(mgoColl.Find(bson.M{"_id": "60c6aeaccfda2eb644c4b0b3", "users.userid": "14d1a55154b7b0a33e8acd7c556a574b"}).Select(bson.M{"_id": 1}).One(&mgores), mgores)
 
 	// ans1 := []answer{}
 	// ans2 := []answer{}
@@ -177,15 +172,6 @@ func main() {
 
 	// fd := buf.String()
 
-	ds := []int{1, 2, 3, 4, 5}
-	fmt.Println("RES:", ds[2:])
-
-	df := make(map[string]string)
-	df["meta"] = "metaid"
-	j, err1 := json.Marshal(df)
-	var l meta
-	err = json.Unmarshal(j, &l)
-	fmt.Println("AAAAA", df, string(j), l, err1, err)
 	// err = nil
 	// //bar := structs.Map(ffolder)
 	// //var b

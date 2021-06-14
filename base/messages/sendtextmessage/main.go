@@ -20,7 +20,8 @@ type config struct {
 	mgoSession      *mgo.Session
 }
 
-var thisServiceName httpservice.ServiceName = "messages.sendtextmessage"
+const thisServiceName httpservice.ServiceName = "messages.sendtextmessage"
+const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -29,21 +30,22 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	mgoSession, err := mgo.Dial(c.MgoAddr)
+	var err error
+	c.mgoSession, err = mgo.Dial(c.MgoAddr)
 	if err != nil {
 		return nil, err
 	}
 	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
+	mgoCollection := c.mgoSession.DB(c.MgoDB).C(c.MgoColl)
 
 	chConn := clickhouse.NewConn(c.ClickhouseAddr, clickhouse.NewHttpTransport())
-	//"CREATE TABLE IF NOT EXISTS main.chats (time DateTime,chatID UUID,user String,text String) ENGINE = MergeTree() ORDER BY tuple()"
+	//"CREATE TABLE IF NOT EXISTS chats.messages (`time` DateTime('Asia/Yekaterinburg'),`chatid` String,`userid` String,`message` String,`type` Int) ENGINE = MergeTree() ORDER BY (time,chatid)"
 	err = chConn.Ping()
 	if err != nil {
 		return nil, err
 	}
 	logger.Info("Clickhouse", "Connected!")
-	return NewHandler(mgoCollection, chConn, c.ClickhouseTable)
+	return NewHandler(mgoCollection, connectors[tokenDecoderServiceName], chConn, c.ClickhouseTable)
 }
 
 func (conf *config) Close() error {
@@ -52,5 +54,5 @@ func (conf *config) Close() error {
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{})
+	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenDecoderServiceName)
 }

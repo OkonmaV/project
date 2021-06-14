@@ -3,22 +3,17 @@ package main
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
 	"strings"
 	"text/template"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 	"go.mongodb.org/mongo-driver/bson"
 )
-
-type Handler struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
-	template   *template.Template
-}
 
 type chat struct {
 	Id    string `bson:"_id"`
@@ -34,33 +29,15 @@ type user struct {
 	//EndDateTime   time.Time `bson:"enddatetime"`
 }
 
-func NewHandler(mgodb string, mgoAddr string, mgoColl string) (*Handler, error) {
-
-	mgoSession, err := mgo.Dial(mgoAddr)
-	if err != nil {
-		logger.Error("Mongo conn", err)
-		return nil, err
-	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(mgodb).C(mgoColl)
-
-	templData, err := ioutil.ReadFile("index.html")
-	if err != nil {
-		return nil, err
-	}
-
-	templ, err := template.New("index").Parse(string(templData))
-	if err != nil {
-		return nil, err
-	}
-
-	return &Handler{mgoSession: mgoSession, mgoColl: mgoCollection, template: templ}, nil
-
+type Handler struct {
+	mgoColl      *mgo.Collection
+	tokenDecoder *httpservice.InnerService
+	template     *template.Template
 }
 
-func (conf *Handler) Close() error {
-	conf.mgoSession.Close()
-	return nil
+func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService, template *template.Template) (*Handler, error) {
+
+	return &Handler{mgoColl: col, tokenDecoder: tokendecoder, template: template}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -75,7 +52,31 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	// TODO: AUTH
-	userId := "testOwner"
+	koki, ok := r.GetCookie("koki")
+	if !ok || len(koki) < 5 {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+
+	tokenDecoderReq, err := conf.tokenDecoder.CreateRequestFrom(suckhttp.GET, suckutils.Concat("/", koki), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	tokenDecoderReq.AddHeader(suckhttp.Accept, "text/plain")
+	tokenDecoderResp, err := conf.tokenDecoder.Send(tokenDecoderReq)
+	if err != nil {
+		l.Error("Send", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	if i, t := tokenDecoderResp.GetStatus(); i/100 != 2 {
+		l.Debug("Resp from tokendecoder", t)
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
+	userId := string(tokenDecoderResp.GetBody())
+
+	if userId == "" {
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 	//
 	mgoRes := []chat{}
 
