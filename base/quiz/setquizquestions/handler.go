@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -35,7 +36,7 @@ type question struct {
 	Type     int               `bson:"question_type"`
 	Position int               `bson:"question_position"`
 	Text     string            `bson:"question_text"`
-	Answers  map[string]string `bson:"question_answers"`
+	Answers  map[string]string `bson:"question_answers,omitempty"`
 }
 
 func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
@@ -62,13 +63,15 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	var data string
 
+	//TODO: CHECK IF QUESTIONS ALREADY EXISTS
+
 	if strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
 		t := bytes.Split(r.Body, amp_ch)
 		for _, d := range t {
-			l.Info("some", string(d)) //////////////////////////////////////
-			v := bytes.SplitN(d, eq_ch, 1)
+			v := bytes.SplitN(d, eq_ch, 2)
+			fmt.Println("VVVVVVvvv", string(v[0]))
 			if bytes.Equal(v[0], field_name) {
-				if unescapedString, err := url.QueryUnescape(string(v[1])); err == nil {
+				if unescapedString, err := url.QueryUnescape(strings.TrimSpace(string(v[1]))); err == nil {
 					data = unescapedString
 					break
 				}
@@ -100,9 +103,12 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	lines := strings.Split(strings.TrimSpace(data), "\n")
 	lines = append(lines, "")
 
+	position := 1
 	questions := make(map[string]*question)
 	var curquestion *question
 	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		fmt.Println("LINE", line, " LEN:", len(line))
 		if line == "" { // commit current question
 			questions[bson.NewObjectId().Hex()] = curquestion
 			curquestion = nil
@@ -113,7 +119,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 				return suckhttp.NewResponse(400, "Bad request"), nil
 			}
 			if t, err := strconv.Atoi(line[:space_position]); err == nil {
-				curquestion = &question{Type: t, Text: strings.TrimSpace(line[space_position+1:]), Answers: make(map[string]string)}
+				if t == 3 {
+					curquestion = &question{Type: t, Text: strings.TrimSpace(line[space_position+1:])}
+				} else {
+					curquestion = &question{Type: t, Text: strings.TrimSpace(line[space_position+1:]), Answers: make(map[string]string)}
+				}
+				curquestion.Position = position
+				position++
 			} else {
 				l.Error("ParseError", errors.New(line))
 				return suckhttp.NewResponse(400, "Bad request"), nil
