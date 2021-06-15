@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"modules/suckutils"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -57,6 +58,17 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		contentType = "text/plain; charset=utf-8"
+	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
+		var surname, name interface{}
+		var ok bool
+		if surname, ok = res["surname"]; !ok {
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		if name, ok = res["name"]; !ok {
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		body = []byte(suckutils.Concat(`<ul class="navbar-nav mb-2 mb-sm-0"><li class="nav-item"><a class="nav-link disabled" aria-disabled="true">`, surname.(string), " ", name.(string), `</a></li><li class="nav-item"><a class="nav-link" href="/signout">Выйти</a></li></ul>`))
+		contentType = "text/html; charset=utf-8"
 	} else {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

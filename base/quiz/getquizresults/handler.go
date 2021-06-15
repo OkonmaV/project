@@ -78,7 +78,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	var body []byte
-	var contentType string...
+	var contentType string
 
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
 		var err error

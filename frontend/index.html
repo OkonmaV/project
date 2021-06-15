@@ -1,23 +1,34 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-  <head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-  
-  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-  <meta name="viewport" content="width=device-width, user-scalable=no">
-  <title></title>
+<!--# include file="$name.html" set="one" -->
+<head>
+	<meta charset="UTF-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+	<meta name="viewport" content="width=device-width, user-scalable=no">
+	<title><!--# echo var="title" default="" --></title>
 
-  <link href="/bootstrap.min.css" rel="stylesheet" type="text/css">
-
-
+	<!-- <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" /> -->
+	<link href="/bootstrap.min.css" rel="stylesheet" type="text/css">
+	<link href="/styles.css" rel="stylesheet" type="text/css">
+	<!--# if expr="$css" -->
+	<link href="/<!--# echo var="css" -->" rel="stylesheet" type="text/css">
+	<!--# endif -->
 
 </head>
 
 <body>
+	<!--# if expr="cookie_auth" -->
+	<!--# include file="nav.html" -->
+	<!--# endif -->
+	<main class="<!--# echo var="main_class" default="" -->">
 
+	<!--# echo var="one" encoding="none" -->
 
-  <main>
-<!--# include file="$request_filename.html" -->
-  
-  </main>
-</body></html>
+	</main>
+
+	<script src="/bootstrap.bundle.min.js"></script>
+	<!--# if expr="$js" -->
+	<link href="/<!--# echo var="js" -->" rel="stylesheet" type="text/css">
+	<!--# endif -->
+</body>
+</html>

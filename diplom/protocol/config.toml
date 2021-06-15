@@ -1,0 +1,2 @@
+Configurator = "unix:/var/run/my/configurator.sock"
+Listen = "tcp:127.0.0.1:8501"
