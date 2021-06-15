@@ -1,4 +1,4 @@
 Configurator = "tcp:127.0.0.1:8090"
-Listen = "tcp:127.0.0.1:8103"
+Listen = "tcp:127.0.0.1:8406"
 TrntlAddr = "127.0.0.1:3301"
 TrntlTable = "auth"

@@ -3,10 +3,8 @@ package main
 import (
 	"fmt"
 	"lib"
+	"strings"
 	"time"
-
-	"github.com/big-larry/mgo"
-	"github.com/big-larry/mgo/bson"
 )
 
 type chatInfo struct {
@@ -118,11 +116,11 @@ func main() {
 	//err = trntlConn.SelectTyped("regcodes", "primary", 0, 1, tarantool.IterEq, []interface{}{28258}, &trntlRes)
 	// //_, err = trntlConn.Update("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "h"}, []interface{}{"=", "metaname", "hh"}})
 
-	mgoSession, err := mgo.Dial("127.0.0.1")
-	if err != nil {
-		return
-	}
-	mgoColl := mgoSession.DB("messages").C("chats")
+	// mgoSession, err := mgo.Dial("127.0.0.1")
+	// if err != nil {
+	// 	return
+	// }
+	// mgoColl := mgoSession.DB("messages").C("chats")
 	//ffolder := &folder{Id: "7777", Name: "NAME"}
 	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
 	//err = mgoColl.Insert(ffolder)
@@ -134,13 +132,11 @@ func main() {
 
 	//err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
 
-	foo := make(map[string]string)
-	foo[bson.NewObjectId().Hex()] = "TESTE@"
-
-	fmt.Println("HAAAAAAAAASH", time.Now().Format("2006.01.02 15:04:05"))
-	var mgores interface{}
-	fmt.Println(mgoColl.Find(bson.M{"_id": "60c6aeaccfda2eb644c4b0b3", "users.userid": "14d1a55154b7b0a33e8acd7c556a574b"}).Select(bson.M{"_id": 1}).One(&mgores), mgores)
-
+	foo := "12 3456 789"
+	position := strings.Index(foo, " ")
+	position2 := strings.Index(foo[position:], " ")
+	positionlast := strings.LastIndex(foo, " ")
+	fmt.Println(position, position2, "|||", foo[:position], "|||", foo[position:positionlast], "|||", foo[positionlast:])
 	// ans1 := []answer{}
 	// ans2 := []answer{}
 	// ans1 = append(ans1, answer{Id: "aid1", Text: "ANS1TEXT"}, answer{Id: "aid11", Text: "ANS11TEXT"})

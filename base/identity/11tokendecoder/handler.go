@@ -19,14 +19,15 @@ func NewTokenDecoder(jwtKey, cookieName string) (*TokenDecoder, error) {
 }
 
 func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
-
 	if r.GetMethod() != suckhttp.GET {
+		l.Debug("Method", "wrong")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	tokenString := strings.Trim(r.Uri.Path, "/")
 
 	if tokenString == "" {
 		if tokenString, _ = r.GetCookie(conf.cookieName); tokenString == "" {
+			l.Debug("TokenString", "empty")
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 	}
@@ -58,6 +59,7 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		}
 		contentType = "text/plain; charset=utf-8"
 	} else {
+		l.Debug("Accept", "not allowed")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -69,7 +68,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		t := bytes.Split(r.Body, amp_ch)
 		for _, d := range t {
 			v := bytes.SplitN(d, eq_ch, 2)
-			fmt.Println("VVVVVVvvv", string(v[0]))
 			if bytes.Equal(v[0], field_name) {
 				if unescapedString, err := url.QueryUnescape(strings.TrimSpace(string(v[1]))); err == nil {
 					data = unescapedString
@@ -108,7 +106,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	var curquestion *question
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		fmt.Println("LINE", line, " LEN:", len(line))
 		if line == "" { // commit current question
 			questions[bson.NewObjectId().Hex()] = curquestion
 			curquestion = nil
