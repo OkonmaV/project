@@ -1,8 +1,9 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
-	"lib"
 	"net/url"
 	"strings"
 	"thin-peak/httpservice"
@@ -56,12 +57,12 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	hashLogin, err := lib.GetMD5(login)
+	hashLogin, err := getMD5(login)
 	if err != nil {
 		l.Error("Getting md5", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	hashPassword, err := lib.GetMD5(password)
+	hashPassword, err := getMD5(password)
 	if err != nil {
 		l.Error("Getting md5", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
@@ -100,4 +101,13 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(tokenResp.GetBody()), ";Expires=", expires))
 
 	return resp, nil
+}
+
+func getMD5(str string) (string, error) {
+	hash := md5.New()
+	_, err := hash.Write([]byte(str))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }

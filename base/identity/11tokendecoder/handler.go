@@ -2,11 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"modules/suckutils"
+
 	"strings"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 	"github.com/dgrijalva/jwt-go"
 )
 

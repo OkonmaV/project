@@ -37,7 +37,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	hashLogin := strings.Trim(r.Uri.Path, "/")
-	if len(hashLogin) != 32 {
+	if len(hashLogin) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

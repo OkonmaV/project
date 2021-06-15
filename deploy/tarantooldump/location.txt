@@ -1,0 +1,2 @@
+/var/lib/tarantool/
+admin somepassword
