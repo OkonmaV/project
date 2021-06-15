@@ -20,14 +20,15 @@ func NewTokenDecoder(jwtKey, cookieName string) (*TokenDecoder, error) {
 }
 
 func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
-
 	if r.GetMethod() != suckhttp.GET {
+		l.Debug("Method", "wrong")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	tokenString := strings.Trim(r.Uri.Path, "/")
 
 	if tokenString == "" {
 		if tokenString, _ = r.GetCookie(conf.cookieName); tokenString == "" {
+			l.Debug("TokenString", "empty")
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 	}
@@ -70,6 +71,7 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 		body = []byte(suckutils.Concat(`<ul class="navbar-nav mb-2 mb-sm-0"><li class="nav-item"><a class="nav-link disabled" aria-disabled="true">`, surname.(string), " ", name.(string), `</a></li><li class="nav-item"><a class="nav-link" href="/signout">Выйти</a></li></ul>`))
 		contentType = "text/html; charset=utf-8"
 	} else {
+		l.Debug("Accept", "not allowed")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

@@ -45,7 +45,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if foo, ok := r.GetCookie("koki"); !ok || foo == "" {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	//
+	// TODO: get metaid
 	mgoRes := []folder{}
 
 	if err := conf.mgoColl.Find(bson.M{"rootsid": rootId}).Select(bson.M{"rootsid": 0, "metas": 0}).All(&mgoRes); err != nil {
