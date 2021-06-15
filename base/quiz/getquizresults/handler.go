@@ -18,7 +18,8 @@ type Handler struct {
 }
 
 type results struct {
-	QuizId       bson.ObjectId `bson:"_id" json:"quizid"`
+	Id           bson.ObjectId `bson:"_id" json:"id"`
+	QuizId       bson.ObjectId `bson:"quizid" json:"quizid"`
 	EntityId     string        `bson:"entityid" json:"entityid"`
 	Usersresults []userresult  `bson:"usersresults" json:"usersresults"`
 }
@@ -47,24 +48,21 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	query := make(map[string]interface{})
 	var selector bson.M
-	var err error
 
 	quizId := strings.Trim(r.Uri.Path, "/")
 	if quizId != "" {
+		query["quizid"] = quizId
+	}
 
-		query["_id"], err = bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
-		if err != nil {
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
-		query := bson.M{"_id": quizId}
-
-		if userId := strings.TrimSpace(r.Uri.Query().Get("userid")); userId != "" { //TODO: take id from cookie?
-			selector = bson.M{"usersresults.$": 1}
-			query["userresults.userid"] = userId
-		}
-	} else if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
+	if userId := strings.TrimSpace(r.Uri.Query().Get("userid")); userId != "" { //TODO: take id from cookie?
+		selector = bson.M{"usersresults.$": 1}
+		query["userresults.userid"] = userId
+	}
+	if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
 		query["entityid"] = entityId
-	} else {
+	}
+
+	if len(query) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

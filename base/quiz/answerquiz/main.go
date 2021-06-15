@@ -9,12 +9,13 @@ import (
 )
 
 type config struct {
-	Configurator string
-	Listen       string
-	MgoDB        string
-	MgoAddr      string
-	MgoColl      string
-	mgoSession   *mgo.Session
+	Configurator  string
+	Listen        string
+	MgoDB         string
+	MgoAddr       string
+	MgoColl       string
+	MgoCollQuizes string
+	mgoSession    *mgo.Session
 }
 
 const thisServiceName httpservice.ServiceName = "quiz.answerquiz"
