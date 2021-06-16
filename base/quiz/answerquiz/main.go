@@ -36,7 +36,8 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	c.mgoSession = mgoSession
 	logger.Info("Mongo", "Connected!")
 	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
-	return NewHandler(mgoCollection, connectors[tokenDecoderServiceName])
+	mgoCollectionQuizes := mgoSession.DB(c.MgoDB).C(c.MgoCollQuizes)
+	return NewHandler(mgoCollection, mgoCollectionQuizes, connectors[tokenDecoderServiceName])
 }
 
 func (c *config) Close() error {

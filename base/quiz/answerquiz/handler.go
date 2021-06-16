@@ -14,8 +14,8 @@ import (
 )
 
 type Handler struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+	mgoColl       *mgo.Collection
+	mgoCollQuizes *mgo.Collection
 	//auth       *httpservice.Authorizer
 	tokenDecoder *httpservice.InnerService
 }
@@ -49,14 +49,9 @@ type userresult struct {
 
 //
 
-func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService) (*Handler, error) {
+func NewHandler(col *mgo.Collection, colQ *mgo.Collection, tokendecoder *httpservice.InnerService) (*Handler, error) {
 
-	return &Handler{mgoColl: col, tokenDecoder: tokendecoder}, nil
-}
-
-func (conf *Handler) Close() error {
-	conf.mgoSession.Close()
-	return nil
+	return &Handler{mgoColl: col, mgoCollQuizes: colQ, tokenDecoder: tokendecoder}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -114,7 +109,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	//check quiz
 	var mgoRes quiz
-	if err = conf.mgoColl.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
+	if err = conf.mgoCollQuizes.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), err
 		}
