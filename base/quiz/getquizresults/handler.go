@@ -19,7 +19,7 @@ type Handler struct {
 
 type results struct {
 	Id           bson.ObjectId `bson:"_id" json:"id"`
-	QuizId       bson.ObjectId `bson:"quizid" json:"quizid"`
+	QuizId       string        `bson:"quizid" json:"quizid"`
 	EntityId     string        `bson:"entityid" json:"entityid"`
 	Usersresults []userresult  `bson:"usersresults" json:"usersresults"`
 }

@@ -35,9 +35,10 @@ type question struct {
 //
 //results
 type results struct {
-	QuizId       string       `bson:"_id" json:"quizid"`
-	EntityId     string       `bson:"entityid" json:"entityid"`
-	Usersresults []userresult `bson:"usersresults" json:"usersresults"`
+	Id           bson.ObjectId `bson:"_id" json:"id"`
+	QuizId       string        `bson:"quizid" json:"quizid"`
+	EntityId     string        `bson:"entityid" json:"entityid"`
+	Usersresults []userresult  `bson:"usersresults" json:"usersresults"`
 }
 
 type userresult struct {
@@ -111,7 +112,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	//mongo insert
+	//check quiz
 	var mgoRes quiz
 	if err = conf.mgoColl.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {

@@ -63,6 +63,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	var data string
 
 	//TODO: CHECK IF QUESTIONS ALREADY EXISTS
+	//TODO: AUTH
 
 	if strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
 		t := bytes.Split(r.Body, amp_ch)
@@ -94,7 +95,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if err != nil {
 		return nil, err
 	}
-	if !k {
+	if k {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
