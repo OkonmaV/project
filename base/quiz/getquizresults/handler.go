@@ -18,19 +18,9 @@ type Handler struct {
 }
 
 type results struct {
-	Id           bson.ObjectId `bson:"_id" json:"id"`
-	QuizId       string        `bson:"quizid" json:"quizid"`
-	EntityId     string        `bson:"entityid" json:"entityid"`
-	Usersresults []userresult  `bson:"usersresults" json:"usersresults"`
-}
-
-type userresult struct {
-	UserId      string        `bson:"userid" json:"userid"`
-	UserAnswers []useranswers `bson:"useranswers" json:"useranswers"`
-	Datetine    time.Time     `bson:"datetime" json:"datetime"`
-}
-
-type useranswers struct {
+	Id       bson.ObjectId       `bson:"_id" json:"id"`
+	QuizId   string              `bson:"quizid" json:"quizid"`
+	EntityId string              `bson:"entityid" json:"entityid"`
 	UserId   string              `bson:"userid" json:"userid"`
 	Answers  map[string][]string `bson:"answers" json:"answers"`
 	Datetime time.Time           `bson:"datetime" json:"datetime"`
@@ -47,7 +37,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	query := make(map[string]interface{})
-	var selector bson.M
 
 	quizId := strings.Trim(r.Uri.Path, "/")
 	if quizId != "" {
@@ -55,8 +44,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	if userId := strings.TrimSpace(r.Uri.Query().Get("userid")); userId != "" { //TODO: take id from cookie?
-		selector = bson.M{"usersresults.$": 1}
-		query["userresults.userid"] = userId
+		query["userid"] = userId
 	}
 	if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
 		query["entityid"] = entityId
@@ -68,7 +56,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	var mgoRes []results
 
-	if err := conf.mgoColl.Find(query).Select(selector).All(&mgoRes); err != nil {
+	if err := conf.mgoColl.Find(query).All(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}

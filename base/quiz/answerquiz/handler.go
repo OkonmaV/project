@@ -33,15 +33,12 @@ type question struct {
 }
 
 //
+
 //results
 type results struct {
-	Id           bson.ObjectId `bson:"_id" json:"id"`
-	QuizId       string        `bson:"quizid" json:"quizid"`
-	EntityId     string        `bson:"entityid" json:"entityid"`
-	Usersresults []userresult  `bson:"usersresults" json:"usersresults"`
-}
-
-type userresult struct {
+	Id       bson.ObjectId       `bson:"_id" json:"id"`
+	QuizId   string              `bson:"quizid" json:"quizid"`
+	EntityId string              `bson:"entityid" json:"entityid"`
 	UserId   string              `bson:"userid" json:"userid"`
 	Answers  map[string][]string `bson:"answers" json:"answers"`
 	Datetime time.Time           `bson:"datetime" json:"datetime"`
@@ -67,6 +64,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	values, err := url.ParseQuery(string(r.Body))
 	if err != nil {
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	entityId := values.Get("entityid")
+	if entityId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -100,7 +101,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 	//
-	var result userresult
+	var result results
 
 	if result.UserId = string(tokenDecoderResp.GetBody()); len(result.UserId) == 0 {
 		l.Debug("Resp from tokendecoder", "empty body")
@@ -117,7 +118,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//
 	result.Answers = make(map[string][]string)
-
+	delete(values, "entityid")
 	for questionId, answers := range values {
 		if _, ok := mgoRes.Questions[questionId]; !ok {
 			return suckhttp.NewResponse(400, "Bad request"), nil
@@ -128,8 +129,8 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	result.Datetime = time.Now()
 
-	update := bson.M{"$set": bson.M{"userresults": &result}}
-	if _, err = conf.mgoColl.UpsertId(quizId, update); err != nil {
+	update := bson.M{"$set": bson.M{"answers": &result.Answers, "entityid": entityId, "quizid": quizId.Hex(), "datetime": result.Datetime, "userid": result.UserId}}
+	if _, err = conf.mgoColl.Upsert(bson.M{"quizid": quizId.Hex(), "entityid": entityId, "userid": result.UserId}, update); err != nil {
 		return nil, err
 	}
 

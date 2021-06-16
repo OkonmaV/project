@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"mime"
-	"modules/mgo/bson"
 	"net/url"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
+	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"github.com/nguyenthenguyen/docx"
@@ -46,11 +46,21 @@ type useranswers struct {
 	Datetime time.Time           `bson:"datetime" json:"datetime"`
 }
 
+type results1 struct {
+	Id       bson.ObjectId       `bson:"_id" json:"id"`
+	QuizId   string              `bson:"quizid" json:"quizid"`
+	EntityId string              `bson:"entityid" json:"entityid"`
+	UserId   string              `bson:"userid" json:"userid"`
+	Answers  map[string][]string `bson:"answers" json:"answers"`
+	Datetime time.Time           `bson:"datetime" json:"datetime"`
+}
+
 type claims struct {
 	MetaId  string `json:"metaid"`
 	Role    int    `json:"role"`
 	Surname string `json:"surname"`
 	Name    string `json:"name"`
+	Group string `json:"group"`
 }
 
 func NewHandler(getuserdata, getquizresults, tokendecoder *httpservice.InnerService) (*Handler, error) {
@@ -117,7 +127,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//
 
-	getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", userId, "?fields=metaid,role,surname,name"), r)
+	getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", userId, "?fields=metaid,role,surname,name,group"), r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
@@ -168,7 +178,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	edit := doc.Editable()
-	edit.Replace("{группа}", "asd", -1)
+	edit.Replace("{группа}", clms., -1)
 	doc.Close()
 	buf := &bytes.Buffer{}
 	err = edit.Write(buf)
