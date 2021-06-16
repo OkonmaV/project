@@ -49,5 +49,5 @@ func (conf *config) Close() error {
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, authGetServiceName, tokenDecoderServiceName)
+	httpservice.InitNewService(thisServiceName, false, 50, &config{}, authGetServiceName, tokenDecoderServiceName)
 }

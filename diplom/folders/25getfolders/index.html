@@ -1,5 +1,11 @@
-<ul>
+<!--# set var="title" value="Списки" -->
+<!--# set var="css" value="login.css" -->
+<!--# set var="main_class" value="main-center" -->
+<div class="container">
+	<h1>Списки</h1>
+<ul class="list-group">
     {{- range  .}}
-    <li><input type="hidden" id="{{.Id}}" name="frootid" value="{{.Id}}" />{{.Name}}</li>
+    <li class="row list-group-item"><input type="hidden" id="{{.Id}}" name="frootid" value="{{.Id}}" />{{.Name}}</li>
     {{- end }}
 </ul>
+</div>

@@ -97,7 +97,8 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 	}
 
 	expires := time.Now().Add(20 * time.Hour).String()
-	resp := suckhttp.NewResponse(200, "OK")
+	resp := suckhttp.NewResponse(302, "Found")
+	resp.SetHeader(suckhttp.Location, "/")
 	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(tokenResp.GetBody()), ";Expires=", expires))
 
 	return resp, nil
