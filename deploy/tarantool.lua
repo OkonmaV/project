@@ -152,7 +152,20 @@ local function bootstrap()
     {name='password', type='string'}})
     space:create_index('primary',{parts={'login'}})
     space:create_index('secondary',{parts={{'login'},{'password'}}})
-
+    space:insert{'11fbe45e3265875e811944ccf19ec8e3', '2971fd5dda5f5a13cc3c4c380877192d'}
+    space:insert{'21232f297a57a5a743894a0e4a801fc3', '9c42a1346e333a770904b2a2b37fa7d3'}
+    space:insert{'2c8496da7da45f4b01325b93e5b81b7e', '09ff4dd2622902d1edef0affae11622e'}
+    space:insert{'31244529b9438a189fbc6bbf69045468', '8120a4ab0f2bc43aa1eac1efb5874a76'}
+    space:insert{'4220b82a7d0f3ca7212078fd3a2ff684', 'e030c39530066b7fc2684bbdc09c693d'}
+    space:insert{'44d51eb3a8b66832a7377c65296370ee', 'bc019f734056dc385c4e21e03d615f2a'}
+    space:insert{'565fd0dad8ff24bd955250d1ffe723dd', '2da1330bba305db17d10378a223c48e6'}
+    space:insert{'78a654f7fad02cca509017d16539aa02', '213bc5570389208ae306bd2bdb4cb135'}
+    space:insert{'82ce634a6332db567e50babfde4545f2', '684b5cf561e84248e31fc0cdc4b6ffc0'}
+    space:insert{'99af3c3d0a34f7f847149fff36795672', 'd3617d36d26d3087c35e9ad68645a0dc'}
+    space:insert{'d5123ae61159de06763e1ab6c75f7a29', 'b1748dd378866f80421cd3a306eb453b'}
+    space:insert{'df6d90e8a18955225da2459955412f86', '19bc14570d2396a16e482cfaf19dcebd'}
+    space:insert{'dfaa1de8e5ec7b67b724a7a46bda7f81', '79b5ff009f45a2037afd2ae7007f2ecb'}
+    space:insert{'fdd632c82c1b346c50d514e0bcbb1d5b', '13a57d40e02967c735513ddc7cb52ea7'}
     local space2 = box.schema.create_space('regcodes')
     space2:format({{name='code',type='integer'},
     {name='hash',type='string'},
@@ -165,20 +178,7 @@ local function bootstrap()
     {name='status',type='integer'}})
     space2:create_index('primary',{parts={'code'}})
     space2:create_index('secondary',{parts={'hash'}})
-    space2:insert{'11fbe45e3265875e811944ccf19ec8e3', '2971fd5dda5f5a13cc3c4c380877192d'}
-    space2:insert{'21232f297a57a5a743894a0e4a801fc3', '9c42a1346e333a770904b2a2b37fa7d3'}
-    space2:insert{'2c8496da7da45f4b01325b93e5b81b7e', '09ff4dd2622902d1edef0affae11622e'}
-    space2:insert{'31244529b9438a189fbc6bbf69045468', '8120a4ab0f2bc43aa1eac1efb5874a76'}
-    space2:insert{'4220b82a7d0f3ca7212078fd3a2ff684', 'e030c39530066b7fc2684bbdc09c693d'}
-    space2:insert{'44d51eb3a8b66832a7377c65296370ee', 'bc019f734056dc385c4e21e03d615f2a'}
-    space2:insert{'565fd0dad8ff24bd955250d1ffe723dd', '2da1330bba305db17d10378a223c48e6'}
-    space2:insert{'78a654f7fad02cca509017d16539aa02', '213bc5570389208ae306bd2bdb4cb135'}
-    space2:insert{'82ce634a6332db567e50babfde4545f2', '684b5cf561e84248e31fc0cdc4b6ffc0'}
-    space2:insert{'99af3c3d0a34f7f847149fff36795672', 'd3617d36d26d3087c35e9ad68645a0dc'}
-    space2:insert{'d5123ae61159de06763e1ab6c75f7a29', 'b1748dd378866f80421cd3a306eb453b'}
-    space2:insert{'df6d90e8a18955225da2459955412f86', '19bc14570d2396a16e482cfaf19dcebd'}
-    space2:insert{'dfaa1de8e5ec7b67b724a7a46bda7f81', '79b5ff009f45a2037afd2ae7007f2ecb'}
-    space2:insert{'fdd632c82c1b346c50d514e0bcbb1d5b', '13a57d40e02967c735513ddc7cb52ea7'}
+    
     -- Comment this if you need fine grained access control (without it, guest
     -- will have access to everything)
     box.schema.user.grant('guest', 'read,write,execute', 'universe')
