@@ -2,9 +2,8 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"net/url"
-	"strconv"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -63,11 +62,9 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		l.Debug("Request path", "empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	l.Info(strconv.Itoa(len(reqData["fields"])), strconv.Itoa(len(fields)))
 	selector := make(map[string]interface{}, len(fields))
 
 	for _, fieldName := range fields {
-		l.Info("field", fieldName)
 		selector[suckutils.ConcatTwo("data.", fieldName)] = 1
 	}
 
@@ -79,20 +76,18 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 		return nil, err
 	}
 	if mgoRes == nil {
-		l.Warning("F", "F")
+		l.Error("Mongo FindId", errors.New("mgoRes is nil"))
 	}
 	resp := suckhttp.NewResponse(200, "OK")
 	var body []byte
 	var contentType string
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
-		fmt.Println("AAAAAAAAAa", mgoRes)
 		body, err = json.Marshal(mgoRes["data"])
 		if err != nil {
 			l.Error("Marshalling result", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		contentType = "application/json"
-		l.Info("AAAa", string(body))
 	}
 
 	resp.SetBody(body)
