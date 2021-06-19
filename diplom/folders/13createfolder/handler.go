@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"thin-peak/httpservice"
@@ -18,11 +19,12 @@ type Handler struct {
 	authSet *httpservice.InnerService
 }
 type folder struct {
-	Id      string   `bson:"_id"`
-	RootsId []string `bson:"rootsid"`
-	Name    string   `bson:"name"`
-	Type    int      `bson:"type"`
-	Metas   []meta   `bson:"metas"`
+	Id         string   `bson:"_id"`
+	RootsId    []string `bson:"rootsid"`
+	Name       string   `bson:"name"`
+	Type       int      `bson:"type"`
+	Metas      []meta   `bson:"metas"`
+	Speciality string   `bson:"speciality"`
 }
 
 type meta struct {
@@ -59,15 +61,28 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	//TODO: Сделать в mgo функцию Exists(query)
 
-	if r.GetMethod() != suckhttp.PUT {
+	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || r.GetMethod() != suckhttp.PUT {
 		return suckhttp.NewResponse(405, "Method not allowed"), nil
 	}
 
 	folderRootId := strings.Trim(r.Uri.Path, "/")
-	folderName := strings.TrimSpace(r.Uri.Query().Get("name"))
-	folderType, err := strconv.Atoi(strings.TrimSpace(r.Uri.Query().Get("type"))) // 5 - вкр
+
+	formValues, err := url.ParseQuery(string(r.Body))
+	if err != nil {
+		l.Error("Parsing r.Body", err)
+		return suckhttp.NewResponse(401, "Bad Request"), nil
+	}
+	folderName := formValues.Get("name")
+	folderType, err := strconv.Atoi(formValues.Get("type")) // 5 - вкр, 4 - группа
 	if folderName == "" || folderRootId == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	var folderSpeciality string
+	if folderType == 4 {
+		folderSpeciality = formValues.Get("speciality")
+		if folderSpeciality == "" {
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
 	}
 	//check auth
 	userData := &authreqdata{}
@@ -112,7 +127,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	// }
 
 	query = &bson.M{"name": folderName, "rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
-	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId, RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: userData.Metaid}}}}
+	change := &bson.M{"$setOnInsert": &folder{Id: newfolderId, Speciality: folderSpeciality, RootsId: []string{folderRootId}, Name: folderName, Type: folderType, Metas: []meta{{Type: 0, Id: userData.Metaid}}}}
 
 	changeInfo, err := conf.mgoColl.Upsert(query, change)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"mime"
 	"net/url"
+	"strconv"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -77,6 +78,11 @@ type claims struct {
 	Group   string `json:"group"`
 }
 
+type questionToStudent struct {
+	Question string
+	Answer   string
+}
+
 func NewHandler(tokendecoder, getuserdata, getquizresults, getfolders *httpservice.InnerService) (*Handler, error) {
 	return &Handler{tokenDecoder: tokendecoder, getUserData: getuserdata, getQuizResults: getquizresults, getFolders: getfolders}, nil
 }
@@ -142,6 +148,21 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		l.Error("UnmarshalQuizResult", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
+
+	// GET QUESTIONS FROM GAK TO STUDENT
+	var questionsToStudent = make([]questionToStudent, 0)
+
+	for _, q := range quizResults {
+		if question, ok := q.Answers["questionToStudentId"]; ok && len(question) > 0 {
+			if answer, ok := q.Answers["answerFromStudentId"]; ok && len(answer) > 0 {
+				questionsToStudent = append(questionsToStudent, questionToStudent{Question: question[0], Answer: answer[0]})
+			}
+
+		}
+	}
+	//
+
+	filename := suckutils.ConcatThree("protocol", strconv.Itoa(len(questions)), ".docx")
 
 	// if len(quizResults)==0{
 	// 	l.Error("QuizResults",errors.New(""))
@@ -242,6 +263,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	edit := doc.Editable()
 	edit.Replace("{группа}", clms, -1)
+	for i, q := range questions {
+		edit.Replace(suckutils.ConcatThree("{question", strconv.Itoa(i), "}"), q, -1)
+	}
 	edit.GetContent()
 	doc.Close()
 	buf := &bytes.Buffer{}
