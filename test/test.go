@@ -3,8 +3,9 @@ package main
 import (
 	"fmt"
 	"lib"
-	"strings"
 	"time"
+
+	"github.com/nguyenthenguyen/docx"
 )
 
 type chatInfo struct {
@@ -131,12 +132,18 @@ func main() {
 	//bson.M{"$elemMatch": bson.M{"userid": "userId", "type": bson.M{"$ne": 1}}}}
 
 	//err = mgoColl.Find(query2).Select(bson.M{"users.$": 1}).One(&mgores)
+	//bar[1] = 1
+	//bar[2] = 2
 
-	foo := "12 3456 789"
-	position := strings.Index(foo, " ")
-	position2 := strings.Index(foo[position:], " ")
-	positionlast := strings.LastIndex(foo, " ")
-	fmt.Println(position, position2, "|||", foo[:position], "|||", foo[position:positionlast], "|||", foo[positionlast:])
+	doc, err := docx.ReadDocxFile("protocol.docx")
+	if err != nil {
+		fmt.Println("ReadDOCX", err)
+
+	}
+	edit := doc.Editable()
+	edit.GetContent()
+	fmt.Println(edit.GetContent())
+	doc.Close()
 	// ans1 := []answer{}
 	// ans2 := []answer{}
 	// ans1 = append(ans1, answer{Id: "aid1", Text: "ANS1TEXT"}, answer{Id: "aid11", Text: "ANS11TEXT"})

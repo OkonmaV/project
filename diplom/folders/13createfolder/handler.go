@@ -65,7 +65,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	folderRootId := strings.Trim(r.Uri.Path, "/")
 	folderName := strings.TrimSpace(r.Uri.Query().Get("name"))
-	folderType, err := strconv.Atoi(strings.TrimSpace(r.Uri.Query().Get("type")))
+	folderType, err := strconv.Atoi(strings.TrimSpace(r.Uri.Query().Get("type"))) // 5 - вкр
 	if folderName == "" || folderRootId == "" || err != nil {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

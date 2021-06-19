@@ -42,17 +42,23 @@ type results struct {
 //
 // FOLDER
 type folder struct {
-	Id      string        `bson:"_id"`
-	RootsId []string      `bson:"rootsid"`
-	Name    string        `bson:"name"`
-	Type    int           `bson:"type"`
-	Metas   []interface{} `bson:"metas"`
+	Id         string   `bson:"_id" json:"_id"`
+	RootsId    []string `bson:"rootsid" json:"rootsid"`
+	Name       string   `bson:"name" json:"name"`
+	Metas      []meta   `bson:"metas" json:"metas"`
+	Type       int      `bson:"type" json:"type"`
+	Speciality string   `bson:"speciality" json:"speciality"`
+}
+
+type meta struct {
+	Type int    `bson:"metatype" json:"metatype"`
+	Id   string `bson:"metaid" json:"metaid"`
 }
 
 //
 // USERDATA
 type userData struct {
-	//Id       string `bson:"_id" json:"_id"`
+	Id       string `bson:"_id" json:"_id"`
 	Mail     string `bson:"mail" json:"mail,omitempty"`
 	Name     string `bson:"name" json:"name,omitempty"`
 	Surname  string `bson:"surname" json:"surname,omitempty"`
@@ -99,12 +105,12 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	// AUTH
-	koki, ok := r.GetCookie("koki")
-	if !ok || len(koki) < 5 {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
-	//
+	// // AUTH
+	// koki, ok := r.GetCookie("koki")
+	// if !ok || len(koki) < 5 {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
+	// //
 
 	// Get Quiz Results For UserId & FolderId
 
@@ -149,56 +155,81 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		l.Error("CreateRequestFrom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	getUserDataReq.AddHeader(suckhttp.Accept, "application/json")
-	getUserDataResp, err := conf.getUserData.Send(getUserDataReq)
+	if err = getSomeJsonData(getUserDataReq, conf.getFolders, l, &studentUserData); err != nil {
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	//
+
+	// GET FOLDER'S (VKR) DATA
+	getFoldersReqVkr, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
 	if err != nil {
-		l.Error("Send", err)
+		l.Error("CreateRequestFrom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
-	if i, t := getUserDataResp.GetStatus(); i/100 != 2 {
-		l.Debug("Resp from getuserdata", t)
+	var vkrFolderData folder
+
+	if err = getSomeJsonData(getFoldersReqVkr, conf.getFolders, l, &vkrFolderData); err != nil {
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	if len(getUserDataResp.GetBody()) == 0 {
-		l.Error("Resp from getuserdata", errors.New("empty body at 200"))
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+
+	// GET NAUCHRUK'S ID
+	nauchRukUserData := userData{}
+	for _, metauser := range vkrFolderData.Metas {
+		if metauser.Type == 5 {
+			nauchRukUserData.Id = metauser.Id
+		}
 	}
-	if err := json.Unmarshal(getUserDataResp.GetBody(), &studentUserData); err != nil {
-		l.Error("Unmarshal", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	if nauchRukUserData.Id == "" {
+		l.Error("Vkr's nauchruk", errors.New("no nauchruk"))
+		return suckhttp.NewResponse(400, "Bad requiest"), nil //???????????????????????????????????????????????????????????????????????????????????????
 	}
 
 	//
 
 	// GET GAK'S DATA
-	var gakUserData []*userData
+	gakUserData := make([]userData, len(quizResults))
 
-	for _, userResult := range quizResults {
+	for i, userResult := range quizResults {
 		getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", userResult.UserId, "?fields=surname,name,otch"), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		getUserDataReq.AddHeader(suckhttp.Accept, "application/json")
-		getUserDataResp, err := conf.getUserData.Send(getUserDataReq)
-		if err != nil {
-			l.Error("Send", err)
+		if err = getSomeJsonData(getUserDataReq, conf.getFolders, l, &gakUserData[i]); err != nil {
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
+		if userResult.UserId == nauchRukUserData.Id {
+			nauchRukUserData.Surname = gakUserData[i].Surname
+			nauchRukUserData.Name = gakUserData[i].Name
+			nauchRukUserData.Otch = gakUserData[i].Otch
+		}
+	}
+	//
 
-		if i, t := getUserDataResp.GetStatus(); i/100 != 2 {
-			l.Debug("Resp from getuserdata", t)
+	// GET NAUCHRUK'S DATA IF NOT IN GAK (так может быть?)
+	if nauchRukUserData.Surname == "" {
+		getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", nauchRukUserData.Id, "?fields=surname,name,otch"), r)
+		if err != nil {
+			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if len(getUserDataResp.GetBody()) == 0 {
-			l.Error("Resp from getuserdata", errors.New("empty body at 200"))
+		if err = getSomeJsonData(getUserDataReq, conf.getFolders, l, &nauchRukUserData); err != nil {
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if err := json.Unmarshal(getUserDataResp.GetBody(), &gakUserData); err != nil {
-			l.Error("Unmarshal", err)
-			return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		}
+	}
+	//
+
+	// GET FOLDER'S (GROUP) DATA
+	getFoldersReqGroup, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+	var groupFolderData folder
+
+	if err = getSomeJsonData(getFoldersReqGroup, conf.getFolders, l, &groupFolderData); err != nil {
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	//
 
@@ -211,6 +242,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	edit := doc.Editable()
 	edit.Replace("{группа}", clms, -1)
+	edit.GetContent()
 	doc.Close()
 	buf := &bytes.Buffer{}
 	err = edit.Write(buf)
@@ -223,4 +255,29 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	res.AddHeader(suckhttp.Content_Type, mime.TypeByExtension(".docx"))
 	res.SetBody(buf.Bytes())
 	return res, nil
+}
+
+func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *logger.Logger, data interface{}) error {
+
+	req.AddHeader(suckhttp.Accept, "application/json")
+	resp, err := conn.Send(req)
+	if err != nil {
+		l.Error("Send", err)
+		return err
+	}
+
+	if i, t := resp.GetStatus(); i/100 != 2 {
+		l.Debug("Resp.GetStatus", t)
+		return err
+	}
+	if len(resp.GetBody()) == 0 {
+		l.Error("Resp.GetBody", errors.New("empty body at 200"))
+		return err
+	}
+
+	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
+		l.Error("Unmarshal", err)
+		return err
+	}
+	return nil
 }

@@ -1,0 +1,113 @@
+<w:tr>
+        <w:trPr>
+          <w:trHeight w:val="225" w:hRule="atLeast"/>
+        </w:trPr>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="595" w:type="dxa"/>
+            <w:tcBorders>
+              <w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+            </w:tcBorders>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:pStyle w:val="Normal"/>
+              <w:widowControl w:val="false"/>
+              <w:ind w:left="-6" w:right="-85" w:hanging="0"/>
+              <w:jc w:val="left"/>
+              <w:rPr>
+                <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/>
+                <w:sz w:val="20"/>
+                <w:szCs w:val="20"/>
+                <w:lang w:eastAsia="ru-RU"/>
+              </w:rPr>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:eastAsia="Times New Roman" w:cs="Times New Roman" w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>
+                <w:sz w:val="20"/>
+                <w:szCs w:val="20"/>
+                <w:lang w:eastAsia="ru-RU"/>
+              </w:rPr>
+              <w:t>NUMBER</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="4217" w:type="dxa"/>
+            <w:tcBorders>
+              <w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+            </w:tcBorders>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:pStyle w:val="Normal"/>
+              <w:widowControl w:val="false"/>
+              <w:ind w:left="-6" w:right="-85" w:hanging="0"/>
+              <w:jc w:val="left"/>
+              <w:rPr>
+                <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/>
+                <w:i/>
+                <w:i/>
+                <w:sz w:val="20"/>
+                <w:szCs w:val="20"/>
+                <w:lang w:eastAsia="ru-RU"/>
+              </w:rPr>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:eastAsia="Times New Roman" w:cs="Times New Roman" w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>
+                <w:i/>
+                <w:sz w:val="20"/>
+                <w:szCs w:val="20"/>
+                <w:lang w:eastAsia="ru-RU"/>
+              </w:rPr>
+              <w:t>QUESTION</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+        <w:tc>
+          <w:tcPr>
+            <w:tcW w:w="4544" w:type="dxa"/>
+            <w:tcBorders>
+              <w:top w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:left w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:bottom w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+              <w:right w:val="single" w:sz="4" w:space="0" w:color="000000"/>
+            </w:tcBorders>
+          </w:tcPr>
+          <w:p>
+            <w:pPr>
+              <w:pStyle w:val="Normal"/>
+              <w:widowControl w:val="false"/>
+              <w:ind w:left="-6" w:right="-85" w:hanging="0"/>
+              <w:jc w:val="left"/>
+              <w:rPr>
+                <w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:eastAsia="Times New Roman" w:cs="Times New Roman"/>
+                <w:i/>
+                <w:i/>
+                <w:sz w:val="20"/>
+                <w:szCs w:val="20"/>
+                <w:lang w:eastAsia="ru-RU"/>
+              </w:rPr>
+            </w:pPr>
+            <w:r>
+              <w:rPr>
+                <w:rFonts w:eastAsia="Times New Roman" w:cs="Times New Roman" w:ascii="Times New Roman" w:hAnsi="Times New Roman"/>
+                <w:i/>
+                <w:sz w:val="20"/>
+                <w:szCs w:val="20"/>
+                <w:lang w:eastAsia="ru-RU"/>
+              </w:rPr>
+              <w:t>WHAT ANSWER</w:t>
+            </w:r>
+          </w:p>
+        </w:tc>
+      </w:tr>
