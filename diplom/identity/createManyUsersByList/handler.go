@@ -176,7 +176,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			user.Group = group
 
 			// createFolderWithMetauser req
-			createFolderWithMetaReq, err := conf.createOnlyMetauser.CreateRequestFrom(suckhttp.PUT, "", r)
+			createFolderWithMetaReq, err := conf.createFolderWithMetauser.CreateRequestFrom(suckhttp.PUT, "", r)
 			if err != nil {
 				l.Error("CreateRequestFrom", err)
 				return suckhttp.NewResponse(500, "Internal server error"), nil

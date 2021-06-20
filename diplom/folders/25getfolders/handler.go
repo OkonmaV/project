@@ -43,11 +43,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	rootId := strings.Trim(r.Uri.Path, "/")
-	if rootId == "" {
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
-
 	// AUTH
 	if foo, ok := r.GetCookie("koki"); !ok || foo == "" {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
@@ -58,6 +53,11 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	var contentType string
 
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
+
+		rootId := strings.Trim(r.Uri.Path, "/")
+		if rootId == "" {
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
 
 		mgoRes := []folder{}
 		if err := conf.mgoColl.Find(bson.M{"rootsid": rootId}).Select(bson.M{"rootsid": 0, "metas": 0}).All(&mgoRes); err != nil {

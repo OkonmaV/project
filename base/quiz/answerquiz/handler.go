@@ -124,7 +124,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 		result.Answers[questionId] = answers
-
 	}
 
 	result.Datetime = time.Now()

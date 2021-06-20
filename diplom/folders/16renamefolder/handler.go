@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -25,12 +26,18 @@ func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecode
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.HttpMethod("PATCH") {
+	if r.GetMethod() != suckhttp.HttpMethod("PATCH") || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	fid := strings.Trim(r.Uri.Path, "/")
-	fnewname := strings.TrimSpace(r.Uri.Query().Get("fnewname"))
+
+	formValues, err := url.ParseQuery(string(r.Body))
+	if err != nil {
+		l.Debug("ParseQuery in body", err.Error())
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	fnewname := formValues.Get("fnewname")
 	if fid == "" || fnewname == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}

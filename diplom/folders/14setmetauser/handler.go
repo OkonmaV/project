@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"thin-peak/httpservice"
@@ -37,17 +37,21 @@ func NewHandler(col *mgo.Collection, colMeta *mgo.Collection, auth *httpservice.
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.HttpMethod("PATCH") {
+	if r.GetMethod() != suckhttp.HttpMethod("PATCH") || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	folderid := r.Uri.Path
-	folderid = strings.Trim(folderid, "/")
-	fnewmeta := strings.TrimSpace(r.Uri.Query().Get("fnewmetaid"))
+	folderid := strings.Trim(r.Uri.Path, "/")
+	formValues, err := url.ParseQuery(string(r.Body))
+	if err != nil {
+		l.Debug("ParseQuery in body", err.Error())
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+	fnewmeta := formValues.Get("fnewmetaid")
 	if folderid == "" || fnewmeta == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	fnewmetatype, err := strconv.Atoi(r.Uri.Query().Get("fnewmetatype"))
+	fnewmetatype, err := strconv.Atoi(formValues.Get("fnewmetatype"))
 	if err != nil {
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
@@ -62,12 +66,22 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	if err := conf.mgoCollMetausers.Find(bson.M{"_id": fnewmeta}).Select(bson.M{"_id": 1}).One(nil); err != nil {
 		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil
+			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 		return nil, err
 	}
+	// TODO: metausers types
 
 	query := bson.M{"_id": folderid, "deleted": bson.M{"$exists": false}}
+
+	if fnewmetatype == 5 {
+		if err := conf.mgoColl.Update(query, bson.M{"$pull": bson.M{"metas": bson.M{"metatype": fnewmetatype}}}); err != nil {
+			if err == mgo.ErrNotFound {
+				return suckhttp.NewResponse(403, "Forbidden"), nil
+			}
+			return nil, err
+		}
+	}
 
 	change := bson.M{"$addToSet": bson.M{"metas": &meta{Id: folderid, Type: fnewmetatype}}}
 
@@ -76,7 +90,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return nil, err
 	}
 	if changeInfo.Matched == 0 {
-		l.Error("AUTH", errors.New("approved folderid doesn't match"))
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
