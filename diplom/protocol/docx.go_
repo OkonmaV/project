@@ -1,0 +1,37 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/template"
+
+	"github.com/opencontrol/doc-template/docx"
+)
+
+func main() {
+	templ, err := template.ParseFiles("test")
+	if err != nil {
+		log.Println(err)
+	}
+	buf := new(bytes.Buffer)
+	err = templ.Execute(buf, struct{ Group string }{"jfghkjg"})
+	if err != nil {
+		log.Println(err)
+	}
+
+	document := new(docx.Docx)
+	err = document.ReadFile("protocol.docx")
+	if err != nil {
+		log.Println(err)
+	}
+	err = document.WriteToFile("text.docx", buf.String())
+	if err != nil {
+		log.Println(err)
+	}
+
+}
+
