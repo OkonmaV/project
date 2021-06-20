@@ -1,0 +1,8 @@
+<h1>{{.Folder.Name}}</h1>
+
+
+<button class="createSessionButton" onclick="window.createSession(true, '{{.Student.MetaId}}')"> Publish a Broadcast </button>
+<button class="createSessionButton" onclick="window.createSession(false, '{{.Student.MetaId}}')"> Join a Broadcast </button><br />
+<button onclick="window.startSession()"> Start Session </button><br />
+<video id="video" style="width:100%;"></video>
+<div id="logs"></div>

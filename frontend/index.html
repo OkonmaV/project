@@ -4,7 +4,7 @@
 <!--# include virtual="$virtual_request" set="one" -->
 <!--# endif -->
 <!--# if expr="$name" -->
-<!--# include file="$name.html" set="one" -->
+<!--# include file="/$name.html" set="one" -->
 <!--# endif -->
 <head>
 	<meta charset="UTF-8">
@@ -22,12 +22,17 @@
 </head>
 
 <body>
-	<!--# if expr="cookie_auth" -->
-	<!--# include file="nav.html" -->
+	<!--# if expr="cookie_koki" -->
+	<!--# include file="/nav.html" -->
 	<!--# endif -->
 	<main class="<!--# echo var="main_class" default="" -->">
 
+	<!--# if expr="one" -->
 	<!--# echo var="one" encoding="none" -->
+	<!--# endif -->
+	<!--# if expr="$innername" -->
+	<!--# include file="/$innername.html" -->
+	<!--# endif -->
 
 	</main>
 
