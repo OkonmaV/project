@@ -181,8 +181,8 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 				l.Error("CreateRequestFrom", err)
 				return suckhttp.NewResponse(500, "Internal server error"), nil
 			}
-			createFolderWithMetaReq.Body = []byte(user.MetaId)
-			createFolderWithMetaReq.AddHeader(suckhttp.Content_Type, "text/plain")
+			createFolderWithMetaReq.Body = []byte(suckutils.ConcatThree("metaid=", user.MetaId, "&metatype=5&foldertype=5"))
+			createFolderWithMetaReq.AddHeader(suckhttp.Content_Type, "application/x-www-form-urlencoded")
 			createFolderWithMetaReq.AddHeader(suckhttp.Accept, "text/plain")
 			createFolderWithMetaResp, err := conf.createFolderWithMetauser.Send(createFolderWithMetaReq)
 			if err != nil {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/url"
+	"strconv"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -55,13 +57,28 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		folderName = "default"
 	}
 	var metaId string
-	if strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") {
-		metaId = string(r.Body)
+	var metatype int
+	var foldertype int
+	if strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") {
+		formValues, err := url.ParseQuery(string(r.Body))
+		if err != nil {
+			l.Debug("ParseQuery in body", err.Error())
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
+		metaId = formValues.Get("metaid")
+		metatype, err = strconv.Atoi(formValues.Get("metatype"))
+		if err != nil {
+			l.Debug("Atoi", err.Error())
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
+		foldertype, err = strconv.Atoi(formValues.Get("foldertype"))
+		if err != nil {
+			l.Debug("Atoi", err.Error())
+			return suckhttp.NewResponse(400, "Bad request"), nil
+		}
+	} else {
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	// folderType, err := strconv.Atoi(strings.TrimSpace(r.Uri.Query().Get("type")))
-	// if folderName == "" || folderRootId == "" || err != nil {
-	// 	return suckhttp.NewResponse(400, "Bad request"), nil
-	// }
 
 	query := &bson.M{"_id": folderRootId, "deleted": bson.M{"$exists": false}}
 
@@ -74,9 +91,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	newfolderId := bson.NewObjectId().Hex()
 
-	query = &bson.M{"rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
+	//query = &bson.M{"rootsid": folderRootId, "deleted": bson.M{"$exists": false}}
 
-	err := conf.mgoColl.Insert(&folder{Id: newfolderId, RootsId: []string{folderRootId}, Name: folderName, Metas: []meta{{Type: 0, Id: metaId}}})
+	err := conf.mgoColl.Insert(&folder{Id: newfolderId, Type: foldertype, RootsId: []string{folderRootId}, Name: folderName, Metas: []meta{{Type: metatype, Id: metaId}}})
 	if err != nil {
 		return nil, err
 	}
