@@ -1,1 +1,1 @@
-{"options":{},"indexes":[{"v":2,"key":{"_id":1},"name":"_id_","ns":"folders.folders"}],"uuid":"e9ac9e3f5bb844d7acda8719f12451b5"}
+{"indexes":[{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}],"uuid":"59b1c026a6564bdbb211c6d299246361","collectionName":"folders"}
