@@ -1,0 +1,17 @@
+<ul>
+    {{- range .}}
+    <li>
+        <div><h1>{{.QuizId}}</h1>>
+            <h2>Член ГАК: {{.UserId}}
+            Защищающийся: {{.EntityId}}</h2>> 
+            <h3>Дата: {{.Datetime}}</h3>>
+        </div>
+        <ul>
+            {{- range $questionid, $answer := .Answers }}
+            <li>Вопрос:{{$question}}
+                Ответ:{{index $answer 0}}
+            {{- end }}
+        </ul>>
+    </li>
+    {{- end }}
+</ul>
