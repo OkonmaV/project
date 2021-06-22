@@ -29,12 +29,15 @@ window.createSession = (isPublisher, userId) => {
 	pc.oniceconnectionstatechange = e => log(pc.iceConnectionState)
 	pc.onicecandidate = event => {
 		if (event.candidate === null) {
+			log("waiting ice");
 			let v = btoa(JSON.stringify(pc.localDescription));
 
 			post("/sdp/"+userId, v.toString(), (x) => {
 				window.sd = x.responseText;
 			});
 
+		} else {
+			log(event.candidate.address);
 		}
 	}
 

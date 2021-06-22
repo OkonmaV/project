@@ -1,17 +1,19 @@
-<ul>
-    {{- range .}}
-    <li>
-        <div><h1>{{.QuizId}}</h1>>
-            <h2>Член ГАК: {{.UserId}}
-            Защищающийся: {{.EntityId}}</h2>> 
-            <h3>Дата: {{.Datetime}}</h3>>
-        </div>
-        <ul>
-            {{- range $questionid, $answer := .Answers }}
-            <li>Вопрос:{{$questionid}}
-                Ответ:{{index $answer 0}}
-            {{- end }}</li>
-        </ul>>
-    </li>
-    {{- end }}
-</ul>
+<form method="POST">
+	<h3>Оценка:</h3>
+	<div>
+		<input type="radio" name="60d04384cfda2e0a08983d45" id="60d04384cfda2e0a08983d45" value="60d04384cfda2e0a08983d44" />
+		<label>5 (отлично)</label>
+	</div>
+	<div>
+		<input type="radio" name="60d04384cfda2e0a08983d45" id="60d04384cfda2e0a08983d45" value="60d04384cfda2e0a08983d44" />
+		<label>4 (хорошо)</label>
+	</div>
+	<div>
+		<input type="radio" name="60d04384cfda2e0a08983d45" id="60d04384cfda2e0a08983d45" value="60d04384cfda2e0a08983d44" />
+		<label>3 (удовлетворительно)</label>
+	</div>
+	<div>
+		<input type="radio" name="60d04384cfda2e0a08983d45" id="60d04384cfda2e0a08983d45" value="60d04384cfda2e0a08983d44" />
+		<label>2</label>
+	</div>
+</form>

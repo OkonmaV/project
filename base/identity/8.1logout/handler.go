@@ -20,7 +20,8 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(200, "OK"), nil
 	}
 
-	resp := suckhttp.NewResponse(200, "OK")
+	resp := suckhttp.NewResponse(302, "Found")
 	resp.SetHeader(suckhttp.Set_Cookie, "koki=; Max-Age=-1")
+	resp.SetHeader(suckhttp.Location, "/")
 	return resp, nil
 }

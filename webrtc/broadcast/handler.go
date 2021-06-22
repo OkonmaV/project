@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -30,6 +31,8 @@ type broadcast struct {
 	video     chan *webrtc.TrackLocalStaticRTP
 	doneaudio *webrtc.TrackLocalStaticRTP
 	donevideo *webrtc.TrackLocalStaticRTP
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 type cookieData struct {
@@ -106,7 +109,8 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if userData.MetaId == userid {
 		// start
 		var innerErr error
-		bc := &broadcast{userId: userid, audio: make(chan *webrtc.TrackLocalStaticRTP, 1), video: make(chan *webrtc.TrackLocalStaticRTP, 1)}
+		ctx, cancel := context.WithCancel(context.Background())
+		bc := &broadcast{userId: userid, audio: make(chan *webrtc.TrackLocalStaticRTP, 1), video: make(chan *webrtc.TrackLocalStaticRTP, 1), ctx: ctx, cancel: cancel}
 		token, err := sdpExchange(&conf.peerConnectionConfig, string(r.Body), func(peerConnection *webrtc.PeerConnection) {
 			if _, err := peerConnection.AddTransceiverFromKind(webrtc.RTPCodecTypeVideo); err != nil {
 				innerErr = err
@@ -118,6 +122,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			}
 
 			peerConnection.OnICEConnectionStateChange(func(is webrtc.ICEConnectionState) {
+				if is == webrtc.ICEConnectionStateDisconnected {
+					cancel()
+					peerConnection.Close()
+				}
 				logger.Info("State", is.String())
 			})
 			// Set a handler for when a new remote track starts, this handler saves buffers to disk as
@@ -127,10 +135,15 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 				// Send a PLI on an interval so that the publisher is pushing a keyframe every rtcpPLIInterval
 				go func() {
 					ticker := time.NewTicker(time.Second * 3)
-					for range ticker.C {
-						errSend := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}})
-						if errSend != nil {
-							logger.Error("Send", errSend)
+					for {
+						select {
+						case <-ctx.Done():
+							return
+						case <-ticker.C:
+							errSend := peerConnection.WriteRTCP([]rtcp.Packet{&rtcp.PictureLossIndication{MediaSSRC: uint32(track.SSRC())}})
+							if errSend != nil {
+								logger.Error("Send", errSend)
+							}
 						}
 					}
 				}()
@@ -162,18 +175,23 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 				logger.Info("Broadcast", "started")
 				rtpBuf := make([]byte, 1500)
 				for {
-					i, _, readErr := track.Read(rtpBuf)
-					if readErr != nil {
-						innerErr = err
+					select {
+					case <-ctx.Done():
 						return
-					}
+					default:
+						i, _, readErr := track.Read(rtpBuf)
+						if readErr != nil {
+							innerErr = err
+							return
+						}
 
-					// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
-					if _, err = localTrack.Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
-						innerErr = err
-						return
+						// ErrClosedPipe means we don't have any subscribers, this is ok if no peers have connected yet
+						if _, err = localTrack.Write(rtpBuf[:i]); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+							innerErr = err
+							return
+						}
+						// fmt.Println("Writed", t, i)
 					}
-					// fmt.Println("Writed", t, i)
 				}
 			})
 		})

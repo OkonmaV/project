@@ -1,5 +1,6 @@
 <!doctype html>
 <html>
+<!--# block name="none"--><!--# endblock-->
 <!--# if expr="$virtual_request" -->
 <!--# include virtual="$virtual_request" set="one" -->
 <!--# endif -->
@@ -22,23 +23,21 @@
 </head>
 
 <body>
-	<!--# if expr="cookie_koki" -->
 	<!--# include file="/nav.html" -->
-	<!--# endif -->
 	<main class="<!--# echo var="main_class" default="" -->">
 
 	<!--# if expr="one" -->
-	<!--# echo var="one" encoding="none" -->
+	<!--# echo var="one" encoding="none" default="" -->
 	<!--# endif -->
 	<!--# if expr="$innername" -->
-	<!--# include file="/$innername.html" -->
+	<!--# include file="/$innername.html" stub="none" -->
 	<!--# endif -->
 
 	</main>
 
 	<script src="/bootstrap.bundle.min.js"></script>
 	<!--# if expr="$js" -->
-	<link href="/<!--# echo var="js" -->" rel="stylesheet" type="text/css">
+	<script src="/<!--# echo var="js" -->"></script>
 	<!--# endif -->
 </body>
 </html>

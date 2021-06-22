@@ -15,7 +15,10 @@
 					<a class="nav-link" href="/folders">Списки</a>
 				</li>
 			</ul>
-			<!--# include virtual="/tokendecoder" -->
+			<!--# block name="auth" -->
+			<ul class="navbar-nav mb-2 mb-sm-0"><li class="nav-item">	<a class="nav-link" href="/login">войти</a></li></ul>
+			<!--# endblock -->
+			<!--# include virtual="/tokendecoder" stub="auth" -->
 		</div>
 	</div>
 </nav>

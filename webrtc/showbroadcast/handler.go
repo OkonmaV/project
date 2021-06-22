@@ -83,6 +83,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	l.Info("UserId", userData.UserId)
 	var data templatedata
+	data.MetaId = userData.MetaId
 	// GET FOLDER
 	getFoldersReq, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
 	if err != nil {
@@ -177,6 +178,7 @@ type templatedata struct {
 	Student   metauser
 	Nauchruk  metauser
 	Metausers []metauser
+	MetaId    string
 }
 
 func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *logger.Logger, data interface{}) error {

@@ -96,12 +96,12 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	// GET STUDENT
 
 	if data.Student.MetaId != "" {
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Nauchruk.MetaId), r)
+		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Student.MetaId), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Nauchruk); err != nil {
+		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Student); err != nil {
 			l.Error("getmetausers", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
@@ -170,6 +170,7 @@ func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *l
 		return errors.New("body: is empty")
 	}
 
+	//fmt.Println(resp.GetBody())
 	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
 		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
 	}
