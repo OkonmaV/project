@@ -18,7 +18,6 @@ type Handler struct {
 	auth         *httpservice.Authorizer
 	getFolders   *httpservice.InnerService
 	getMetausers *httpservice.InnerService
-	viewDiplom   *httpservice.InnerService
 }
 
 type folder struct {
@@ -41,30 +40,23 @@ type metauser struct {
 	Name    string `bson:"name" json:"name"`
 }
 
-type cookieData struct {
-	MetaId string `json:"metaid"`
-	Role   int    `json:"role"`
-}
-
 type templatedata struct {
-	Folder               folder
-	Student              metauser
-	Nauchruk             metauser
-	Metausers            []metauser
-	BecomeNauchrukMetaId string
+	Folder   folder   `json:"folder"`
+	Student  metauser `json:"student"`
+	Nauchruk metauser `json:"nauchruk"`
 }
 
-func NewHandler(templ *template.Template, auth, tokendecoder, getfolders, getmetausers, viewdiplom *httpservice.InnerService) (*Handler, error) {
+func NewHandler(templ *template.Template, auth, tokendecoder, getfolders, getmetausers *httpservice.InnerService) (*Handler, error) {
 	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{template: templ, auth: authorizer, getFolders: getfolders, getMetausers: getmetausers, viewDiplom: viewdiplom}, nil
+	return &Handler{template: templ, auth: authorizer, getFolders: getfolders, getMetausers: getmetausers}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.HttpMethod("GET") || !strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
+	if r.GetMethod() != suckhttp.HttpMethod("GET") {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -74,43 +66,23 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
+	// AUTH
+	if foo, ok := r.GetCookie("koki"); len(foo) < 5 || !ok {
+		return suckhttp.NewResponse(401, "Unauthorized"), nil
+	}
+
 	var data templatedata
-	//	TODO: AUTH
-	var cookieClaims cookieData
-	k, err := conf.auth.GetAccessWithData(r, l, "folders", 1, &cookieClaims)
-	if err != nil {
-		return nil, err
-	}
-	if !k {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
 
-	if cookieClaims.Role > 1 { ///////////////////////////////// setmetauser needs auth with key "folders"
-		data.BecomeNauchrukMetaId = cookieClaims.MetaId
-	}
-
-	// GET DIPLOM
-	viewDiplomReq, err := conf.viewDiplom.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", folderId), r)
+	// GET FOLDER
+	getFoldersReq, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
-	req.AddHeader(suckhttp.Accept, "application/json")
-	resp, err := conn.Send(req)
-	if err != nil {
-		return errors.New(suckutils.ConcatTwo("send: ", err.Error()))
-	}
-
-	if i, t := resp.GetStatus(); i/100 != 2 {
-		return errors.New(suckutils.ConcatTwo("status: ", t))
-	}
-	if len(resp.GetBody()) == 0 {
-		return errors.New("body: is empty")
-	}
-
-	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
-		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
+	if err = getSomeJsonData(getFoldersReq, conf.getFolders, l, &data.Folder); err != nil {
+		l.Error("getfolders", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	//
 	for _, metauser := range data.Folder.Metas {
@@ -129,56 +101,63 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Student); err != nil {
-			l.Error("getmetausers", err)
+		var mgoRes []metauser
+		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &mgoRes); err != nil {
+			l.Error("Get student's metauser", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-	} else {
+		if len(mgoRes) != 1 { //??????
+			l.Error("Get student's metauser", errors.New(suckutils.ConcatTwo("cant find student's metauser with metaid: ", data.Student.MetaId)))
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		data.Student = mgoRes[0]
+
+	} else { // если удалить метастудента с папки, то все время будет 500
 		l.Error("METAUSERS", errors.New(suckutils.ConcatTwo("folder without student, folderid: ", folderId)))
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	//
 
 	// GET NAUCHRUK
-	for _, metauser := range data.Folder.Metas {
-		if metauser.Type == 5 {
-			data.Nauchruk.MetaId = metauser.Id
-		}
-	}
 	if data.Nauchruk.MetaId != "" {
+
 		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Nauchruk.MetaId), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
+		var mgoRes []metauser
 		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Nauchruk); err != nil {
-			l.Error("getmetausers", err)
+			l.Error("Get nauchruk's metauser", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
+		if len(mgoRes) != 1 { //??????
+			l.Error("Get nauchruk's metauser", errors.New(suckutils.ConcatTwo("cant find nauchruks's metauser with metaid: ", data.Student.MetaId)))
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		data.Nauchruk = mgoRes[0]
 	}
 	//
 
-	// GET METAUSERS
-	getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, "/", r)
-	if err != nil {
-		l.Error("CreateRequestFrom", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-
-	if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Metausers); err != nil {
-		l.Error("getmetausers", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-	//
 	var body []byte
-	buf := bytes.NewBuffer(body)
+	var contentType string
 
-	if err = conf.template.Execute(buf, data); err != nil {
-		l.Error("Template execution", err)
-		return suckhttp.NewResponse(500, "Internal server error"), err
+	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
+
+		buf := bytes.NewBuffer(body)
+		if err = conf.template.Execute(buf, data); err != nil {
+			l.Error("Template execution", err)
+			return suckhttp.NewResponse(500, "Internal server error"), err
+		}
+		body = buf.Bytes()
+		contentType = "text/html"
+	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
+		if body, err = json.Marshal(data); err != nil {
+			l.Error("Marshal", err)
+			return suckhttp.NewResponse(500, "Internal server error"), nil
+		}
+		contentType = "application/json"
 	}
-	body = buf.Bytes()
-	contentType := "text/html"
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
 }

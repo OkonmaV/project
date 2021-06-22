@@ -74,11 +74,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
 
 		var err error
-		if query != nil {
-			body, err = json.Marshal(mgoRes[0])
-		} else {
-			body, err = json.Marshal(mgoRes)
-		}
+
+		body, err = json.Marshal(mgoRes)
+
 		if err != nil {
 			l.Error("Marshalling", err)
 			return suckhttp.NewResponse(500, "Internal server error"), nil
