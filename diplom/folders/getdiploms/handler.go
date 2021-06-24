@@ -3,27 +3,39 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 	"text/template"
+	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
+	"github.com/big-larry/suckutils"
 )
 
 type Handler struct {
-	mgoColl  *mgo.Collection
-	template *template.Template
+	mgoColl      *mgo.Collection
+	template     *template.Template
+	getMetausers *httpservice.InnerService
 }
 
 type folder struct {
-	Id         string   `bson:"_id" json:"_id"`
-	RootsId    []string `bson:"rootsid" json:"-"`
-	Name       string   `bson:"name" json:"name"`
-	Metas      []meta   `bson:"metas" json:"metas"`
-	Type       int      `bson:"type" json:"type"`
-	Speciality string   `bson:"speciality" json:"speciality"`
+	Id       string   `bson:"_id" json:"_id"`
+	Name     string   `bson:"name" json:"name"`
+	Metas    []meta   `bson:"metas" json:"metas"`
+	Student  metauser `bson:"-" json:"student"`
+	Nauchruk metauser `bson:"-" json:"nauchruk"`
+	// RootsId    []string `bson:"rootsid" json:"-"`
+	// Type       int      `bson:"type" json:"type"`
+	// Speciality string   `bson:"speciality" json:"speciality"`
+}
+
+type metauser struct {
+	MetaId  string `bson:"_id" json:"metaid"`
+	Surname string `bson:"surname" json:"surname"`
+	Name    string `bson:"name" json:"name"`
 }
 
 type meta struct {
@@ -31,9 +43,9 @@ type meta struct {
 	Id   string `bson:"metaid" json:"metaid"`
 }
 
-func NewHandler(mgoColl *mgo.Collection, template *template.Template) (*Handler, error) {
+func NewHandler(mgoColl *mgo.Collection, template *template.Template, getmetausers *httpservice.InnerService) (*Handler, error) {
 
-	return &Handler{mgoColl: mgoColl, template: template}, nil
+	return &Handler{mgoColl: mgoColl, template: template, getMetausers: getmetausers}, nil
 
 }
 
@@ -60,8 +72,12 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		}
 
 		mgoRes := []folder{}
-		if err := conf.mgoColl.Find(bson.M{"rootsid": rootId}).Select(bson.M{"rootsid": 0, "metas": 0}).All(&mgoRes); err != nil {
+		if err := conf.mgoColl.Find(bson.M{"rootsid": rootId, "type": 5}).Select(bson.M{"rootsid": 0, "type": 0}).All(&mgoRes); err != nil {
 			return nil, err
+		}
+
+		for i, fldr := range mgoRes {
+
 		}
 
 		buf := bytes.NewBuffer(body)
@@ -101,4 +117,25 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
 
+}
+
+func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *logger.Logger, data interface{}) error {
+
+	req.AddHeader(suckhttp.Accept, "application/json")
+	resp, err := conn.Send(req)
+	if err != nil {
+		return errors.New(suckutils.ConcatTwo("send: ", err.Error()))
+	}
+
+	if i, t := resp.GetStatus(); i/100 != 2 {
+		return errors.New(suckutils.ConcatTwo("status: ", t))
+	}
+	if len(resp.GetBody()) == 0 {
+		return errors.New("body: is empty")
+	}
+
+	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
+		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
+	}
+	return nil
 }

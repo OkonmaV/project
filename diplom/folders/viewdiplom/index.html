@@ -1,7 +1,8 @@
-<!--# set var="title" value="Диплом" -->
+<!--# set var="title" value="ВКР" -->
 <!--# set var="css" value="login.css" -->
 <!--# set var="main_class" value="main-center" -->
 <div class="container">
-	<h1>Диплом</h1>
-    <input class="form-control" type="text" name="name" value="{{.Folder.Name}}" />
+	<h1>Выпускная квалификационная работа</h1>
+    <h2>Тема:{{- if .Folder.Name}} {{.Folder.Name}}{{- else}} не указана{{-end}} </h2>
+    <h2>Научный руководитель: {{- if .Nauchruk.MetaId}}{{.Surname}} {{.Name}}{{- else}}отсутствует{{-end}}</h2>
 </div>

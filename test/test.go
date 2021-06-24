@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"lib"
 	"time"
-
-	"github.com/nguyenthenguyen/docx"
 )
 
 type chatInfo struct {
@@ -82,6 +80,7 @@ type question struct {
 type answer struct {
 	Id   string `bson:"answer_id" json:"answer_id"`
 	Text string `bson:"answer_text" json:"answer_text,omitempty"`
+	boll bool
 }
 
 type question2 struct {
@@ -135,15 +134,9 @@ func main() {
 	//bar[1] = 1
 	//bar[2] = 2
 
-	doc, err := docx.ReadDocxFile("protocol.docx")
-	if err != nil {
-		fmt.Println("ReadDOCX", err)
+	var foo answer
+	fmt.Println(foo)
 
-	}
-	edit := doc.Editable()
-	edit.GetContent()
-	fmt.Println(edit.GetContent())
-	doc.Close()
 	// ans1 := []answer{}
 	// ans2 := []answer{}
 	// ans1 = append(ans1, answer{Id: "aid1", Text: "ANS1TEXT"}, answer{Id: "aid11", Text: "ANS11TEXT"})

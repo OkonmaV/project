@@ -2,20 +2,24 @@ package main
 
 import (
 	"context"
-	"html/template"
 	"io/ioutil"
+	"text/template"
 	"thin-peak/httpservice"
+	"thin-peak/logs/logger"
+
+	"github.com/big-larry/mgo"
 )
 
 type config struct {
 	Configurator string
 	Listen       string
+	MgoDB        string
+	MgoAddr      string
+	MgoColl      string
+	mgoSession   *mgo.Session
 }
 
-const thisServiceName httpservice.ServiceName = "folders.editdiplom"
-const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
-const authGetServiceName httpservice.ServiceName = "auth.get"
-const viewDiplomServiceName httpservice.ServiceName = "folders.viewdiplom"
+const thisServiceName httpservice.ServiceName = "folders.getdiploms"
 const getMetausersServiceName httpservice.ServiceName = "folders.getmetausers"
 
 func (c *config) GetListenAddress() string {
@@ -25,6 +29,15 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
+	mgoSession, err := mgo.Dial(c.MgoAddr)
+	if err != nil {
+		logger.Error("Mongo", err)
+		return nil, err
+	}
+	c.mgoSession = mgoSession
+	logger.Info("Mongo", "Connected!")
+	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
+
 	templData, err := ioutil.ReadFile("index.html")
 	if err != nil {
 		return nil, err
@@ -34,10 +47,14 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	if err != nil {
 		return nil, err
 	}
+	return NewHandler(mgoCollection, templ, connectors[getMetausersServiceName])
+}
 
-	return NewHandler(templ, connectors[authGetServiceName], connectors[tokenDecoderServiceName], connectors[getMetausersServiceName], connectors[viewDiplomServiceName])
+func (conf *config) Close() error {
+	conf.mgoSession.Close()
+	return nil
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenDecoderServiceName, authGetServiceName, viewDiplomServiceName, getMetausersServiceName)
+	httpservice.InitNewService(thisServiceName, false, 50, &config{}, getMetausersServiceName)
 }

@@ -16,7 +16,6 @@ import (
 type Handler struct {
 	template     *template.Template
 	auth         *httpservice.Authorizer
-	getFolders   *httpservice.InnerService
 	getMetausers *httpservice.InnerService
 	viewDiplom   *httpservice.InnerService
 }
@@ -52,14 +51,15 @@ type templatedata struct {
 	Nauchruk             metauser
 	Metausers            []metauser
 	BecomeNauchrukMetaId string
+	CanChangeTheme       bool
 }
 
-func NewHandler(templ *template.Template, auth, tokendecoder, getfolders, getmetausers, viewdiplom *httpservice.InnerService) (*Handler, error) {
+func NewHandler(templ *template.Template, auth, tokendecoder, getmetausers, viewdiplom *httpservice.InnerService) (*Handler, error) {
 	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
 	if err != nil {
 		return nil, err
 	}
-	return &Handler{template: templ, auth: authorizer, getFolders: getfolders, getMetausers: getmetausers, viewDiplom: viewdiplom}, nil
+	return &Handler{template: templ, auth: authorizer, getMetausers: getmetausers, viewDiplom: viewdiplom}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -96,67 +96,15 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
-	req.AddHeader(suckhttp.Accept, "application/json")
-	resp, err := conn.Send(req)
-	if err != nil {
-		return errors.New(suckutils.ConcatTwo("send: ", err.Error()))
-	}
-
-	if i, t := resp.GetStatus(); i/100 != 2 {
-		return errors.New(suckutils.ConcatTwo("status: ", t))
-	}
-	if len(resp.GetBody()) == 0 {
-		return errors.New("body: is empty")
-	}
-
-	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
-		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
-	}
-	//
-	for _, metauser := range data.Folder.Metas {
-		if metauser.Type == 5 {
-			data.Nauchruk.MetaId = metauser.Id
-		}
-		if metauser.Type == 1 {
-			data.Student.MetaId = metauser.Id
-		}
-	}
-	// GET STUDENT
-
-	if data.Student.MetaId != "" {
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Student.MetaId), r)
-		if err != nil {
-			l.Error("CreateRequestFrom", err)
-			return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		}
-		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Student); err != nil {
-			l.Error("getmetausers", err)
-			return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		}
-	} else {
-		l.Error("METAUSERS", errors.New(suckutils.ConcatTwo("folder without student, folderid: ", folderId)))
+	if err = getSomeJsonData(viewDiplomReq, conf.viewDiplom, l, &data); err != nil {
+		l.Error("viewDiplom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	//
 
-	// GET NAUCHRUK
-	for _, metauser := range data.Folder.Metas {
-		if metauser.Type == 5 {
-			data.Nauchruk.MetaId = metauser.Id
-		}
+	if cookieClaims.MetaId == data.Student.MetaId || cookieClaims.MetaId == data.Nauchruk.MetaId {
+		data.CanChangeTheme = true
 	}
-	if data.Nauchruk.MetaId != "" {
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Nauchruk.MetaId), r)
-		if err != nil {
-			l.Error("CreateRequestFrom", err)
-			return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		}
-		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Nauchruk); err != nil {
-			l.Error("getmetausers", err)
-			return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		}
-	}
-	//
 
 	// GET METAUSERS
 	getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, "/", r)
@@ -170,6 +118,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 	//
+
 	var body []byte
 	buf := bytes.NewBuffer(body)
 
@@ -198,6 +147,7 @@ func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *l
 		return errors.New("body: is empty")
 	}
 
+	//fmt.Println(resp.GetBody())
 	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
 		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
 	}
