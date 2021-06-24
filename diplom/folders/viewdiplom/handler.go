@@ -21,7 +21,7 @@ type Handler struct {
 }
 
 type folder struct {
-	Id         string   `bson:"_id" json:"-"`
+	Id         string   `bson:"_id" json:"id"`
 	RootsId    []string `bson:"rootsid" json:"-"`
 	Name       string   `bson:"name" json:"name"`
 	Metas      []meta   `bson:"metas" json:"metas"`
@@ -177,6 +177,7 @@ func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *l
 		return errors.New("body: is empty")
 	}
 
+	// fmt.Println(string(resp.GetBody()))
 	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
 		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
 	}
