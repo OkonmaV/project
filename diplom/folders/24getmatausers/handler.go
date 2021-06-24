@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strings"
 	"text/template"
 	"thin-peak/logs/logger"
@@ -35,16 +36,30 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	var query bson.M
-	metauserId := strings.Trim(r.Uri.Path, "/")
-	if metauserId != "" {
-		query = bson.M{"_id": metauserId}
-	}
+
 	// AUTH
 	if foo, ok := r.GetCookie("koki"); !ok || foo == "" {
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 	//
+
+	queryValues, err := url.ParseQuery(r.Uri.RawQuery)
+	if err != nil {
+		l.Error("Err parsing query", err)
+		return suckhttp.NewResponse(400, "Bad request"), err
+	}
+
+	var query bson.M
+	if ids, ok := queryValues["metaid"]; ok && len(ids) != 0 && ids[0] != "" {
+		var metauserIds []string
+		if len(ids) == 1 {
+			metauserIds = strings.Split(ids[0], ",")
+		} else {
+			metauserIds = ids
+		}
+		query = bson.M{"_id": bson.M{"$in": metauserIds}}
+	}
+
 	mgoRes := []metauser{}
 
 	if err := conf.mgoColl.Find(query).All(&mgoRes); err != nil {
@@ -58,6 +73,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		l.Error("FindAll", errors.New("empty responce"))
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
+
 	var body []byte
 	var contentType string
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
