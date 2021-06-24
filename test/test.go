@@ -80,7 +80,6 @@ type question struct {
 type answer struct {
 	Id   string `bson:"answer_id" json:"answer_id"`
 	Text string `bson:"answer_text" json:"answer_text,omitempty"`
-	boll bool
 }
 
 type question2 struct {
@@ -134,7 +133,10 @@ func main() {
 	//bar[1] = 1
 	//bar[2] = 2
 
-	var foo answer
+	var foo answer = answer{Id: "id", Text: "text"}
+	answrs := make(map[string]*answer)
+	answrs["id"] = &foo
+	*answrs["id"] = answer{Text: "newtext"}
 	fmt.Println(foo)
 
 	// ans1 := []answer{}

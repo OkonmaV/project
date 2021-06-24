@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"text/template"
 	"thin-peak/httpservice"
@@ -64,25 +65,61 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	var body []byte
 	var contentType string
 
+	rootId := strings.Trim(r.Uri.Path, "/")
+	if rootId == "" {
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+
+	mgoRes := []folder{}
+	if err := conf.mgoColl.Find(bson.M{"rootsid": rootId, "type": 5}).Select(bson.M{"rootsid": 0, "type": 0}).All(&mgoRes); err != nil {
+		return nil, err
+	}
+
+	var metaids []string
+	metausersIndex := make(map[string]*metauser)
+
+	for _, fldr := range mgoRes {
+		for _, metausr := range fldr.Metas {
+			if metausr.Type == 5 {
+				//fldr.Nauchruk = metauser{MetaId: metausr.Id}
+				metaids = append(metaids, metausr.Id)
+				metausersIndex[metausr.Id] = &fldr.Nauchruk
+
+			}
+			if metausr.Type == 1 {
+				//fldr.Student = metauser{MetaId: metausr.Id}
+				metaids = append(metaids, metausr.Id)
+				metausersIndex[metausr.Id] = &fldr.Student
+			}
+		}
+	}
+	// GET METAUSERS
+	getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?metaid=", strings.Join(metaids, ",")), r)
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal server error"), nil
+	}
+
+	var mgoResMetausers []metauser
+	if err = getSomeJsonData(getMetausersReq, conf.getMetausers, &mgoResMetausers); err != nil {
+		l.Error("getMetausers", err)
+		return suckhttp.NewResponse(500, "Internal server error"), nil
+	}
+	//
+
+	if c := len(metaids) - len(mgoResMetausers); c != 0 {
+		l.Error("METAUSERS", errors.New(suckutils.Concat("cant find ", strconv.Itoa(c), " metausers in mongo")))
+		// NO RETURN
+	}
+
+	for _, metausr := range mgoResMetausers {
+		*metausersIndex[metausr.MetaId] = metausr
+	}
+
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
 
-		rootId := strings.Trim(r.Uri.Path, "/")
-		if rootId == "" {
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
-
-		mgoRes := []folder{}
-		if err := conf.mgoColl.Find(bson.M{"rootsid": rootId, "type": 5}).Select(bson.M{"rootsid": 0, "type": 0}).All(&mgoRes); err != nil {
-			return nil, err
-		}
-
-		for i, fldr := range mgoRes {
-
-		}
-
 		buf := bytes.NewBuffer(body)
-		err := conf.template.Execute(buf, mgoRes)
-		if err != nil {
+		if err := conf.template.Execute(buf, mgoRes); err != nil {
 			l.Error("Template execution", err)
 			return suckhttp.NewResponse(500, "Internal server error"), err
 		}
@@ -90,20 +127,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		contentType = "text/html"
 
 	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
-
-		mgoRes := folder{}
-		folderId := r.Uri.Query().Get("folderid")
-		if folderId == "" {
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
-
-		if err := conf.mgoColl.FindId(folderId).Select(bson.M{"rootsid": 0, "_id": 0}).One(&mgoRes); err != nil {
-			if err == mgo.ErrNotFound {
-				l.Error("FindId", err)
-				return suckhttp.NewResponse(400, "Bad request"), nil
-			}
-			return nil, err
-		}
 
 		var err error
 		if body, err = json.Marshal(mgoRes); err != nil {
@@ -119,7 +142,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 }
 
-func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *logger.Logger, data interface{}) error {
+func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, data interface{}) error {
 
 	req.AddHeader(suckhttp.Accept, "application/json")
 	resp, err := conn.Send(req)

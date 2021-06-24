@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html/template"
 	"strings"
 	"thin-peak/httpservice"
@@ -96,7 +97,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	// GET STUDENT
 
 	if data.Student.MetaId != "" {
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Student.MetaId), r)
+		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?metaid=", data.Student.MetaId), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
@@ -108,6 +109,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		}
 		if len(mgoRes) != 1 { //??????
 			l.Error("Get student's metauser", errors.New(suckutils.ConcatTwo("cant find student's metauser with metaid: ", data.Student.MetaId)))
+			fmt.Println("------------------------------", mgoRes, "----------------", data.Student.MetaId)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		data.Student = mgoRes[0]
@@ -121,7 +123,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	// GET NAUCHRUK
 	if data.Nauchruk.MetaId != "" {
 
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Nauchruk.MetaId), r)
+		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?metaid=", data.Nauchruk.MetaId), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
