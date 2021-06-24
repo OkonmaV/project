@@ -37,6 +37,7 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	logger.Info("Mongo", "Connected!")
 	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
 	mgoCollectionMetausers := mgoSession.DB(c.MgoDB).C(c.MgoCollMetausers)
+	c.mgoSession = mgoSession
 	return NewHandler(mgoCollection, mgoCollectionMetausers, connectors[authGetServiceName], connectors[tokenDecoderServiceName])
 }
 
