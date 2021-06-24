@@ -42,13 +42,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	k, _, err := conf.auth.GetAccess(r, l, "folders", 1)
+	_, _, err = conf.auth.GetAccess(r, l, "folders", 1)
 	if err != nil {
 		return nil, err
 	}
-	if !k {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
 
 	query := &bson.M{"_id": fid, "deleted": bson.M{"$exists": false}}
 

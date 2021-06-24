@@ -18,7 +18,7 @@ type Handler struct {
 }
 
 type folder struct {
-	Id         string   `bson:"_id" json:"_id"`
+	Id         string   `bson:"_id" json:"id"`
 	RootsId    []string `bson:"rootsid" json:"-"`
 	Name       string   `bson:"name" json:"name"`
 	Metas      []meta   `bson:"metas" json:"metas"`
@@ -81,7 +81,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 
-		if err := conf.mgoColl.FindId(folderId).Select(bson.M{"rootsid": 0, "_id": 0}).One(&mgoRes); err != nil {
+		if err := conf.mgoColl.FindId(folderId).Select(bson.M{"rootsid": 0, "_id": 1}).One(&mgoRes); err != nil {
 			if err == mgo.ErrNotFound {
 				l.Error("FindId", err)
 				return suckhttp.NewResponse(400, "Bad request"), nil

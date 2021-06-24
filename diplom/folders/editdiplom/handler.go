@@ -21,7 +21,7 @@ type Handler struct {
 }
 
 type folder struct {
-	Id         string   `bson:"_id" json:"-"`
+	Id         string   `bson:"_id" json:"id"`
 	RootsId    []string `bson:"rootsid" json:"-"`
 	Name       string   `bson:"name" json:"name"`
 	Metas      []meta   `bson:"metas" json:"metas"`
@@ -52,6 +52,7 @@ type templatedata struct {
 	Metausers            []metauser
 	BecomeNauchrukMetaId string
 	CanChangeTheme       bool
+	User                 cookieData
 }
 
 func NewHandler(templ *template.Template, auth, tokendecoder, getmetausers, viewdiplom *httpservice.InnerService) (*Handler, error) {
@@ -77,17 +78,18 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	var data templatedata
 	//	TODO: AUTH
 	var cookieClaims cookieData
-	k, err := conf.auth.GetAccessWithData(r, l, "folders", 1, &cookieClaims)
+	_, err := conf.auth.GetAccessWithData(r, l, "folders", 1, &cookieClaims)
 	if err != nil {
 		return nil, err
 	}
-	if !k {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
 
 	if cookieClaims.Role > 1 { ///////////////////////////////// setmetauser needs auth with key "folders"
 		data.BecomeNauchrukMetaId = cookieClaims.MetaId
 	}
+	data.User = cookieClaims
 
 	// GET DIPLOM
 	viewDiplomReq, err := conf.viewDiplom.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", folderId), r)
@@ -147,7 +149,7 @@ func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *l
 		return errors.New("body: is empty")
 	}
 
-	//fmt.Println(resp.GetBody())
+	// fmt.Println(string(resp.GetBody()))
 	if err := json.Unmarshal(resp.GetBody(), data); err != nil {
 		return errors.New(suckutils.ConcatTwo("unmarshal: ", err.Error()))
 	}

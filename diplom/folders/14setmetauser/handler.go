@@ -56,13 +56,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	k, _, err := conf.auth.GetAccess(r, l, "folders", 1)
+	_, _, err = conf.auth.GetAccess(r, l, "folders", 1)
 	if err != nil {
 		return nil, err
 	}
-	if !k {
-		return suckhttp.NewResponse(403, "Forbidden"), nil
-	}
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
 
 	if err := conf.mgoCollMetausers.Find(bson.M{"_id": fnewmeta}).Select(bson.M{"_id": 1}).One(nil); err != nil {
 		if err == mgo.ErrNotFound {
@@ -83,7 +83,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		}
 	}
 
-	change := bson.M{"$addToSet": bson.M{"metas": &meta{Id: folderid, Type: fnewmetatype}}}
+	change := bson.M{"$addToSet": bson.M{"metas": &meta{Id: fnewmeta, Type: fnewmetatype}}}
 
 	changeInfo, err := conf.mgoColl.UpdateAll(query, change)
 	if err != nil {
