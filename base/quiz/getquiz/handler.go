@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"html/template"
 	"io/ioutil"
 	"strings"
@@ -27,7 +28,7 @@ type question struct {
 	Type     int               `bson:"question_type" json:"question_type"`
 	Position int               `bson:"question_position" json:"question_position"`
 	Text     string            `bson:"question_text" json:"question_text"`
-	Answers  map[string]string `bson:"answers" json:"answers"`
+	Answers  map[string]string `bson:"question_answers" json:"question_answers"`
 }
 
 func NewHandler(col *mgo.Collection) (*Handler, error) {
@@ -63,8 +64,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	var mgoRes quiz
 
-	if err := conf.mgoColl.Find(bson.M{"_id": quizId, "deleted": bson.M{"$exists": false}}).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
+	if err := conf.mgoColl.Find(bson.M{"_id": quizId, "deleted": bson.M{"$exists": false}}).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
+			l.Debug("Mongo", "not found")
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
@@ -74,14 +76,24 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	var contentType string
 
 	if len(mgoRes.Questions) != 0 {
-		buf := bytes.NewBuffer(body)
-		err := conf.template.Execute(buf, mgoRes.Questions)
-		if err != nil {
-			l.Error("Template execution", err)
-			return suckhttp.NewResponse(500, "Internal server error"), err
+		if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
+			buf := bytes.NewBuffer(body)
+			err := conf.template.Execute(buf, mgoRes.Questions)
+			if err != nil {
+				l.Error("Template execution", err)
+				return suckhttp.NewResponse(500, "Internal server error"), err
+			}
+			body = buf.Bytes()
+			contentType = "text/html"
+		} else if strings.Contains(r.GetHeader(suckhttp.Accept), "application/json") {
+			if body, err = json.Marshal(mgoRes); err != nil {
+				l.Error("Marshal", err)
+				return suckhttp.NewResponse(500, "Internal server error"), nil
+			}
+			contentType = "application/json"
+		} else {
+			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
-		body = buf.Bytes()
-		contentType = "text/html"
 	}
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil

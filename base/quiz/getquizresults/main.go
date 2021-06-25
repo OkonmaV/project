@@ -19,8 +19,6 @@ type config struct {
 
 const thisServiceName httpservice.ServiceName = "quiz.getquizresults"
 
-//const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
-
 func (c *config) GetListenAddress() string {
 	return c.Listen
 }
@@ -41,5 +39,5 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}) //, tokenDecoderServiceName)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{})
 }

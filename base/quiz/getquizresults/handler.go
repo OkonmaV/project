@@ -1,12 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
-	"io/ioutil"
 	"strings"
-	"text/template"
-	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 	"time"
 
@@ -16,9 +12,7 @@ import (
 )
 
 type Handler struct {
-	mgoColl  *mgo.Collection
-	auth     *httpservice.Authorizer
-	template *template.Template
+	mgoColl *mgo.Collection
 }
 
 type results struct {
@@ -31,16 +25,7 @@ type results struct {
 }
 
 func NewHandler(col *mgo.Collection) (*Handler, error) {
-	templData, err := ioutil.ReadFile("index.html")
-	if err != nil {
-		return nil, err
-	}
-
-	templ, err := template.New("index").Parse(string(templData))
-	if err != nil {
-		return nil, err
-	}
-	return &Handler{mgoColl: col, template: templ}, nil
+	return &Handler{mgoColl: col}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -48,7 +33,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
+	// TODO: AUTH
 	query := make(map[string]interface{})
 
 	quizId := strings.Trim(r.Uri.Path, "/")
@@ -83,20 +68,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		var err error
 		body, err = json.Marshal(mgoRes)
 		if err != nil {
-			l.Error("Marshalling mongo responce", err)
+			l.Error("Marshal", err)
 			return suckhttp.NewResponse(500, "Internal server error"), nil
 		}
 		contentType = "application/json"
 
-	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
-		buf := bytes.NewBuffer(body)
-		err := conf.template.Execute(buf, mgoRes)
-		if err != nil {
-			l.Error("Template execution", err)
-			return suckhttp.NewResponse(500, "Internal server error"), err
-		}
-		body = buf.Bytes()
-		contentType = "text/html"
+	} else {
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil

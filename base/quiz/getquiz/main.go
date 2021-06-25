@@ -17,7 +17,7 @@ type config struct {
 	mgoSession   *mgo.Session
 }
 
-const thisServiceName httpservice.ServiceName = "quiz.getquizquestions"
+const thisServiceName httpservice.ServiceName = "quiz.getquiz"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen

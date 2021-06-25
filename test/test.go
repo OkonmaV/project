@@ -133,11 +133,9 @@ func main() {
 	//bar[1] = 1
 	//bar[2] = 2
 
-	var foo answer = answer{Id: "id", Text: "text"}
-	answrs := make(map[string]*answer)
-	answrs["id"] = &foo
-	*answrs["id"] = answer{Text: "newtext"}
-	fmt.Println(foo)
+	var foo []string
+
+	fmt.Println(foo[0])
 
 	// ans1 := []answer{}
 	// ans2 := []answer{}
