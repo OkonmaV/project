@@ -29,7 +29,7 @@ type question struct {
 	Type     int               `bson:"question_type"`
 	Position int               `bson:"question_position"`
 	Text     string            `bson:"question_text"`
-	Answers  map[string]string `bson:"answers"`
+	Answers  map[string]string `bson:"question_answers"`
 }
 
 type cookieData struct {

@@ -107,15 +107,21 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	// GET STUDENT
 
 	if data.Student.MetaId != "" {
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Student.MetaId), r)
+		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?metaid=", data.Student.MetaId), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Student); err != nil {
+		var mgoRes []metauser
+		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &mgoRes); err != nil {
 			l.Error("getmetausersStudent", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
+		if len(mgoRes) != 1 { //??????
+			l.Error("Get student's metauser", errors.New(suckutils.ConcatTwo("cant find student's metauser with metaid: ", data.Student.MetaId)))
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		data.Student = mgoRes[0]
 	} else {
 		l.Error("METAUSERS", errors.New(suckutils.ConcatTwo("folder without student, folderid: ", folderId)))
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
@@ -123,21 +129,22 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	//
 
 	// GET NAUCHRUK
-	for _, metauser := range data.Folder.Metas {
-		if metauser.Type == 5 {
-			data.Nauchruk.MetaId = metauser.Id
-		}
-	}
 	if data.Nauchruk.MetaId != "" {
-		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/", data.Nauchruk.MetaId), r)
+		getMetausersReq, err := conf.getMetausers.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?metaid=", data.Nauchruk.MetaId), r)
 		if err != nil {
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &data.Nauchruk); err != nil {
+		var mgoRes []metauser
+		if err = getSomeJsonData(getMetausersReq, conf.getMetausers, l, &mgoRes); err != nil {
 			l.Error("getmetausersNauch", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
+		if len(mgoRes) != 1 { //??????
+			l.Error("Get nauchruk's metauser", errors.New(suckutils.ConcatTwo("cant find nauchruks's metauser with metaid: ", data.Nauchruk.MetaId)))
+			return suckhttp.NewResponse(500, "Internal Server Error"), nil
+		}
+		data.Nauchruk = mgoRes[0]
 	}
 
 	var body []byte
@@ -154,7 +161,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 }
 
 type folder struct {
-	Id         string   `bson:"_id" json:"-"`
+	Id         string   `bson:"_id" json:"id"`
 	RootsId    []string `bson:"rootsid" json:"-"`
 	Name       string   `bson:"name" json:"name"`
 	Metas      []meta   `bson:"metas" json:"metas"`
