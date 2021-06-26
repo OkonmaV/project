@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"strings"
 	"text/template"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -43,11 +42,6 @@ func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService, tem
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.GET {
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
-
-	rootId := strings.Trim(r.Uri.Path, "/")
-	if rootId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
