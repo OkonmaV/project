@@ -132,7 +132,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		if len(mgoRes) != 1 { //??????
-			l.Error("Get nauchruk's metauser", errors.New(suckutils.ConcatTwo("cant find nauchruks's metauser with metaid: ", data.Student.MetaId)))
+			l.Error("Get nauchruk's metauser", errors.New(suckutils.ConcatTwo("cant find nauchruks's metauser with metaid: ", data.Nauchruk.MetaId)))
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
 		data.Nauchruk = mgoRes[0]
