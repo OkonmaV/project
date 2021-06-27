@@ -103,7 +103,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 				//fldr.Nauchruk = metauser{MetaId: metausr.Id}
 				metaids = append(metaids, metausr.Id)
 				metausersIndex[metausr.Id] = &fldr.Nauchruk
-
 			}
 			if metausr.Type == 1 {
 				//fldr.Student = metauser{MetaId: metausr.Id}
