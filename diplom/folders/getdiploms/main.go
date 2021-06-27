@@ -21,6 +21,8 @@ type config struct {
 
 const thisServiceName httpservice.ServiceName = "folders.getdiploms"
 const getMetausersServiceName httpservice.ServiceName = "folders.getmetausers"
+const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
+const authGetServiceName httpservice.ServiceName = "auth.get"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -47,7 +49,7 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(mgoCollection, templ, connectors[getMetausersServiceName])
+	return NewHandler(mgoCollection, templ, connectors[authGetServiceName], connectors[tokenDecoderServiceName], connectors[getMetausersServiceName])
 }
 
 func (conf *config) Close() error {
@@ -56,5 +58,5 @@ func (conf *config) Close() error {
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 50, &config{}, getMetausersServiceName)
+	httpservice.InitNewService(thisServiceName, false, 50, &config{}, tokenDecoderServiceName, authGetServiceName, getMetausersServiceName)
 }

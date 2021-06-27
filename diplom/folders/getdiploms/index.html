@@ -3,9 +3,24 @@
 <!--# set var="main_class" value="main-center" -->
 <div class="container">
 	<h1>Списки</h1>
-<ul class="list-group">
-    {{- range  .}}
-    <li class="row list-group-item"><input type="hidden" id="{{.Id}}" name="frootid" value="{{.Id}}" />{{.Name}}</li>
-    {{- end }}
-</ul>
+	<ul class="list-group">
+		{{- $metaId := .User.MetaId}}
+		{{- range .Folders}}
+		<li class="row list-group-item">
+			<div class="col-8">
+				<input type="hidden" id="{{.Id}}" name="frootid" value="{{.Id}}" />
+				{{.Name}}
+				<div>
+					<span class="small text-muted">{{.Student.Name}} {{.Student.Surname}}</span>
+					{{- if .Nauchruk.MetaId}} / <span class="small text-muted">{{.Nauchruk.Name}}
+						{{.Nauchruk.Surname}}</span>{{- end}}
+				</div>
+			</div>
+			<div class="col-4">
+				<a href="/view/{{.Id}}">просмотр</a>
+				{{- if or (eq .Student.MetaId $metaId) (eq .Nauchruk.MetaId $metaId)}} <a class="link-info" href="/edit/{{.Id}}">редактировать</a>{{- end}}
+			</div>
+		</li>
+		{{- end }}
+	</ul>
 </div>

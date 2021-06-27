@@ -18,6 +18,7 @@ import (
 
 type Handler struct {
 	template       *template.Template
+	auth           *httpservice.Authorizer
 	getQuiz        *httpservice.InnerService
 	getQuizResults *httpservice.InnerService
 }
@@ -72,9 +73,19 @@ type answerResult struct {
 	Checked bool
 }
 
-func NewHandler(templ *template.Template, getquiz *httpservice.InnerService, getquizresults *httpservice.InnerService) (*Handler, error) {
+type cookieData struct {
+	Login  string `json:"Login"`
+	MetaId string `json:"metaid"`
+	Role   int    `json:"role"`
+}
 
-	return &Handler{template: templ, getQuiz: getquiz, getQuizResults: getquizresults}, nil
+func NewHandler(templ *template.Template, auth, tokendecoder, getquiz *httpservice.InnerService, getquizresults *httpservice.InnerService) (*Handler, error) {
+
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{template: templ, auth: authorizer, getQuiz: getquiz, getQuizResults: getquizresults}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
@@ -90,9 +101,15 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	if userId := strings.TrimSpace(r.Uri.Query().Get("userid")); userId != "" { //TODO: take id from cookie?
-		params["userid"] = userId
+	var cookieClaims cookieData
+	_, err := conf.auth.GetAccessWithData(r, l, "folders", 1, &cookieClaims)
+	if err != nil {
+		return nil, err
 	}
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
+	params["userid"] = cookieClaims.Login
 	if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
 		params["entityid"] = entityId
 	}
@@ -120,12 +137,16 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(500, "Internal server error"), nil
 	}
 
-	var quizResults []results
+	var quizResults []*results
 	if err = getSomeJsonData(getQuizResultsReq, conf.getQuizResults, &quizResults); err != nil {
 		l.Error("getQuizResults", err)
 		return suckhttp.NewResponse(500, "Internal server error"), nil
 	}
 	//fmt.Println("|||||||||-----------------------", quizResults, "----------------------------||||||||")
+	if len(quizResults) == 0 {
+		quizResults = make([]*results, 1)
+		quizResults[0] = &results{QuizId: params["quizid"], EntityId: params["entityid"], UserId: params["userid"]}
+	}
 	data := make([]templateData, len(quizResults))
 
 	for i, res := range quizResults {

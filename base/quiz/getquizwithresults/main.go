@@ -16,6 +16,8 @@ type config struct {
 const thisServiceName httpservice.ServiceName = "quiz.getquizwithresults"
 const getQuizServiceName httpservice.ServiceName = "quiz.getquiz"
 const getQuizResultsServiceName httpservice.ServiceName = "quiz.getquizresults"
+const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
+const authGetServiceName httpservice.ServiceName = "auth.get"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -33,9 +35,9 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	if err != nil {
 		return nil, err
 	}
-	return NewHandler(templ, connectors[getQuizServiceName], connectors[getQuizResultsServiceName])
+	return NewHandler(templ, connectors[authGetServiceName], connectors[tokenDecoderServiceName], connectors[getQuizServiceName], connectors[getQuizResultsServiceName])
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, getQuizServiceName, getQuizResultsServiceName)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenDecoderServiceName, authGetServiceName, getQuizServiceName, getQuizResultsServiceName)
 }

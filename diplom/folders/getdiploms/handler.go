@@ -20,6 +20,7 @@ type Handler struct {
 	mgoColl      *mgo.Collection
 	template     *template.Template
 	getMetausers *httpservice.InnerService
+	auth         *httpservice.Authorizer
 }
 
 type folder struct {
@@ -44,9 +45,18 @@ type meta struct {
 	Id   string `bson:"metaid" json:"metaid"`
 }
 
-func NewHandler(mgoColl *mgo.Collection, template *template.Template, getmetausers *httpservice.InnerService) (*Handler, error) {
+type cookieData struct {
+	MetaId string `json:"metaid"`
+	Role   int    `json:"role"`
+}
 
-	return &Handler{mgoColl: mgoColl, template: template, getMetausers: getmetausers}, nil
+func NewHandler(mgoColl *mgo.Collection, template *template.Template, auth, tokendecoder, getmetausers *httpservice.InnerService) (*Handler, error) {
+
+	authorizer, err := httpservice.NewAuthorizer(thisServiceName, auth, tokendecoder)
+	if err != nil {
+		return nil, err
+	}
+	return &Handler{mgoColl: mgoColl, auth: authorizer, template: template, getMetausers: getmetausers}, nil
 
 }
 
@@ -70,7 +80,16 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	mgoRes := []folder{}
+	var cookieClaims cookieData
+	_, err := conf.auth.GetAccessWithData(r, l, "folders", 1, &cookieClaims)
+	if err != nil {
+		return nil, err
+	}
+	// if !k {
+	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
+	// }
+
+	mgoRes := []*folder{}
 	if err := conf.mgoColl.Find(bson.M{"rootsid": rootId, "type": 5}).Select(bson.M{"rootsid": 0, "type": 0}).All(&mgoRes); err != nil {
 		return nil, err
 	}
@@ -113,13 +132,20 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	for _, metausr := range mgoResMetausers {
-		*metausersIndex[metausr.MetaId] = metausr
+		if metausersIndex[metausr.MetaId] != nil {
+			*metausersIndex[metausr.MetaId] = metausr
+		}
 	}
 
 	if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
 
 		buf := bytes.NewBuffer(body)
-		if err := conf.template.Execute(buf, mgoRes); err != nil {
+		if err := conf.template.Execute(buf, struct {
+			User    *cookieData
+			Folders []*folder
+		}{
+			User:    &cookieClaims,
+			Folders: mgoRes}); err != nil {
 			l.Error("Template execution", err)
 			return suckhttp.NewResponse(500, "Internal server error"), err
 		}

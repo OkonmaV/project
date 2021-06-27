@@ -1,0 +1,117 @@
+<div class="container">
+	<button id="startVideo">
+		Start
+	</button>
+	<button id="viewVideo">
+		View
+	</button>
+
+	<div id="remoteVideos">
+	</div>
+
+	<script src="/index.js" type="module"> </script>
+	<script type="module">
+		import {PionSession, PionEvents} from '/index.js'
+		const SIGNALER_URI = 'a.eveli.ru/signal'
+
+		var log = msg => {
+			//	document.getElementById('logs').innerHTML += msg + '<br>'
+			console.log(msg);
+		}
+
+		let addRemoteVideo = media => {
+			let video = document.createElement('video')
+			let container = document.getElementById('remoteVideos')
+
+			video.id = media.id
+			if (media.getVideoTracks().length == 0)
+				video.style.display = "none";
+			video.controls = true
+			video.srcObject = media
+			video.onloadedmetadata = function (e) {
+				video.play()
+			}
+
+			container.appendChild(video)
+		}
+
+		let removeRemoteVideo = media => {
+			try {
+				document.getElementById(media.id).remove()
+			} catch (e) {
+				log('User left room that did not have a media session')
+			}
+		}
+
+		const startMedia = function (localMediaStream) {
+//			let localVideo = document.getElementById('localVideo')
+//			localVideo.srcObject = localMediaStream
+//			localVideo.onloadedmetadata = function (e) {
+//				localVideo.play()
+//			}
+
+			let pionSession = new PionSession(SIGNALER_URI, '', {
+				iceServers: [
+					{
+						urls: 'stun:ex.eveli.ru:3478',
+						username: 'foo',
+						credentials: 'bar'
+					}
+				],
+			})
+
+			pionSession.eventHandler = event => {
+				switch (event.type) {
+					case PionEvents.MEDIA_START:
+						log(event.media.getTracks());
+						addRemoteVideo(event.media)
+						break
+					case PionEvents.MEDIA_STOP:
+						removeRemoteVideo(event.media)
+						break
+					default:
+						console.warn(event)
+				}
+			}
+			pionSession.start()
+			pionSession.addMedia(localMediaStream)
+
+		}
+
+		document.getElementById("viewVideo").onclick = () => {
+			//navigator.mediaDevices.getDisplayMedia({video: false, audio: true})
+			getMic()
+				.then(startMedia).catch(err => {
+					log('The following error occurred when trying to use getUserMedia: ' + err);
+				});
+		};
+		document.getElementById("startVideo").onclick = () => {
+			getScreenShareWithMic()
+				.then(startMedia).catch(err => {
+					log('The following error occurred when trying to use getUserMedia: ' + err);
+				});
+		};
+		//		document.getElementById("fullVideo").onclick = () => {
+		//			getScreenShareWithCamAndMic()
+		//				.then(startMedia).catch(err => {
+		//					log('The following error occurred when trying to use getUserMedia: ' + err);
+		//				});
+		//		};
+
+		async function getScreenShareWithMic() {
+			const stream = await navigator.mediaDevices.getDisplayMedia({video: true});
+			const audio = await navigator.mediaDevices.getUserMedia({audio: true});
+			return new MediaStream([audio.getTracks()[0], stream.getTracks()[0]]);
+		}
+
+		async function getMic() {
+			const audio = await navigator.mediaDevices.getUserMedia({audio: true});
+			return new MediaStream([audio.getTracks()[0]]);
+		}
+		async function getScreenShareWithCamAndMic() {
+			const stream = await navigator.mediaDevices.getDisplayMedia({video: true});
+			const audio = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
+			return new MediaStream([audio.getTracks()[1], audio.getTracks()[0], stream.getTracks()[0]]);
+		}
+	</script>
+</div>

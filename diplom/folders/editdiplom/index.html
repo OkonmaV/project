@@ -5,7 +5,12 @@
 	<h1>Выпускная квалификационная работа</h1>
     <h2>Тема:{{- if .Folder.Name}} {{.Folder.Name}}{{- else}} не указана{{- end}}</h2>
     <h2>Выполняет: {{- if .Student.MetaId}}{{.Student.Surname}} {{.Student.Name}}{{- else}}отсутствует{{- end}}</h2>
-    <h2>Научный руководитель: {{- if .Nauchruk.MetaId}}{{.Nauchruk.Surname}} {{.Nauchruk.Name}}{{- else}}отсутствует{{- end}}</h2>
+    <h2>
+		Научный руководитель: {{- if .Nauchruk.MetaId}}{{.Nauchruk.Surname}} {{.Nauchruk.Name}}{{- else}}отсутствует{{- end}}
+		{{- if and (gt .User.Role 1) (ne .User.MetaId .Nauchruk.MetaId)}}
+		<form method="POST" action="/setmetauser/{{.Folder.Id}}"><input type="hidden" name="fnewmetatype" value="5"/><button name="fnewmetaid" value="{{.User.MetaId}}">стать им</button></form>
+		{{- end}}
+	</h2>
     
     {{- if .CanChangeTheme}}<form action="/renamefolder/{{.Folder.Id}}" method="POST">
         <input class="form-control" type="text" name="fnewname" value="{{.Folder.Name}}"/>
@@ -13,7 +18,4 @@
     </form>
     {{- else}}Изменять тему может только сам студент или научный руководитель{{- end}}
    
-		{{- if gt .User.Role 1}}
-		<form method="POST" action="/setmetauser/{{.Folder.Id}}"><input type="hidden" name="fnewmetatype" value="5"/><button name="fnewmetaid" value="{{.User.MetaId}}">стать им</button></form>
-		{{- end}}
 </div>
