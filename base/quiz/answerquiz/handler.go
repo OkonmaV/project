@@ -133,5 +133,6 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return nil, err
 	}
 
+	return suckhttp.NewResponse(302, "Found").AddHeader(suckhttp.Location, suckutils.ConcatTwo("/view/", entityId)), nil
 	return suckhttp.NewResponse(200, "OK"), nil
 }

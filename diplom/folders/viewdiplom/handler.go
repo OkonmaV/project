@@ -44,6 +44,12 @@ type templatedata struct {
 	Folder   folder   `json:"folder"`
 	Student  metauser `json:"student"`
 	Nauchruk metauser `json:"nauchruk"`
+	User     cookieData
+}
+
+type cookieData struct {
+	MetaId string `json:"metaid"`
+	Role   int    `json:"role"`
 }
 
 func NewHandler(templ *template.Template, auth, tokendecoder, getfolders, getmetausers *httpservice.InnerService) (*Handler, error) {
@@ -71,7 +77,14 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(401, "Unauthorized"), nil
 	}
 
+	var cookieClaims cookieData
+	_, err := conf.auth.GetAccessWithData(r, l, "folders", 1, &cookieClaims)
+	if err != nil {
+		return nil, err
+	}
+
 	var data templatedata
+	data.User = cookieClaims
 
 	// GET FOLDER
 	getFoldersReq, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)

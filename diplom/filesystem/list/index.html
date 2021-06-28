@@ -1,0 +1,14 @@
+<div class="container">
+	<h2>Файлы:</h2>
+	<ol>
+		{{- $dir := .Dir -}}
+		{{- range .Files}}
+		<li class="file-list-item">
+			<time>{{- .ModTime}}</time>
+			<span class="size" title="{{.RealSize}} bytes">[{{- .Size}}]</span>
+			<span class="name">{{- .Name}}</span>
+			[<a href="/files{{$dir}}/{{.Name}}" target="_blank">скачать</a>]
+		</li>
+		{{- end}}
+	</ol>
+</div>

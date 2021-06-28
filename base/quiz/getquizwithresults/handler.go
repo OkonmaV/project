@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"strings"
 	"text/template"
 	"thin-peak/httpservice"
@@ -109,6 +108,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	// if !k {
 	// 	return suckhttp.NewResponse(403, "Forbidden"), nil
 	// }
+	if cookieClaims.Role == 1 { // TODO HACK
+		return suckhttp.NewResponse(403, "Forbidden"), nil
+	}
 	params["userid"] = cookieClaims.Login
 	if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
 		params["entityid"] = entityId
@@ -182,7 +184,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		}
 
 	}
-	fmt.Println("DATA|||||||||-----------------------", data, "----------------------------||||||||")
+	// fmt.Println("DATA|||||||||-----------------------", data, "----------------------------||||||||")
 	// for i, res := range quizResults {
 	// 	data[i].Results = make([]templQuestion, len(res.Answers))
 

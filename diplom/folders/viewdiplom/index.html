@@ -1,6 +1,10 @@
 <div class="container">
-	<h1>Выпускная квалификационная работа</h1>
-    <h2>Тема:{{- if .Folder.Name}} {{.Folder.Name}}{{- else}} не указана{{- end}} </h2>
-    <h2>Выполняет: {{- if .Student.MetaId}}{{.Student.Surname}} {{.Student.Name}}{{- else}}отсутствует{{- end}}</h2>
-    <h2>Научный руководитель: {{- if .Nauchruk.MetaId}}{{.Nauchruk.Surname}} {{.Nauchruk.Name}}{{- else}}отсутствует{{- end}}</h2>
+	<h1>Защита выпускной квалификационной работы</h1>
+	<h2>Тема:{{- if .Folder.Name}} {{.Folder.Name}}{{- else}} не указана{{- end}} </h2>
+	<h2>Выполняет: {{- if .Student.MetaId}}{{.Student.Surname}} {{.Student.Name}}{{- else}}отсутствует{{- end}}</h2>
+	<h2>Научный руководитель: {{- if .Nauchruk.MetaId}}{{.Nauchruk.Surname}} {{.Nauchruk.Name}}{{- else}}отсутствует{{- end}}</h2>
+	{{- if and (gt .User.Role 1) (ne .User.MetaId .Nauchruk.MetaId)}}
+	<form method="POST" action="/setmetauser/{{.Folder.Id}}"><input type="hidden" name="fnewmetatype"
+			value="5" /><button name="fnewmetaid" value="{{.User.MetaId}}">стать научным руководителем</button></form>
+	{{- end}}
 </div>

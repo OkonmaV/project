@@ -5,6 +5,9 @@
 	<button id="viewVideo">
 		View
 	</button>
+	<button id="muteAudio">
+		Mute
+	</button>
 
 	<div id="remoteVideos">
 	</div>
@@ -75,7 +78,16 @@
 			}
 			pionSession.start()
 			pionSession.addMedia(localMediaStream)
+			document.getElementById("startVideo").remove();
+			document.getElementById("viewVideo").remove();
+		}
 
+		let audio;
+		document.getElementById("muteAudio").onclick = () => {
+			if (audio.getTracks()[0].enabled = !(audio.getTracks()[0].enabled)) 
+				document.getElementById("muteAudio").innerHTML = "Mute";
+			else
+				document.getElementById("muteAudio").innerHTML = "Unmute";
 		}
 
 		document.getElementById("viewVideo").onclick = () => {
@@ -100,17 +112,17 @@
 
 		async function getScreenShareWithMic() {
 			const stream = await navigator.mediaDevices.getDisplayMedia({video: true});
-			const audio = await navigator.mediaDevices.getUserMedia({audio: true});
+			audio = await navigator.mediaDevices.getUserMedia({audio: true});
 			return new MediaStream([audio.getTracks()[0], stream.getTracks()[0]]);
 		}
 
 		async function getMic() {
-			const audio = await navigator.mediaDevices.getUserMedia({audio: true});
+			audio = await navigator.mediaDevices.getUserMedia({audio: true});
 			return new MediaStream([audio.getTracks()[0]]);
 		}
 		async function getScreenShareWithCamAndMic() {
 			const stream = await navigator.mediaDevices.getDisplayMedia({video: true});
-			const audio = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
+			audio = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
 			return new MediaStream([audio.getTracks()[1], audio.getTracks()[0], stream.getTracks()[0]]);
 		}
 	</script>

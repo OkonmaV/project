@@ -1,3 +1,7 @@
 video {
 	width: 100%;
 }
+
+.file-list-item .name {
+	font-weight: bold;
+}
