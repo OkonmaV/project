@@ -37,6 +37,7 @@ type userdata struct {
 	FolderId string `json:"folderid"`
 	Role     int    `json:"role"`
 	Group    string `json:"group"`
+	Theme    string `json:"-"`
 }
 
 var eq_ch []byte = []byte("=")
@@ -130,15 +131,22 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 		}
 		values := strings.Split(line, " ")
-		if len(values) != 4 {
-			l.Debug("FormatError", line)
-			return suckhttp.NewResponse(400, "Bad request"), nil
-		}
+		// if len(values) != 4 {
+		// 	l.Debug("FormatError", line)
+		// 	return suckhttp.NewResponse(400, "Bad request"), nil
+		// }
 		password, err := getMD5(values[3])
 		if err != nil {
 			l.Error("GetMD5", err)
 		}
-		users = append(users, &userdata{Surname: values[0], Name: values[1], Otch: values[2], Role: usersType, Password: password})
+
+		if len(values) > 4 {
+			users = append(users, &userdata{Surname: values[0], Name: values[1], Otch: values[2], Role: usersType, Password: password, Theme: strings.Join(values[4:], "%20")})
+		} else {
+			users = append(users, &userdata{Surname: values[0], Name: values[1], Otch: values[2], Role: usersType, Password: password})
+		}
+
+		users = append(users, &userdata{Surname: values[0], Name: values[1], Otch: values[2], Role: usersType, Password: password, Theme: strings.Join(values[4:], "%20")})
 	}
 	//
 
@@ -176,12 +184,12 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			user.Group = group
 
 			// createFolderWithMetauser req
-			createFolderWithMetaReq, err := conf.createFolderWithMetauser.CreateRequestFrom(suckhttp.PUT, "", r)
+			createFolderWithMetaReq, err := conf.createFolderWithMetauser.CreateRequestFrom(suckhttp.PUT, suckutils.Concat("/?name=", user.Theme), r)
 			if err != nil {
 				l.Error("CreateRequestFrom", err)
 				return suckhttp.NewResponse(500, "Internal server error"), nil
 			}
-			createFolderWithMetaReq.Body = []byte(suckutils.ConcatThree("metaid=", user.MetaId, "&metatype=5&foldertype=5"))
+			createFolderWithMetaReq.Body = []byte(suckutils.ConcatThree("metaid=", user.MetaId, "&metatype=1&foldertype=5"))
 			createFolderWithMetaReq.AddHeader(suckhttp.Content_Type, "application/x-www-form-urlencoded")
 			createFolderWithMetaReq.AddHeader(suckhttp.Accept, "text/plain")
 			createFolderWithMetaResp, err := conf.createFolderWithMetauser.Send(createFolderWithMetaReq)
