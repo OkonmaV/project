@@ -16,7 +16,7 @@ type user struct {
 	Name     string `bson:"name" json:"name,omitempty"`
 	Surname  string `bson:"surname" json:"surname,omitempty"`
 	Otch     string `bson:"otch" json:"otch,omitempty"`
-	Group    string `bson:"group" json:"group,omitempty"`
+	GroupId  string `bson:"groupid" json:"groupid,omitempty"`
 	MetaId   string `bson:"metaid" json:"metaid,omitempty"`
 	FolderId string `bson:"folderid" json:"folderid,omitempty"`
 }
