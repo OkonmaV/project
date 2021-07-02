@@ -68,6 +68,7 @@ func (conf *Authentication) Handle(r *suckhttp.Request, l *logger.Logger) (*suck
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
+	println(login, hashLogin, hashPassword)
 	var trntlRes []interface{}
 	if err = conf.trntlConn.SelectTyped(conf.trntlTable, "secondary", 0, 1, tarantool.IterEq, []interface{}{hashLogin, hashPassword}, &trntlRes); err != nil {
 		return nil, err

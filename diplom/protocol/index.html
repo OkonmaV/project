@@ -1,0 +1,24 @@
+<div class="container">
+	<h1>Результаты</h1>
+	<ol>
+	{{- range .Results }}
+	<li style="border-bottom: 1px solid gray; margin: 10px;">
+		{{if .UserData}}
+		<h2>{{.UserData.Name}} {{.UserData.Surname}}</h2>
+		{{- range .Questions }}
+		<div><b>{{.TextQuestion}}:</b>
+			{{- range .Answers }}
+			{{- if .Checked }}
+			<span>{{.Text }}</span>
+			{{- end }}
+			{{- end }}
+			{{- if .TextAnswer }}
+			<span>{{ .TextAnswer }}</span>
+			{{- end }}
+		</div>
+		{{- end }}
+		{{- end }}
+	</li>
+	{{- end}}
+	</ol>
+</div>

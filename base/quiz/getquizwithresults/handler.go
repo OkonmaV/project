@@ -111,7 +111,11 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if cookieClaims.Role == 1 { // TODO HACK
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	params["userid"] = cookieClaims.Login
+	if v := strings.TrimSpace(r.Uri.Query().Get("all")); v != "" {
+		params["userid"] = ""
+	} else {
+		params["userid"] = cookieClaims.Login
+	}
 	if entityId := strings.TrimSpace(r.Uri.Query().Get("entityid")); entityId != "" {
 		params["entityid"] = entityId
 	}

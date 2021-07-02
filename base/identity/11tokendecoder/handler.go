@@ -30,7 +30,7 @@ func (conf *TokenDecoder) Handle(r *suckhttp.Request, l *logger.Logger) (*suckht
 	if tokenString == "" {
 		if tokenString, _ = r.GetCookie(conf.cookieName); tokenString == "" {
 			l.Debug("TokenString", "empty")
-			return suckhttp.NewResponse(400, "Bad request"), nil
+			return suckhttp.NewResponse(404, "Not found"), nil
 		}
 	}
 

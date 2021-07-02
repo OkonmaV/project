@@ -15,7 +15,6 @@ type config struct {
 
 const thisServiceName httpservice.ServiceName = "webrtc.showbroadcast"
 const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
-const authGetServiceName httpservice.ServiceName = "auth.get"
 const getFoldersServiceName httpservice.ServiceName = "folders.getfolders"
 const getMetausersServiceName httpservice.ServiceName = "folders.getmetausers"
 
@@ -36,9 +35,9 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 		return nil, err
 	}
 
-	return NewHandler(c.Memcached, templ, connectors[authGetServiceName], connectors[tokenDecoderServiceName], connectors[getFoldersServiceName], connectors[getMetausersServiceName])
+	return NewHandler(c.Memcached, templ, connectors[tokenDecoderServiceName], connectors[getFoldersServiceName], connectors[getMetausersServiceName])
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 50, &config{}, tokenDecoderServiceName, authGetServiceName, getFoldersServiceName, getMetausersServiceName)
+	httpservice.InitNewService(thisServiceName, false, 50, &config{}, tokenDecoderServiceName, getFoldersServiceName, getMetausersServiceName)
 }

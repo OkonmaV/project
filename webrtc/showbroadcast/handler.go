@@ -29,7 +29,7 @@ type cookieData struct {
 	Name    string `json:"name"`
 }
 
-func NewHandler(memcs string, templ *template.Template, auth, tokendecoder, getfolders, getmetausers *httpservice.InnerService) (*Handler, error) {
+func NewHandler(memcs string, templ *template.Template, tokendecoder, getfolders, getmetausers *httpservice.InnerService) (*Handler, error) {
 	conn := memcache.New(memcs)
 	err := conn.Ping()
 	if err != nil {

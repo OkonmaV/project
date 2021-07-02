@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"html/template"
+	"io/ioutil"
 
 	"thin-peak/httpservice"
 )
@@ -13,7 +15,8 @@ type config struct {
 
 const thisServiceName httpservice.ServiceName = "protocol.create"
 const getuserdataServiceName httpservice.ServiceName = "identity.getuserdata"
-const getquizresultsServiceName httpservice.ServiceName = "quiz.getquizresults"
+const getquizresultsServiceName httpservice.ServiceName = "quiz.getquizwithresults"
+const getFoldersServiceName httpservice.ServiceName = "folders.getfolders"
 const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
 
 func (c *config) GetListenAddress() string {
@@ -23,10 +26,19 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
+	templData, err := ioutil.ReadFile("index.html")
+	if err != nil {
+		return nil, err
+	}
 
-	return NewHandler(connectors[getuserdataServiceName], connectors[getquizresultsServiceName], connectors[tokenDecoderServiceName])
+	templ, err := template.New("index").Parse(string(templData))
+	if err != nil {
+		return nil, err
+	}
+
+	return NewHandler(templ, connectors[tokenDecoderServiceName], connectors[getuserdataServiceName], connectors[getquizresultsServiceName], connectors[getFoldersServiceName])
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, getuserdataServiceName, getquizresultsServiceName, tokenDecoderServiceName)
+	httpservice.InitNewService(thisServiceName, false, 50, &config{}, getuserdataServiceName, getquizresultsServiceName, tokenDecoderServiceName, getFoldersServiceName)
 }

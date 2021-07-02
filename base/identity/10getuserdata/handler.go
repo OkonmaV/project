@@ -71,7 +71,7 @@ func (conf *GetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhtt
 	var mgoRes map[string]interface{}
 	if err = conf.mgoColl.FindId(userId).Select(selector).One(&mgoRes); err != nil {
 		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), nil
+			return suckhttp.NewResponse(404, "Not found"), nil
 		}
 		return nil, err
 	}

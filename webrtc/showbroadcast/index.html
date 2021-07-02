@@ -1,9 +1,188 @@
-<h1>{{.Folder.Name}}</h1>
-<h2>{{.Student.Surname}} {{.Student.Name}}</h2>
-{{ if eq .MetaId .Student.MetaId }}
-<button class="createSessionButton" onclick="window.createSession(true, '{{.Student.MetaId}}')"> Publish a Broadcast </button>
-<button class="createSessionButton" onclick="window.createSession(false, '{{.Student.MetaId}}')"> Join a Broadcast </button><br />
-<button onclick="window.startSession()"> Start Session </button><br />
-<video id="video" style="width:100%;"></video>
-<div id="logs"></div>
-{{ end }}
+<div class="container">
+	<h2>Трансляция</h2>
+	{{ if eq .MetaId .Student.MetaId }}
+	<button id="startVideo">
+		Начать трансляцию
+	</button>
+	<button id="toggle">
+		Переключить камеру
+	</button>
+	<button id="muteAudio">
+		Mute
+	</button>
+
+
+	<div id="remoteVideos">
+	</div>
+	{{ else }}
+	<button id="viewVideo">
+		Подключиться к трансляции
+	</button>
+	<button id="muteAudio">
+		Unmute
+	</button>
+	<div id="remoteVideos">
+	</div>
+
+	{{ end }}
+</div>
+<script src="/index.js" type="module"> </script>
+<script type="module">
+	import {PionSession, PionEvents} from '/index.js'
+	const SIGNALER_URI = 'a.eveli.ru/signal'
+
+	var log = msg => {
+		//	document.getElementById('logs').innerHTML += msg + '<br>'
+		console.log(msg);
+	}
+
+	let addRemoteVideo = media => {
+		let video = document.createElement('video')
+		let container = document.getElementById('remoteVideos')
+
+		video.id = media.id
+		if (media.getVideoTracks().length == 0)
+			video.style.display = "none";
+		video.controls = true
+		video.srcObject = media
+		video.onloadedmetadata = function (e) {
+			video.play()
+		}
+
+		container.appendChild(video)
+	}
+
+	let removeRemoteVideo = media => {
+		try {
+			document.getElementById(media.id).remove()
+		} catch (e) {
+			log('User left room that did not have a media session')
+		}
+	}
+	let pionSession;
+	const startMedia = function (localMediaStream) {
+		//			let localVideo = document.getElementById('localVideo')
+		//			localVideo.srcObject = localMediaStream
+		//			localVideo.onloadedmetadata = function (e) {
+		//				localVideo.play()
+		//			}
+
+		pionSession = new PionSession(SIGNALER_URI, '', {
+			iceServers: [
+				{
+					url: 'turn:ex.eveli.ru:3478',
+					credential: 'bar',
+					username: 'foo'
+				},
+				{
+					url: 'turn:numb.viagenie.ca',
+					credential: 'muazkh',
+					username: 'webrtc@live.com'
+				},
+				{
+					url: 'turn:192.158.29.39:3478?transport=udp',
+					credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA=',
+					username: '28224511:1379330808'
+				},
+				{
+					url: 'turn:192.158.29.39:3478?transport=tcp',
+					credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA=',
+					username: '28224511:1379330808'
+				},
+				{
+					url: 'turn:turn.bistri.com:80',
+					credential: 'homeo',
+					username: 'homeo'
+				},
+				{
+					url: 'turn:turn.anyfirewall.com:443?transport=tcp',
+					credential: 'webrtc',
+					username: 'webrtc'
+				}
+			],
+		})
+
+		pionSession.eventHandler = event => {
+			switch (event.type) {
+				case PionEvents.MEDIA_START:
+					log(event.media.getTracks());
+					addRemoteVideo(event.media)
+					break
+				case PionEvents.MEDIA_STOP:
+					removeRemoteVideo(event.media)
+					break
+				default:
+					console.warn(event)
+			}
+		}
+		pionSession.start()
+		if (localMediaStream != null)
+			pionSession.addMedia(localMediaStream)
+		let a = document.getElementById("startVideo");
+		if (a != null) a.remove();
+		a = document.getElementById("viewVideo");
+		if (a != null) a.remove();
+	}
+
+	let audio;
+	let stream;
+	let mainstream;
+
+	document.getElementById("muteAudio").onclick = () => {
+		if (audio.getTracks()[0].enabled = !(audio.getTracks()[0].enabled))
+			document.getElementById("muteAudio").innerHTML = "Mute";
+		else
+			document.getElementById("muteAudio").innerHTML = "Unmute";
+	}
+	let selfVideo = true;
+	let togBut = document.getElementById("toggle");
+	if (togBut != null)
+		togBut.onclick = () => {
+			if (!(selfVideo = !selfVideo))
+				pionSession.replaceTrack(mainstream, audio.getVideoTracks()[0], stream.getVideoTracks()[0]);
+			else
+				pionSession.replaceTrack(mainstream, stream.getVideoTracks()[0], audio.getVideoTracks()[0]);
+		}
+
+	let viewBut = document.getElementById("viewVideo");
+	if (viewBut != null)
+		viewBut.onclick = () => {
+			getMic()
+				.then(startMedia).catch(err => {
+					log('The following error occurred when trying to use getUserMedia: ' + err);
+				});
+		};
+	let startBut = document.getElementById("startVideo");
+	if (startBut != null)
+		startBut.onclick = () => {
+			mainstream = getScreenShareWithCamAndMic();
+			mainstream.then(startMedia).catch(err => {
+				log('The following error occurred when trying to use getUserMedia: ' + err);
+			});
+		};
+
+	async function getScreenShareWithMic() {
+		stream = await navigator.mediaDevices.getDisplayMedia({video: true});
+		audio = await navigator.mediaDevices.getUserMedia({audio: true});
+		return new MediaStream([audio.getTracks()[0], stream.getAudioTracks()[0]]);
+	}
+
+	async function getMic() {
+		try {
+			audio = await navigator.mediaDevices.getUserMedia({audio: true, video: false});
+			console.log(audio.getTracks()[0].enabled = !(audio.getTracks()[0].enabled));
+			return new MediaStream([audio.getTracks()[0]]);
+		} catch (e) {
+			console.log(e);
+			return null
+		}
+	}
+	async function getCamAndMic() {
+		return await navigator.mediaDevices.getUserMedia({audio: true, video: true});
+	}
+	async function getScreenShareWithCamAndMic() {
+		stream = await navigator.mediaDevices.getDisplayMedia({video: true});
+		audio = await navigator.mediaDevices.getUserMedia({audio: true, video: true});
+		return new MediaStream([audio.getVideoTracks()[0], audio.getAudioTracks()[0]]);
+	}
+</script>

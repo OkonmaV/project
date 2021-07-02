@@ -5,6 +5,7 @@
 	<h1>Списки</h1>
 	<ul class="list-group">
 		{{- $metaId := .User.MetaId}}
+		{{- $role := .User.Role}}
 		{{- range .Folders}}
 		<li class="row list-group-item">
 			<div class="col-8">
@@ -17,8 +18,9 @@
 				</div>
 			</div>
 			<div class="col-4">
-				<a href="/view/{{.Id}}">просмотр</a>
-				{{- if or (eq .Student.MetaId $metaId) (eq .Nauchruk.MetaId $metaId)}} <a class="link-info" href="/edit/{{.Id}}">редактировать</a>{{- end}}
+				<a class="link-info" href="/view/{{.Id}}">защита</a>
+				{{- if or (eq .Student.MetaId $metaId) (eq .Nauchruk.MetaId $metaId)}} / <a class="link-info" href="/edit/{{.Id}}">редактировать</a>{{- end}}
+				{{- if gt $role 1 }} / <a class="link-info" href="/protocol/{{.Id}}">результаты</a>{{- end}}
 			</div>
 		</li>
 		{{- end }}

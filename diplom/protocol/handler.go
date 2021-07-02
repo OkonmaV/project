@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
-	"mime"
-	"net/url"
-	"strconv"
+	"html/template"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -15,7 +13,6 @@ import (
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
-	"github.com/nguyenthenguyen/docx"
 )
 
 type Handler struct {
@@ -23,6 +20,7 @@ type Handler struct {
 	getUserData    *httpservice.InnerService
 	getQuizResults *httpservice.InnerService
 	getFolders     *httpservice.InnerService
+	template       *template.Template
 }
 
 type cookieData struct {
@@ -83,31 +81,44 @@ type questionToStudent struct {
 	Answer   string
 }
 
-func NewHandler(tokendecoder, getuserdata, getquizresults, getfolders *httpservice.InnerService) (*Handler, error) {
-	return &Handler{tokenDecoder: tokendecoder, getUserData: getuserdata, getQuizResults: getquizresults, getFolders: getfolders}, nil
+type templateData struct {
+	QuizId    string
+	EntityId  string
+	UserId    string
+	Questions map[string]questionResult
+	Datetime  time.Time
+	UserData  *userData
+}
+
+type questionResult struct {
+	QuestionId   string `json:"qid"`
+	TextQuestion string
+	TextAnswer   string
+	Type         int
+	Answers      map[string]answerResult
+}
+
+type answerResult struct {
+	Text    string
+	Checked bool
+}
+
+func NewHandler(templ *template.Template, tokendecoder, getuserdata, getquizresults, getfolders *httpservice.InnerService) (*Handler, error) {
+	return &Handler{template: templ, tokenDecoder: tokendecoder, getUserData: getuserdata, getQuizResults: getquizresults, getFolders: getfolders}, nil
 }
 
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
-	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
+	if r.GetMethod() != suckhttp.GET {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	formValues, err := url.ParseQuery(string(r.Body))
-	if err != nil {
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
-
-	quizId := formValues.Get("quizid")
-	if quizId == "" {
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
-	folderId := formValues.Get("folderid") // entity id
+	folderId := strings.Trim(r.Uri.Path, "/")
 	if folderId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	userId := formValues.Get("userid") // student's id
-	if userId == "" {
+	quizId := r.Uri.Query().Get("quizid")
+	if quizId == "" {
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -120,7 +131,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	// Get Quiz Results For UserId & FolderId
 
-	quizResultsReq, err := conf.getQuizResults.CreateRequestFrom(suckhttp.GET, suckutils.Concat("/", quizId, "?entityid=", folderId), r)
+	quizResultsReq, err := conf.getQuizResults.CreateRequestFrom(suckhttp.GET, suckutils.Concat("/", quizId, "?all=1&entityid=", folderId), r)
 	if err != nil {
 		l.Error("CreateRequiesFrom quizRes", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
@@ -142,46 +153,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad requiest"), nil
 	}
 
-	quizResults := []results{}
+	quizResults := []*templateData{}
 
 	if err = json.Unmarshal(quizResultsResp.GetBody(), &quizResults); err != nil {
 		l.Error("UnmarshalQuizResult", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
-	// GET QUESTIONS FROM GAK TO STUDENT
-	var questionsToStudent = make([]questionToStudent, 0)
-
-	for _, q := range quizResults {
-		if question, ok := q.Answers["questionToStudentId"]; ok && len(question) > 0 {
-			if answer, ok := q.Answers["answerFromStudentId"]; ok && len(answer) > 0 {
-				questionsToStudent = append(questionsToStudent, questionToStudent{Question: question[0], Answer: answer[0]})
-			}
-
-		}
-	}
-	//
-
-	filename := suckutils.ConcatThree("protocol", strconv.Itoa(len(questions)), ".docx")
-
-	// if len(quizResults)==0{
-	// 	l.Error("QuizResults",errors.New(""))
-	// }
-
-	// GET STUDENT'S DATA
-	var studentUserData userData
-
-	getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", userId, "?fields=surname,name,otch,groupid,folderid"), r) // no metaid??
-	if err != nil {
-		l.Error("CreateRequestFrom", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-	if err = getSomeJsonData(getUserDataReq, conf.getFolders, l, &studentUserData); err != nil {
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-	//
-
-	// GET FOLDER'S (VKR) DATA
 	getFoldersReqVkr, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
 	if err != nil {
 		l.Error("CreateRequestFrom", err)
@@ -195,16 +173,31 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	// GET NAUCHRUK'S ID
+	var studentUserData userData
 	nauchRukUserData := userData{}
 	for _, metauser := range vkrFolderData.Metas {
 		if metauser.Type == 5 {
 			nauchRukUserData.Id = metauser.Id
 		}
+		if metauser.Type == 1 {
+			studentUserData.Id = metauser.Id
+		}
 	}
-	if nauchRukUserData.Id == "" {
-		l.Error("Vkr's nauchruk", errors.New("no nauchruk"))
-		return suckhttp.NewResponse(400, "Bad requiest"), nil //???????????????????????????????????????????????????????????????????????????????????????
+	// if nauchRukUserData.Id == "" {
+	// 	l.Error("Vkr's nauchruk", errors.New("no nauchruk"))
+	// 	return suckhttp.NewResponse(400, "Bad requiest"), nil //???????????????????????????????????????????????????????????????????????????????????????
+	// }
+
+	getUserDataReq, err := conf.getUserData.CreateRequestFrom(suckhttp.GET, suckutils.ConcatThree("/", studentUserData.Id, "?fields=surname,name,otch"), r) // no metaid??
+	if err != nil {
+		l.Error("CreateRequestFrom", err)
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
+	if err = getSomeJsonData(getUserDataReq, conf.getUserData, l, &studentUserData); err != nil {
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	}
+
+	// GET FOLDER'S (VKR) DATA
 
 	//
 
@@ -217,9 +210,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			l.Error("CreateRequestFrom", err)
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		if err = getSomeJsonData(getUserDataReq, conf.getFolders, l, &gakUserData[i]); err != nil {
+		if err = getSomeJsonData(getUserDataReq, conf.getUserData, l, &gakUserData[i]); err != nil {
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
+		userResult.UserData = &(gakUserData[i])
 		if userResult.UserId == nauchRukUserData.Id {
 			nauchRukUserData.Surname = gakUserData[i].Surname
 			nauchRukUserData.Name = gakUserData[i].Name
@@ -242,43 +236,59 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	//
 
 	// GET FOLDER'S (GROUP) DATA
-	getFoldersReqGroup, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
-	if err != nil {
-		l.Error("CreateRequestFrom", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-	var groupFolderData folder
+	// getFoldersReqGroup, err := conf.getFolders.CreateRequestFrom(suckhttp.GET, suckutils.ConcatTwo("/?folderid=", folderId), r)
+	// if err != nil {
+	// 	l.Error("CreateRequestFrom", err)
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
+	// var groupFolderData folder
 
-	if err = getSomeJsonData(getFoldersReqGroup, conf.getFolders, l, &groupFolderData); err != nil {
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
+	// if err = getSomeJsonData(getFoldersReqGroup, conf.getFolders, l, &groupFolderData); err != nil {
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
 	//
 
 	// Generating protocol
 
-	doc, err := docx.ReadDocxFile("protocol.docx")
-	if err != nil {
-		l.Error("ReadDOCX", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
-	edit := doc.Editable()
-	edit.Replace("{группа}", clms, -1)
-	for i, q := range questions {
-		edit.Replace(suckutils.ConcatThree("{question", strconv.Itoa(i), "}"), q, -1)
-	}
-	edit.GetContent()
-	doc.Close()
-	buf := &bytes.Buffer{}
-	err = edit.Write(buf)
-	if err != nil {
-		l.Error("WriteDOCX", err)
-		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	}
+	// doc, err := docx.ReadDocxFile("protocol.docx")
+	// if err != nil {
+	// 	l.Error("ReadDOCX", err)
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
+	// edit := doc.Editable()
+	// edit.Replace("{группа}", clms, -1)
+	// for i, q := range questions {
+	// 	edit.Replace(suckutils.ConcatThree("{question", strconv.Itoa(i), "}"), q, -1)
+	// }
+	// edit.GetContent()
+	// doc.Close()
+	// buf := &bytes.Buffer{}
+	// err = edit.Write(buf)
+	// if err != nil {
+	// 	l.Error("WriteDOCX", err)
+	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
+	// }
 
-	res := suckhttp.NewResponse(200, "OK")
-	res.AddHeader(suckhttp.Content_Type, mime.TypeByExtension(".docx"))
-	res.SetBody(buf.Bytes())
-	return res, nil
+	// res := suckhttp.NewResponse(200, "OK")
+	// res.AddHeader(suckhttp.Content_Type, mime.TypeByExtension(".docx"))
+	// res.SetBody(buf.Bytes())
+
+	var body []byte
+	var contentType string
+	buf := bytes.NewBuffer(body)
+	err = conf.template.Execute(buf, struct {
+		Results []*templateData
+	}{
+		Results: quizResults,
+	})
+	if err != nil {
+		l.Error("Template execution", err)
+		return suckhttp.NewResponse(500, "Internal server error"), err
+	}
+	body = buf.Bytes()
+	contentType = "text/html"
+
+	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
 }
 
 func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *logger.Logger, data interface{}) error {
@@ -291,7 +301,7 @@ func getSomeJsonData(req *suckhttp.Request, conn *httpservice.InnerService, l *l
 	}
 
 	if i, t := resp.GetStatus(); i/100 != 2 {
-		l.Debug("Resp.GetStatus", t)
+		l.Debug("Resp.GetStatus "+req.Uri.String(), t)
 		return err
 	}
 	if len(resp.GetBody()) == 0 {

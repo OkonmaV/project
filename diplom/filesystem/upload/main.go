@@ -29,5 +29,5 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 }
 
 func main() {
-	httpservice.InitNewService(serviceName, false, 10, &config{}, httpservice.ServiceName("auth.get"), httpservice.ServiceName("identity.tokendecoder"))
+	httpservice.InitNewService(serviceName, false, 50, &config{}, httpservice.ServiceName("auth.get"), httpservice.ServiceName("identity.tokendecoder"))
 }
