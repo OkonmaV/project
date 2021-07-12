@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"project/base/quizes/repo"
 	"thin-peak/httpservice"
-	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
 )
@@ -28,16 +28,12 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	mgoSession, err := mgo.Dial(c.MgoAddr)
-	if err != nil {
-		logger.Error("Mongo", err)
+	var err error
+	if c.mgoSession, err = repo.ConnectToMongo(c.MgoAddr, c.MgoDB); err != nil {
 		return nil, err
 	}
-	c.mgoSession = mgoSession
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
-	mgoCollectionQuizes := mgoSession.DB(c.MgoDB).C(c.MgoCollQuizes)
-	return NewHandler(mgoCollection, mgoCollectionQuizes, connectors[tokenDecoderServiceName])
+
+	return NewHandler(c.mgoSession.DB(c.MgoDB).C(c.MgoColl), c.mgoSession.DB(c.MgoDB).C(c.MgoCollQuizes), connectors[tokenDecoderServiceName])
 }
 
 func (c *config) Close() error {
@@ -46,5 +42,5 @@ func (c *config) Close() error {
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 50, &config{}, tokenDecoderServiceName)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenDecoderServiceName)
 }

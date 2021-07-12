@@ -1,0 +1,37 @@
+<div class="container">
+	<h2>Опросник:</h2>
+<form method="POST" action="/savequiz/{{(index . 0).QuizId}}">
+	<input type="hidden" name="entityid" value="{{(index . 0).EntityId}}" />
+	{{- range .}}
+	<ol>
+		{{- range $qid, $question := .Questions }}
+		<li>
+			<h3><label for="{{$qid}}" class="form-label text-big">{{$question.TextQuestion}}</label></h3>
+			{{- if eq .Type 1 }}
+			<ul>
+				{{- range $aid, $answer := .Answers }}
+				<li class="form-check"><input type="checkbox" class="form-check-input" id="{{$aid}}" name="{{$qid}}"
+						value="{{$aid}}" {{- if $answer.Checked}} checked{{- end}} /><label for="{{$aid}}"
+						class="form-check-label">{{$answer.Text}}</label></li>
+				{{- end }}
+			</ul>
+			{{- else if eq .Type 2 }}
+			<ul>
+				{{- range $aid, $answer := .Answers }}
+				<li class="form-check"><input type="radio" class="form-check-input" id="{{$aid}}" name="{{$qid}}"
+						value="{{$aid}}" {{- if $answer.Checked}} checked{{- end}} /><label for="{{$aid}}"
+						class="form-check-label">{{$answer.Text}}</label></li>
+				{{- end }}
+			</ul>
+			{{- else if eq .Type 3 }}
+			<div class="mb-3">
+				<textarea id="{{$qid}}" name="{{$qid}}" class="form-control">{{$question.TextAnswer}}</textarea>
+			</div>
+			{{- end }}
+		</li>
+		{{- end }}
+	</ol>
+	{{- end }}
+	<button type="submit" class="btn btn-primary">Сохранить ответы</button>
+</form>
+</div>

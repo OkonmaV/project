@@ -20,12 +20,6 @@ type Handler struct {
 	clickhouseConn  *clickhouse.Conn
 	clickhouseTable string
 }
-type chatInfo struct {
-	Id    string        `bson:"_id"`
-	Users []interface{} `bson:"users"`
-	Name  string        `bson:"name"`
-	Type  int           `bson:"type"`
-}
 
 func NewHandler(mgoColl *mgo.Collection, tokendecoder *httpservice.InnerService, clickhouseConn *clickhouse.Conn, clickhouseTable string) (*Handler, error) {
 
@@ -38,9 +32,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
-	chatId := strings.Trim(r.Uri.Path, "/")
-	if chatId == "" {
-		return suckhttp.NewResponse(400, "Bad Request"), nil
+	chatId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
+		l.Debug("Request", "chatId (path) is nil or not objectId")
+		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	formValues, err := url.ParseQuery(string(r.Body))
 	if err != nil {
@@ -48,6 +43,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	message := formValues.Get("text")
 	if message == "" { // check len?
+		l.Debug("Request", "field \"text\" is empty")
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
@@ -80,6 +76,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	if err := conf.mgoColl.Find(bson.M{"_id": chatId, "users.userid": userId}).Select(bson.M{"_id": 1}).One(nil); err != nil {
 		if err == mgo.ErrNotFound {
+			l.Debug("Find", "no chat with that id")
 			return suckhttp.NewResponse(403, "Forbidden"), err
 		}
 		return nil, err

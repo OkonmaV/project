@@ -30,6 +30,7 @@ func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService) (*H
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.HttpMethod("PATCH") {
+		l.Debug("Request", "not PATCH")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -61,13 +62,15 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//
 
-	chatId := strings.Trim(r.Uri.Path, "/")
-	if chatId == "" {
+	chatId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
+		l.Debug("Request", "chatId (path) is nil or not objectId")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	addUserId := r.Uri.Query().Get("adduserid")
+	addUserId := r.Uri.Query().Get("userid") // query???
 	if addUserId == "" {
+		l.Debug("Request", "query param \"userid\" is empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -80,6 +83,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return nil, err
 	}
 	if changeInfo.Matched == 0 {
+		l.Debug("Update", "not found (no chat with this id or dont have permissions)")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

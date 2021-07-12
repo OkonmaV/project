@@ -24,6 +24,7 @@ func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService) (*H
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.DELETE {
+		l.Debug("Request", "not DELETE")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -55,14 +56,14 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//
 
-	chatId := r.Uri.Path
-	chatId = strings.Trim(chatId, "/")
-	if chatId == "" {
+	chatId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
+		l.Debug("Request", "chatId (path) is nil or not objectId")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
-	deletionUserId := r.Uri.Query().Get("deluserid")
+	deletionUserId := r.Uri.Query().Get("userid") // query???
 	if deletionUserId == "" {
+		l.Debug("Request", "query param \"userid\" is empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -78,6 +79,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	changeInfo, err := conf.mgoColl.Find(query).Apply(change, nil)
 	if err != nil {
 		if err == mgo.ErrNotFound {
+			l.Debug("FindAndModify", "not found (no chat with this id or dont have permissions)")
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err

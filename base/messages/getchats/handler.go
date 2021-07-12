@@ -3,30 +3,16 @@ package main
 import (
 	"bytes"
 	"errors"
+	"project/base/messages/repo"
 	"text/template"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
-	"time"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"go.mongodb.org/mongo-driver/bson"
 )
-
-type chat struct {
-	Id    string `bson:"_id"`
-	Type  int    `bson:"type"`
-	Users []user `bson:"users"`
-	Name  string `bson:"name,omitempty"`
-}
-type user struct {
-	UserId        string    `bson:"userid"`
-	Type          int       `bson:"type"`
-	ChatName      string    `bson:"chatname"`
-	StartDateTime time.Time `bson:"startdatetime"`
-	//EndDateTime   time.Time `bson:"enddatetime"`
-}
 
 type Handler struct {
 	mgoColl      *mgo.Collection
@@ -42,6 +28,7 @@ func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService, tem
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.GET {
+		l.Debug("Request", "not GET")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -72,40 +59,39 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 	//
-	mgoRes := []chat{}
+	chats := []repo.Chat{}
 
-	if err := conf.mgoColl.Find(bson.M{"users.userid:": userId}).All(&mgoRes); err != nil {
+	if err := conf.mgoColl.Find(bson.M{"users.userid:": userId}).All(&chats); err != nil {
 		return nil, err
 	}
 
 	var body []byte
 	var contentType string
-	if len(mgoRes) != 0 {
-		for i, chatt := range mgoRes {
+	if len(chats) != 0 {
+		for i, chat := range chats {
 
-			if chatt.Type == 1 {
-				if len(chatt.Users) != 2 {
+			if chat.Type == 1 {
+				if len(chat.Users) != 2 {
 					l.Error("Chat", errors.New("chattype unmatches with len(chatusers)"))
-					mgoRes[i] = chat{} //????????
-					continue           //??????????
+					chats[i] = repo.Chat{} //????????
+					continue               //??????????
 				}
 
-				if chatt.Users[0].UserId == userId {
-					mgoRes[i].Name = chatt.Users[0].ChatName
+				if chat.Users[0].UserId == userId {
+					chats[i].Name = chat.Users[0].ChatName
 				} else {
-					mgoRes[i].Name = chatt.Users[1].ChatName
+					chats[i].Name = chat.Users[1].ChatName
 				}
 			}
 		}
 		buf := bytes.NewBuffer(body)
-		err := conf.template.Execute(buf, mgoRes)
+		err := conf.template.Execute(buf, chats)
 		if err != nil {
-			l.Error("Template execution", err)
 			return suckhttp.NewResponse(500, "Internal server error"), err
 		}
 		body = buf.Bytes()
 		contentType = "text/html"
-	}
+	} // what else???
 
 	return suckhttp.NewResponse(200, "OK").SetBody(body).AddHeader(suckhttp.Content_Type, contentType), nil
 

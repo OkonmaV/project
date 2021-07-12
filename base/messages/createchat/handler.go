@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"project/base/messages/repo"
 	"strconv"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -13,20 +14,6 @@ import (
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 )
-
-type chat struct {
-	Id    string `bson:"_id"`
-	Type  int    `bson:"type"`
-	Users []user `bson:"users"`
-	Name  string `bson:"name,omitempty"`
-}
-type user struct {
-	UserId        string    `bson:"userid"`
-	Type          int       `bson:"type"`
-	ChatName      string    `bson:"chatname,omitempty"`
-	StartDateTime time.Time `bson:"startdatetime"`
-	//EndDateTime   time.Time `bson:"enddatetime"`
-}
 
 type cookieData struct {
 	UserId  string `json:"Login"`
@@ -48,6 +35,7 @@ func NewHandler(col *mgo.Collection, getUserData *httpservice.InnerService, toke
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST { //  КАКОЙ МЕТОД?
+		l.Debug("Request", "not POST")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -90,6 +78,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	chatType, err := strconv.Atoi(r.Uri.Query().Get("chattype"))
 	if err != nil {
+		l.Debug("Request", "query param \"chattype\" is empty or not int")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -100,6 +89,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 		withUserId := r.Uri.Query().Get("withid")
 		if withUserId == "" {
+			l.Debug("Request", "query param \"withid\" is empty")
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 
@@ -129,10 +119,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			l.Error("Getuserdata resp", errors.New("empty requested data"))
 			return suckhttp.NewResponse(500, "Internal server error"), nil
 		}
-		users := []user{{UserId: userData.UserId, ChatName: suckutils.ConcatThree(withUserData["surname"], " ", withUserData["name"]), Type: 1, StartDateTime: time.Now()}, {UserId: withUserId, ChatName: suckutils.ConcatThree(userData.Surname, " ", userData.Name), Type: 1, StartDateTime: time.Now()}}
+		users := []repo.User{{UserId: userData.UserId, ChatName: suckutils.ConcatThree(withUserData["surname"], " ", withUserData["name"]), Type: 1, StartDateTime: time.Now()}, {UserId: withUserId, ChatName: suckutils.ConcatThree(userData.Surname, " ", userData.Name), Type: 1, StartDateTime: time.Now()}}
 		//alternative: query = bson.M{"type": chatType, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": userId}}, {"$elemMatch": bson.M{"userid": withUserId}}}}}
 		query = bson.M{"type": chatType, "$or": []bson.M{{"users.0.userid": userData.UserId, "users.1.userid": withUserId}, {"users.0.userid": withUserId, "users.1.userid": userData.UserId}}}
-		update = bson.M{"$setOnInsert": &chat{Id: bson.NewObjectId().Hex(), Type: chatType, Users: users}}
+		update = bson.M{"$setOnInsert": &repo.Chat{Id: bson.NewObjectId(), Type: chatType, Users: users}}
 
 	case 2: //group
 
@@ -143,9 +133,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 		//alternative: query = bson.M{"type": chatType, "users": bson.M{"$elemMatch": bson.M{"userid": userId, "type": 0}}, "name": chatName}
 		query = bson.M{"type": chatType, "users.0.userid": "userId", "users.0.type": 0, "name": chatName}
-		update = bson.M{"$setOnInsert": &chat{Id: bson.NewObjectId().Hex(), Type: chatType, Users: []user{{UserId: userData.UserId, Type: 1, StartDateTime: time.Now()}}}}
+		update = bson.M{"$setOnInsert": &repo.Chat{Id: bson.NewObjectId(), Type: chatType, Users: []repo.User{{UserId: userData.UserId, Type: 1, StartDateTime: time.Now()}}}}
 
 	default:
+		l.Debug("Request", "specified chattype is bad")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 

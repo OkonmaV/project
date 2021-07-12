@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"project/base/quizes/repo"
 	"thin-peak/httpservice"
 
 	"github.com/big-larry/mgo"
-	"github.com/thin-peak/logger"
 )
 
 type config struct {
@@ -17,35 +17,29 @@ type config struct {
 	mgoSession   *mgo.Session
 }
 
-const thisServiceName httpservice.ServiceName = "quiz.setquizquestions"
+const thisServiceName httpservice.ServiceName = "quiz.createquiz"
 const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
-const authGetServiceName httpservice.ServiceName = "auth.get"
+const authSetServiceName httpservice.ServiceName = "auth.set"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
 }
-
 func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
-
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	mgoSession, err := mgo.Dial(c.MgoAddr)
-	if err != nil {
-		logger.Error("Mongo", err)
+	var err error
+	if c.mgoSession, err = repo.ConnectToMongo(c.MgoAddr, c.MgoDB); err != nil {
 		return nil, err
 	}
-	c.mgoSession = mgoSession
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
-	return NewHandler(mgoCollection, connectors[authGetServiceName], connectors[tokenDecoderServiceName])
+	return NewHandler(c.mgoSession.DB(c.MgoDB).C(c.MgoColl), connectors[authSetServiceName], connectors[tokenDecoderServiceName])
 }
 
-func (conf *config) Close() error {
-	conf.mgoSession.Close()
+func (c *config) Close() error {
+	c.mgoSession.Close()
 	return nil
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, authGetServiceName, tokenDecoderServiceName)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenDecoderServiceName, authSetServiceName)
 }

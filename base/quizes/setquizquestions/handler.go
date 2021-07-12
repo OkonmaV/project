@@ -7,6 +7,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/url"
+	"project/base/quizes/repo"
 	"strconv"
 	"strings"
 	"thin-peak/httpservice"
@@ -21,21 +22,6 @@ import (
 type Handler struct {
 	mgoColl *mgo.Collection
 	auth    *httpservice.Authorizer
-}
-
-//quiz
-type quiz struct {
-	Id        bson.ObjectId       `bson:"_id"`
-	Name      string              `bson:"name"`
-	Questions map[string]question `bson:"questions"`
-	CreatorId string              `bson:"creatorid"`
-}
-
-type question struct {
-	Type     int               `bson:"question_type"`
-	Position int               `bson:"question_position"`
-	Text     string            `bson:"question_text"`
-	Answers  map[string]string `bson:"question_answers,omitempty"`
 }
 
 func NewHandler(col *mgo.Collection, auth *httpservice.InnerService, tokendecoder *httpservice.InnerService) (*Handler, error) {
@@ -53,11 +39,13 @@ var field_name []byte = []byte("data")
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST || len(r.Body) == 0 {
+		l.Debug("Request", "not POST or body is empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
 	if err != nil {
+		l.Debug("NewObjectIdFromHex", suckutils.ConcatTwo("quizId isnt objectId, error: ", err.Error()))
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 	var data string
@@ -73,21 +61,26 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 				if unescapedString, err := url.QueryUnescape(strings.TrimSpace(string(v[1]))); err == nil {
 					data = unescapedString
 					break
+				} else {
+					l.Debug("QueryUnescape", err.Error())
+					return suckhttp.NewResponse(400, "Bad request"), nil
 				}
-				return suckhttp.NewResponse(400, "Bad request"), nil
 			}
 		}
 	} else if strings.Contains(r.GetHeader(suckhttp.Content_Type), "multipart/form-data") {
 		if d, err := readFromFile(r, "file"); err == nil {
 			data = string(d)
 		} else {
+			l.Debug("Request", suckutils.ConcatTwo("readFromFile error: ", err.Error()))
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 	} else {
+		l.Debug("Request", "content-type isnt application/x-www-form-urlencoded or multipart/form-data")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	if len(data) == 0 {
+		l.Debug("Request", "field \"data\" is empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -95,7 +88,8 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if err != nil {
 		return nil, err
 	}
-	if k {
+	if !k {
+		//l.Debug("GetAccess","dont have access")
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
@@ -103,9 +97,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	lines = append(lines, "")
 
 	position := 1
-	questions := make(map[string]*question)
-	var curquestion *question
-	for _, line := range lines {
+	questions := make(map[string]*repo.Question)
+	var curquestion *repo.Question
+	for i, line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" { // commit current question
 			questions[bson.NewObjectId().Hex()] = curquestion
@@ -113,19 +107,19 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		} else if curquestion == nil { // new question
 			space_position := strings.Index(line, " ")
 			if space_position == -1 {
-				l.Error("FormatError", errors.New(line))
+				l.Debug("FormatError", suckutils.ConcatTwo("no spaces at line ", strconv.Itoa(i+1)))
 				return suckhttp.NewResponse(400, "Bad request"), nil
 			}
 			if t, err := strconv.Atoi(line[:space_position]); err == nil {
 				if t == 3 {
-					curquestion = &question{Type: t, Text: strings.TrimSpace(line[space_position+1:])}
+					curquestion = &repo.Question{Type: t, Text: strings.TrimSpace(line[space_position+1:])}
 				} else {
-					curquestion = &question{Type: t, Text: strings.TrimSpace(line[space_position+1:]), Answers: make(map[string]string)}
+					curquestion = &repo.Question{Type: t, Text: strings.TrimSpace(line[space_position+1:]), Answers: make(map[string]string)}
 				}
 				curquestion.Position = position
 				position++
 			} else {
-				l.Error("ParseError", errors.New(line))
+				l.Debug("ParseError", suckutils.ConcatTwo("at line ", strconv.Itoa(i+1)))
 				return suckhttp.NewResponse(400, "Bad request"), nil
 			}
 		} else { // answer
@@ -135,6 +129,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	update := bson.M{"$set": bson.M{"questions": questions}}
 	if err = conf.mgoColl.UpdateId(quizId, update); err != nil {
 		if err == mgo.ErrNotFound {
+			l.Debug("Request", "wrong quizId")
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err

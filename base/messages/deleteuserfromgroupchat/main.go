@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
+	"project/base/messages/repo"
 	"thin-peak/httpservice"
-	"thin-peak/logs/logger"
 
 	"github.com/big-larry/mgo"
 )
@@ -27,15 +27,11 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	mgoSession, err := mgo.Dial(c.MgoAddr)
-	if err != nil {
-		logger.Error("Mongo", err)
+	var err error
+	if c.mgoSession, err = repo.ConnectToMongo(c.MgoAddr, c.MgoDB); err != nil {
 		return nil, err
 	}
-	c.mgoSession = mgoSession
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := mgoSession.DB(c.MgoDB).C(c.MgoColl)
-	return NewHandler(mgoCollection, connectors[tokenDecoderServiceName])
+	return NewHandler(c.mgoSession.DB(c.MgoDB).C(c.MgoColl), connectors[tokenDecoderServiceName])
 }
 
 func (c *config) Close() error {

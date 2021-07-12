@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/url"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -24,6 +25,7 @@ func NewHandler(col *mgo.Collection, tokendecoder *httpservice.InnerService) (*H
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.HttpMethod("PATCH") {
+		l.Debug("Request", "not PATCH")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -55,13 +57,21 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//
 
-	chatId := strings.Trim(r.Uri.Path, "/")
-	if chatId == "" {
+	chatId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
+		l.Debug("Request", "chatId (path) is nil or not objectId")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	newChatName := r.Uri.Query().Get("newchatname")
+	formValues, err := url.ParseQuery(string(r.Body))
+	if err != nil {
+		l.Debug("ParseQuery", err.Error())
+		return suckhttp.NewResponse(400, "Bad request"), nil
+	}
+
+	newChatName := formValues.Get("newname")
 	if newChatName == "" {
+		l.Debug("Form data", "field \"newname\" is nil")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -76,6 +86,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	if _, err := conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
+			l.Debug("FindAndModify", "not found (no chat with this id or dont have permissions)")
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err

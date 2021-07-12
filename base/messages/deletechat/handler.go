@@ -5,26 +5,12 @@ import (
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
-	"time"
 
 	"github.com/big-larry/mgo"
 	"github.com/big-larry/mgo/bson"
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 )
-
-type chat struct {
-	Id    string `bson:"_id"`
-	Type  int    `bson:"type"`
-	Users []user `bson:"users"`
-	Name  string `bson:"name,omitempty"`
-}
-type user struct {
-	UserId        string    `bson:"userid"`
-	Type          int       `bson:"type"`
-	StartDateTime time.Time `bson:"startdatetime"`
-	EndDateTime   time.Time `bson:"enddatetime"`
-}
 
 type Handler struct {
 	tokenDecoder      *httpservice.InnerService
@@ -40,6 +26,7 @@ func NewHandler(col *mgo.Collection, colDel *mgo.Collection, tokendecoder *https
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.DELETE {
+		l.Debug("Request", "not DELETE")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -71,9 +58,9 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 	//
 
-	chatId := r.Uri.Path
-	chatId = strings.Trim(chatId, "/")
-	if chatId == "" {
+	chatId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
+	if err != nil {
+		l.Debug("Request", "chatId (path) is nil or not objectId")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -89,6 +76,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	if _, err := conf.mgoColl.Find(query).Apply(change, nil); err != nil {
 		if err == mgo.ErrNotFound {
+			l.Debug("Select", "not found (no chat with this id or dont have permissions)")
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
@@ -102,7 +90,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	//delete
 	if err := conf.mgoColl.RemoveId(chatId); err != nil {
 		if err == mgo.ErrNotFound {
-			l.Error("Removing from chats", errors.New("trying remove already removed chat"))
+			l.Error("Delete", errors.New("trying remove already removed chat"))
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err

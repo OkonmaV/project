@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"project/base/quizes/repo"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -20,32 +21,6 @@ type Handler struct {
 	tokenDecoder *httpservice.InnerService
 }
 
-//quiz
-type quiz struct {
-	Questions map[string]question `bson:"questions"`
-}
-
-type question struct {
-	Type     int               `bson:"question_type"`
-	Position int               `bson:"question_position"`
-	Text     string            `bson:"question_text"`
-	Answers  map[string]string `bson:"question_answers"`
-}
-
-//
-
-//results
-type results struct {
-	Id       bson.ObjectId       `bson:"_id" json:"id"`
-	QuizId   string              `bson:"quizid" json:"quizid"`
-	EntityId string              `bson:"entityid" json:"entityid"`
-	UserId   string              `bson:"userid" json:"userid"`
-	Answers  map[string][]string `bson:"answers" json:"answers"`
-	Datetime time.Time           `bson:"datetime" json:"datetime"`
-}
-
-//
-
 func NewHandler(col *mgo.Collection, colQ *mgo.Collection, tokendecoder *httpservice.InnerService) (*Handler, error) {
 
 	return &Handler{mgoColl: col, mgoCollQuizes: colQ, tokenDecoder: tokendecoder}, nil
@@ -54,22 +29,25 @@ func NewHandler(col *mgo.Collection, colQ *mgo.Collection, tokendecoder *httpser
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
+		l.Debug("Request", "not POST or content-type isnt application/x-www-form-urlencoded or body is empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
 	if err != nil {
+		l.Debug("NewObjectIdFromHex", suckutils.ConcatTwo("quizId isnt objectId, error: ", err.Error()))
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
+	entityId := strings.TrimSpace(r.Uri.Query().Get("entityid"))
+
 	values, err := url.ParseQuery(string(r.Body))
 	if err != nil {
+		l.Debug("ParseQuery", err.Error())
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-	entityId := values.Get("entityid")
-	if entityId == "" {
-		return suckhttp.NewResponse(400, "Bad request"), nil
-	}
+
+	var result repo.Results
 
 	//AUTH
 
@@ -100,27 +78,28 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		l.Debug("Resp from tokendecoder", t)
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
-	//
-	var result results
 
 	if result.UserId = string(tokenDecoderResp.GetBody()); len(result.UserId) == 0 {
 		l.Debug("Resp from tokendecoder", "empty body")
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
+	//
 
 	//check quiz
-	var mgoRes quiz
-	if err = conf.mgoCollQuizes.FindId(quizId).Select(bson.M{"questions": 1}).One(&mgoRes); err != nil {
+	var quiz repo.Quiz
+	if err = conf.mgoCollQuizes.FindId(quizId).Select(bson.M{"questions": 1}).One(&quiz); err != nil {
 		if err == mgo.ErrNotFound {
-			return suckhttp.NewResponse(403, "Forbidden"), err
+			l.Debug("FindId", "quiz not found")
+			return suckhttp.NewResponse(404, "Not found"), nil
 		}
 		return nil, err
 	}
 	//
+
 	result.Answers = make(map[string][]string)
-	delete(values, "entityid")
 	for questionId, answers := range values {
-		if _, ok := mgoRes.Questions[questionId]; !ok {
+		if _, ok := quiz.Questions[questionId]; !ok {
+			l.Warning("Request", "questionId in request doesnt exist in db")
 			return suckhttp.NewResponse(400, "Bad request"), nil
 		}
 		result.Answers[questionId] = answers
@@ -133,6 +112,5 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return nil, err
 	}
 
-	return suckhttp.NewResponse(302, "Found").AddHeader(suckhttp.Location, suckutils.ConcatTwo("/view/", entityId)), nil
-	return suckhttp.NewResponse(200, "OK"), nil
+	return suckhttp.NewResponse(302, "Found").AddHeader(suckhttp.Location, suckutils.ConcatTwo("/view/", entityId)), nil //?????
 }
