@@ -26,11 +26,6 @@ func NewUserRegistration(trntlAddr string, trntlTable string) (*UserRegistration
 	if err != nil {
 		return nil, err
 	}
-	_, err = trntlConnection.Ping()
-	if err != nil {
-		return nil, err
-	}
-	logger.Info("Tarantool", "Connected!")
 
 	return &UserRegistration{trntlConn: trntlConnection, trntlTable: trntlTable}, nil
 }
@@ -42,20 +37,21 @@ func (c *UserRegistration) Close() error {
 func (conf *UserRegistration) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "text/plain") || r.GetMethod() != suckhttp.PUT {
+		l.Debug("Request", "not PUT or content-type not text-plain")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
-	login := r.Uri.Path
-	login = strings.Trim(login, "/")
-	if login == "" {
+	login := strings.Trim(r.Uri.Path, "/")
+	if len(login) != 32 {
+		l.Debug("Request", "login (path) not specified correctly")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	password := string(r.Body)
-	if password == "" {
+	if len(password) != 32 {
+		l.Debug("Request", "password (body) not specified correctly")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
 	if err := conf.trntlConn.UpsertAsync(conf.trntlTable, []interface{}{login, password}, []interface{}{[]interface{}{"=", "password", password}}).Err(); err != nil {
 		return nil, err
 	}
