@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"lib"
 	"time"
+
+	"github.com/big-larry/mgo"
+	"github.com/big-larry/mgo/bson"
 )
 
 type chatInfo struct {
@@ -115,15 +118,16 @@ func main() {
 	//err = trntlConn.SelectTyped("regcodes", "primary", 0, 1, tarantool.IterEq, []interface{}{28258}, &trntlRes)
 	// //_, err = trntlConn.Update("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "h"}, []interface{}{"=", "metaname", "hh"}})
 
-	// mgoSession, err := mgo.Dial("127.0.0.1")
-	// if err != nil {
-	// 	return
-	// }
-	// mgoColl := mgoSession.DB("messages").C("chats")
-	//ffolder := &folder{Id: "7777", Name: "NAME"}
-	//ffol := &folder2{Id: &ffolder.Id, Name: &ffolder.Name, Time: &ffolder.Time}
-	//err = mgoColl.Insert(ffolder)
-	//fmt.Println("errinsert: ", err)
+	mgoSession, err := mgo.Dial("127.0.0.1")
+	if err != nil {
+		return
+	}
+	mgoColl := mgoSession.DB("test").C("test")
+
+	ch, err := mgoColl.Upsert(bson.M{"field": 752}, bson.M{"$setOnInsert": bson.M{"field": 750}})
+	fmt.Println("errinsert: ", err)
+
+	fmt.Println("err: ", err, []byte(ch.UpsertedId.(bson.ObjectId).Hex()))
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
@@ -133,11 +137,11 @@ func main() {
 	//bar[1] = 1
 	//bar[2] = 2
 
-	var foo answer = answer{Id: "id", Text: "text"}
-	answrs := make(map[string]*answer)
-	answrs["id"] = &foo
-	*answrs["id"] = answer{Text: "newtext"}
-	fmt.Println(foo)
+	// var foo answer = answer{Id: "id", Text: "text"}
+	// answrs := make(map[string]*answer)
+	// answrs["id"] = &foo
+	// *answrs["id"] = answer{Text: "newtext"}
+	// fmt.Println(foo)
 
 	// ans1 := []answer{}
 	// ans2 := []answer{}

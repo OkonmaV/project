@@ -29,6 +29,7 @@ func NewHandler(mgoColl *mgo.Collection, tokendecoder *httpservice.InnerService,
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST {
+		l.Debug("Request", "not POST")
 		return suckhttp.NewResponse(400, "Bad Request"), nil
 	}
 
@@ -77,7 +78,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	if err := conf.mgoColl.Find(bson.M{"_id": chatId, "users.userid": userId}).Select(bson.M{"_id": 1}).One(nil); err != nil {
 		if err == mgo.ErrNotFound {
 			l.Debug("Find", "no chat with that id")
-			return suckhttp.NewResponse(403, "Forbidden"), err
+			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
 		return nil, err
 	}
