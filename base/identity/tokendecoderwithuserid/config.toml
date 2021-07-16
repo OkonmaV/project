@@ -1,0 +1,6 @@
+Configurator = "tcp:127.0.0.1:8090"
+Listen = "tcp:127.0.0.1:8312"
+JwtKey = "OLEG"
+CookieName = "koki"
+TrntlAddr = "127.0.0.1:3301"
+TrntlTable = "auth"

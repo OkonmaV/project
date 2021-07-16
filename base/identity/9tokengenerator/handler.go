@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"project/base/identity/repo"
 	"strings"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
@@ -11,15 +12,6 @@ import (
 	"github.com/big-larry/suckutils"
 	"github.com/dgrijalva/jwt-go"
 )
-
-type claims struct {
-	Login   string
-	MetaId  string `json:"metaid"`
-	Role    int    `json:"role"`
-	Surname string `json:"surname"`
-	Name    string `json:"name"`
-	jwt.StandardClaims
-}
 
 type Handler struct {
 	jwtKey      []byte
@@ -61,7 +53,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		l.Error("Resp from getuserdata", errors.New("empty body at 200"))
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
-	var clms claims
+	var clms repo.CookieClaims
 	if err := json.Unmarshal(getUserDataResp.GetBody(), &clms); err != nil {
 		l.Error("Unmarshal", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil

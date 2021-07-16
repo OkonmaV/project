@@ -1,9 +1,9 @@
 package main
 
 import (
+	"project/base/identity/repo"
 	"strings"
 	"thin-peak/logs/logger"
-	"time"
 
 	"github.com/big-larry/suckhttp"
 	"github.com/tarantool/go-tarantool"
@@ -16,13 +16,7 @@ type UserRegistration struct {
 
 func NewUserRegistration(trntlAddr string, trntlTable string) (*UserRegistration, error) {
 
-	trntlConnection, err := tarantool.Connect(trntlAddr, tarantool.Opts{
-		// User: ,
-		// Pass: ,
-		Timeout:       500 * time.Millisecond,
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 4,
-	})
+	trntlConnection, err := repo.ConnectToTarantool(trntlAddr, trntlTable)
 	if err != nil {
 		return nil, err
 	}
