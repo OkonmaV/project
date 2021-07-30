@@ -1,0 +1,6 @@
+Configurator = "tcp:127.0.0.1:8090"
+Listen = "tcp:127.0.0.1:8303"
+MgoDB = "folders"
+MgoAddr = "127.0.0.1"
+MgoColl = "folders"
+MgoCollMetausers = "metausers"

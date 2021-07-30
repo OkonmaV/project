@@ -29,7 +29,6 @@ type Data struct {
 
 type CookieClaims struct {
 	Login   string `json:"login"`
-	MetaId  string `json:"metaid"`
 	Role    int    `json:"role"`
 	Surname string `json:"surname"`
 	Name    string `json:"name"`
@@ -40,6 +39,11 @@ type TarantoolAuthTuple struct {
 	Login    string
 	Password string
 	UserId   string
+}
+
+type TarantoolVerifyTuple struct {
+	Hash string
+	Uuid string
 }
 
 func GetTemplate(filename string) (*template.Template, error) {
@@ -56,15 +60,15 @@ func GetTemplate(filename string) (*template.Template, error) {
 
 }
 
-func ConnectToMongo(mgoAddr, dbname string) (*mgo.Session, error) {
-	mgoSession, err := mgo.Dial(mgoAddr)
+func ConnectToMongo(addr, db, col string) (*mgo.Session, *mgo.Collection, error) {
+	mgoSession, err := mgo.Dial(addr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return mgoSession, nil
+	return mgoSession, mgoSession.DB(db).C(col), nil
 }
 
-func ConnectToTarantool(trntlAddr, spaceName string) (*tarantool.Connection, error) {
+func ConnectToTarantool(trntlAddr string) (*tarantool.Connection, error) {
 	return tarantool.Connect(trntlAddr, tarantool.Opts{
 		// User: ,
 		// Pass: ,

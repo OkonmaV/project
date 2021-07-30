@@ -29,13 +29,13 @@ func NewHandler(col *mgo.Collection, colQ *mgo.Collection, tokendecoder *httpser
 func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if r.GetMethod() != suckhttp.POST || !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/x-www-form-urlencoded") || len(r.Body) == 0 {
-		l.Debug("Request", "not POST or content-type isnt application/x-www-form-urlencoded or body is empty")
+		l.Debug("Request", "method or content-type not allowed or body is empty")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
 	quizId, err := bson.NewObjectIdFromHex(strings.Trim(r.Uri.Path, "/"))
 	if err != nil {
-		l.Debug("NewObjectIdFromHex", suckutils.ConcatTwo("quizId isnt objectId, error: ", err.Error()))
+		l.Debug("NewObjectIdFromHex", err.Error())
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
 
@@ -79,13 +79,13 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 
-	if result.UserId = string(tokenDecoderResp.GetBody()); len(result.UserId) == 0 {
-		l.Debug("Resp from tokendecoder", "empty body")
+	if result.UserId, err = bson.NewObjectIdFromHex(string(tokenDecoderResp.GetBody())); err != nil {
+		l.Debug("Resp from tokendecoder", err.Error())
 		return suckhttp.NewResponse(403, "Forbidden"), nil
 	}
 	//
 
-	//check quiz
+	//check quiz 'n' get questions
 	var quiz repo.Quiz
 	if err = conf.mgoCollQuizes.FindId(quizId).Select(bson.M{"questions": 1}).One(&quiz); err != nil {
 		if err == mgo.ErrNotFound {
@@ -107,10 +107,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 
 	result.Datetime = time.Now()
 
-	update := bson.M{"$set": bson.M{"answers": &result.Answers, "entityid": entityId, "quizid": quizId.Hex(), "datetime": result.Datetime, "userid": result.UserId}}
+	update := bson.M{"$set": bson.M{"answers": &result.Answers, "entityid": entityId, "quizid": quizId, "datetime": result.Datetime, "userid": result.UserId}}
 	if _, err = conf.mgoColl.Upsert(bson.M{"quizid": quizId.Hex(), "entityid": entityId, "userid": result.UserId}, update); err != nil {
 		return nil, err
 	}
 
-	return suckhttp.NewResponse(302, "Found").AddHeader(suckhttp.Location, suckutils.ConcatTwo("/view/", entityId)), nil //?????
+	return suckhttp.NewResponse(302, "Found").AddHeader(suckhttp.Location, suckutils.ConcatTwo("/view/", entityId)), nil // TODO: redirect
 }

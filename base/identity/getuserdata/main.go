@@ -2,24 +2,23 @@ package main
 
 import (
 	"context"
-	"project/base/quizes/repo"
+	"project/base/identity/repo"
+
 	"thin-peak/httpservice"
 
 	"github.com/big-larry/mgo"
 )
 
 type config struct {
-	Configurator  string
-	Listen        string
-	MgoDB         string
-	MgoAddr       string
-	MgoColl       string
-	MgoCollQuizes string
-	mgoSession    *mgo.Session
+	Configurator string
+	Listen       string
+	MgoDB        string
+	MgoAddr      string
+	MgoColl      string
+	mgoSession   *mgo.Session
 }
 
-const thisServiceName httpservice.ServiceName = "quiz.answerquiz"
-const tokenDecoderServiceName httpservice.ServiceName = "identity.tokendecoder"
+var thisServiceName httpservice.ServiceName = "identity.getuserdata"
 
 func (c *config) GetListenAddress() string {
 	return c.Listen
@@ -34,7 +33,7 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	}
 	c.mgoSession = mgosession
 
-	return NewHandler(col, c.mgoSession.DB(c.MgoDB).C(c.MgoCollQuizes), connectors[tokenDecoderServiceName])
+	return NewHandler(col)
 }
 
 func (c *config) Close() error {
@@ -43,5 +42,5 @@ func (c *config) Close() error {
 }
 
 func main() {
-	httpservice.InitNewService(thisServiceName, false, 5, &config{}, tokenDecoderServiceName)
+	httpservice.InitNewService(thisServiceName, false, 5, &config{})
 }

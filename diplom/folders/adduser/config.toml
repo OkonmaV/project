@@ -1,0 +1,7 @@
+Configurator = "tcp:127.0.0.1:8090"
+Listen = "tcp:127.0.0.1:8303"
+MgoDB = "folders"
+MgoDBUsers = "users"
+MgoAddr = "127.0.0.1"
+MgoColl = "folders"
+MgoCollUsers = "users"

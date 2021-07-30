@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"project/base/quizes/repo"
 	"strings"
@@ -44,7 +43,7 @@ type answerResult struct {
 }
 
 type cookieData struct {
-	Login  string `json:"Login"`
+	Login  string `json:"login"`
 	MetaId string `json:"metaid"`
 	Role   int    `json:"role"`
 }
@@ -93,10 +92,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		params["entityid"] = entityId
 	}
 
-	quizz, err := repo.GetQuiz(params["quizid"], conf.mgoColl)
+	quiz, err := repo.GetQuiz(params["quizid"], conf.mgoColl)
 	if err != nil {
 		if err == mgo.ErrNotFound {
-			l.Debug("getQuiz", "no quizes with this id founded")
+			l.Debug("getQuiz", "quiz not found")
 			return suckhttp.NewResponse(404, "Not found"), nil // 404?
 		}
 		return nil, err
@@ -107,17 +106,18 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		return nil, err
 	}
 	if len(quizResults) == 0 {
-		// TODO: ???????????? ЧТО ДЕЛАТЬ ЕСЛИ НЕТ РУЗЕЛЬТАТОВ???????????????????????????????????????????????????????????????????????????????????????
+		// TODO: ???????????? ЧТО ДЕЛАТЬ ЕСЛИ НЕТ РЕЗУЛЬТАТОВ???????????????????????????????????????????????????????????????????????????????????????
 		// quizResults = make([]*results, 1)
 		// quizResults[0] = &results{QuizId: params["quizid"], EntityId: params["entityid"], UserId: params["userid"]}
 	}
+
 	data := make([]templateData, len(quizResults))
 
 	for i, res := range quizResults {
-		data[i] = templateData{QuizId: res.QuizId, EntityId: res.EntityId, UserId: res.UserId, Datetime: res.Datetime}
+		data[i] = templateData{QuizId: res.QuizId.Hex(), EntityId: res.EntityId, UserId: res.UserId.Hex(), Datetime: res.Datetime}
 		data[i].Questions = make(map[string]questionResult)
 
-		for questionId, question := range quizz.Questions {
+		for questionId, question := range quiz.Questions {
 			var textanswer string
 			answers := make(map[string]answerResult)
 
@@ -129,7 +129,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 			} else {
 				//data[i].questions[questionId].Answers = make(map[string]answerResult)
 
-				for ansId, ansText := range quizz.Questions[questionId].Answers {
+				for ansId, ansText := range quiz.Questions[questionId].Answers {
 					var checked bool
 					for _, resansId := range res.Answers[questionId] {
 						if resansId == ansId {
@@ -159,13 +159,10 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		contentType = "application/json"
 
 	} else if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
-		buf := bytes.NewBuffer(body)
-		err := conf.template.Execute(buf, data)
+		body, err = repo.ExecuteTemplate(conf.template, data)
 		if err != nil {
-			l.Error("Template execution", err)
-			return suckhttp.NewResponse(500, "Internal server error"), err
+			return nil, err
 		}
-		body = buf.Bytes()
 		contentType = "text/html"
 	}
 

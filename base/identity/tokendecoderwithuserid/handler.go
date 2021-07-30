@@ -9,7 +9,6 @@ import (
 	"thin-peak/logs/logger"
 
 	"github.com/big-larry/suckhttp"
-	"github.com/big-larry/suckutils"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/tarantool/go-tarantool"
 )
@@ -22,7 +21,7 @@ type Handler struct {
 }
 
 func NewHandler(trntlAddr, trntlTable, jwtKey, cookieName string) (*Handler, error) {
-	trntlConnection, err := repo.ConnectToTarantool(trntlAddr, trntlTable)
+	trntlConnection, err := repo.ConnectToTarantool(trntlAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -58,21 +57,22 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	if userlogin, ok := cookieData["login"]; ok {
+		//trntl req
 		var trntlRes []repo.TarantoolAuthTuple
 		err = conf.trntlConn.SelectTyped(conf.trntlTable, "primary", 0, 1, tarantool.IterEq, userlogin, &trntlRes)
 		if err != nil {
 			return nil, err
 		}
 		if len(trntlRes) != 1 {
-			l.Debug("Tarantool Select", "login not found in auth")
+			l.Debug("Tarantool Select", "login not found in tarantool")
 			return suckhttp.NewResponse(403, "Forbidden"), nil
 		}
+		//
 		cookieData["userid"] = trntlRes[0].UserId
 
 	} else {
-		l.Error("Cookie", errors.New("login not specified in cookie"))
-		// правильно ли тереть куку?
-		return suckhttp.NewResponse(403, "Forbidden").AddHeader(suckhttp.Set_Cookie, suckutils.ConcatTwo(conf.cookieName, "=; Max-Age=-1")), nil
+		l.Error("Cookie", errors.New("login not specified in cookie")) // l.Error??
+		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
 
 	var body []byte
@@ -90,28 +90,11 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 		} else {
 			return suckhttp.NewResponse(500, "Internal Server Error"), nil
 		}
-		contentType = "text/plain; charset=utf-8"
-		// } else if strings.Contains(r.GetHeader(suckhttp.Accept), "text/html") {
-		// 	var surname, name interface{}
-		// 	var ok bool
-		// 	if surname, ok = cookieData["surname"]; !ok {
-		// 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		// 	}
-		// 	if name, ok = cookieData["name"]; !ok {
-		// 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
-		// 	}
-		// 	body = []byte(suckutils.Concat(`<ul class="navbar-nav mb-2 mb-sm-0"><li class="nav-item"><a class="nav-link disabled" aria-disabled="true">`, surname.(string), " ", name.(string), `</a></li><li class="nav-item"><a class="nav-link" href="/signout">Выйти</a></li></ul>`))
-		// 	contentType = "text/html; charset=utf-8"
+		contentType = "text/plain"
 	} else {
 		l.Debug("Accept", "not allowed")
 		return suckhttp.NewResponse(400, "Bad request"), nil
 	}
-
-	// if login, ok := cookieData["Login"]; ok {
-	// 	resp.AddHeader("userhash", login.(string))
-	// } else {
-	// 	return suckhttp.NewResponse(500, "Internal Server Error"), nil
-	// }
 
 	return suckhttp.NewResponse(200, "OK").AddHeader(suckhttp.Content_Type, contentType).SetBody(body), nil
 

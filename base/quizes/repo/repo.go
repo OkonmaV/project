@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"bytes"
 	"errors"
 	"io/ioutil"
 	"text/template"
@@ -15,7 +16,7 @@ type Quiz struct {
 	Id        bson.ObjectId       `bson:"_id" json:"quizid"`
 	Name      string              `bson:"name" json:"quizname"`
 	Questions map[string]Question `bson:"questions" json:"questions"`
-	CreatorId string              `bson:"creatorid" json:"creatorid"`
+	CreatorId bson.ObjectId       `bson:"creatorid" json:"creatorid"`
 }
 
 type Question struct {
@@ -30,9 +31,9 @@ type Question struct {
 // Results collection
 type Results struct {
 	Id       bson.ObjectId       `bson:"_id" json:"id"`
-	QuizId   string              `bson:"quizid" json:"quizid"`
+	QuizId   bson.ObjectId       `bson:"quizid" json:"quizid"`
 	EntityId string              `bson:"entityid" json:"entityid"`
-	UserId   string              `bson:"userid" json:"userid"`
+	UserId   bson.ObjectId       `bson:"userid" json:"userid"`
 	Answers  map[string][]string `bson:"answers" json:"answers"`
 	Datetime time.Time           `bson:"datetime" json:"datetime"`
 }
@@ -42,7 +43,11 @@ type Results struct {
 func GetQuiz(quizId string, mgoColl *mgo.Collection) (*Quiz, error) {
 
 	var mgoRes Quiz
-	if err := mgoColl.Find(bson.M{"_id": quizId, "deleted": bson.M{"$exists": false}}).One(&mgoRes); err != nil {
+	qid, err := bson.NewObjectIdFromHex(quizId)
+	if err != nil {
+		return nil, err
+	}
+	if err := mgoColl.Find(bson.M{"_id": qid, "deleted": bson.M{"$exists": false}}).One(&mgoRes); err != nil {
 		return nil, err
 	}
 	return &mgoRes, nil
@@ -51,12 +56,18 @@ func GetQuiz(quizId string, mgoColl *mgo.Collection) (*Quiz, error) {
 func GetQuizResults(quizId string, userId string, entityId string, mgoColl *mgo.Collection) ([]Results, error) {
 
 	query := make(map[string]interface{})
-
+	var err error
 	if quizId != "" {
-		query["quizid"] = quizId
+		query["quizid"], err = bson.NewObjectIdFromHex(quizId)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if userId != "" {
-		query["userid"] = userId
+		query["userid"], err = bson.NewObjectIdFromHex(userId)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if entityId != "" {
 		query["entityid"] = entityId
@@ -88,10 +99,19 @@ func GetTemplate(filename string) (*template.Template, error) {
 
 }
 
-func ConnectToMongo(mgoAddr, dbname string) (*mgo.Session, error) {
-	mgoSession, err := mgo.Dial(mgoAddr)
+func ExecuteTemplate(templ *template.Template, data interface{}) ([]byte, error) {
+	buf := bytes.NewBuffer([]byte{})
+	err := templ.Execute(buf, data)
 	if err != nil {
 		return nil, err
 	}
-	return mgoSession, nil
+	return buf.Bytes(), nil
+}
+
+func ConnectToMongo(addr, db, col string) (*mgo.Session, *mgo.Collection, error) {
+	mgoSession, err := mgo.Dial(addr)
+	if err != nil {
+		return nil, nil, err
+	}
+	return mgoSession, mgoSession.DB(db).C(col), nil
 }

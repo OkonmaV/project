@@ -81,27 +81,34 @@ type question struct {
 	Answers  []answer `bson:"answers" json:"answers"`
 }
 type answer struct {
-	Id   string `bson:"answer_id" json:"answer_id"`
-	Text string `bson:"answer_text" json:"answer_text,omitempty"`
+	Id   string `bson:"answer_id" json:"id"`
+	Text string `bson:"answer_text" json:"text"`
 }
 
-type question2 struct {
-	Type     int               `bson:"question_type"`
-	Position int               `bson:"question_position"`
-	Text     string            `bson:"question_text"`
-	Answers  map[string]string `bson:"question_answers"`
+type auth struct {
+	login    string
+	password string
 }
 
 func main() {
 
-	//trntlConn, _ := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
-	// // User: ,
-	// // Pass: ,
-	//Timeout:       500 * time.Millisecond,
-	//Reconnect:     1 * time.Second,
-	//MaxReconnects: 4,
-	//})
+	// trntlConn, err := tarantool.Connect("127.0.0.1:3301", tarantool.Opts{
+	// 	// User: ,
+	// 	// Pass: ,
+	// 	Timeout:       500 * time.Millisecond,
+	// 	Reconnect:     1 * time.Second,
+	// 	MaxReconnects: 4,
+	// })
 	// fmt.Println("errConn: ", err)
+	// //foo := auth{"login2", "password2"}
+	// err = trntlConn.UpsertAsync("auth", []interface{}{"login", "password"}, []interface{}{[]interface{}{"=", "password", "password"}}).Err()
+	// fmt.Println("errUpsert: ", err)
+
+	// var trntlAuthRec repo.TarantoolAuthTuple
+	// err = trntlConn.SelectTyped("auth", "secondary", 0, 1, tarantool.IterEq, []interface{}{"login", "password"}, &trntlAuthRec)
+	// fmt.Println("errSelect: ", err)
+	// fmt.Println("trntlAuthRec: ", trntlAuthRec)
+
 	// //ertrt := &tarantool.Error{Msg: suckutils.ConcatThree("Duplicate key exists in unique index 'primary' in space '", "regcodes", "'"), Code: tarantool.ErrTupleFound}
 
 	//err := trntlConn.UpsertAsync("regcodes", []interface{}{28258, "123", "asd", "asd"}, []interface{}{[]interface{}{"=", "metaid", "NEWMETAID1"}}).Err()
@@ -124,10 +131,19 @@ func main() {
 	}
 	mgoColl := mgoSession.DB("test").C("test")
 
-	ch, err := mgoColl.Upsert(bson.M{"field": 752}, bson.M{"$setOnInsert": bson.M{"field": 750}})
+	ch, err := mgoColl.Upsert(bson.M{"field": 750}, bson.M{"$set": bson.M{"fi": 100}, "$setOnInsert": bson.M{"field": 750}})
 	fmt.Println("errinsert: ", err)
 
-	fmt.Println("err: ", err, []byte(ch.UpsertedId.(bson.ObjectId).Hex()))
+	fmt.Println("err: ", err, ch.Matched, ch.Updated)
+	change := mgo.Change{
+		Upsert:    false,
+		Remove:    false,
+		ReturnNew: true,
+		Update:    bson.M{"$addToSet": bson.M{"fis": 2100}, "$setOnInsert": bson.M{"field": 1750}},
+	}
+	var res interface{}
+	ch, err = mgoColl.Find(bson.M{"field": 1750}).Apply(change, &res)
+	fmt.Println("errFindAndModify: ", err, ch.UpsertedId, "res:", res)
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}

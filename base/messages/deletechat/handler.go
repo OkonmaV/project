@@ -83,7 +83,7 @@ func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Re
 	}
 
 	//upsert
-	if _, err := conf.mgoCollForDeleted.UpsertId(chatId, nil); err != nil {
+	..if _, err := conf.mgoCollForDeleted.UpsertId(chatId, nil); err != nil {
 		return nil, err
 	}
 

@@ -33,11 +33,13 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	if err != nil {
 		return nil, err
 	}
-	if c.mgoSession, err = repo.ConnectToMongo(c.MgoAddr, c.MgoDB); err != nil {
+	mgosession, col, err := repo.ConnectToMongo(c.MgoAddr, c.MgoDB, c.MgoColl)
+	if err != nil {
 		return nil, err
 	}
+	c.mgoSession = mgosession
 
-	return NewHandler(templ, c.mgoSession.DB(c.MgoDB).C(c.MgoColl), c.mgoSession.DB(c.MgoDB).C(c.MgoCollResults), connectors[authGetServiceName], connectors[tokenDecoderServiceName])
+	return NewHandler(templ, col, c.mgoSession.DB(c.MgoDB).C(c.MgoCollResults), connectors[authGetServiceName], connectors[tokenDecoderServiceName])
 }
 
 func (conf *config) Close() error {

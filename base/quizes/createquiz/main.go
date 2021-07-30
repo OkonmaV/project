@@ -28,11 +28,13 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	var err error
-	if c.mgoSession, err = repo.ConnectToMongo(c.MgoAddr, c.MgoDB); err != nil {
+	mgosession, col, err := repo.ConnectToMongo(c.MgoAddr, c.MgoDB, c.MgoColl)
+	if err != nil {
 		return nil, err
 	}
-	return NewHandler(c.mgoSession.DB(c.MgoDB).C(c.MgoColl), connectors[authSetServiceName], connectors[tokenDecoderServiceName])
+	c.mgoSession = mgosession
+
+	return NewHandler(col, connectors[authSetServiceName], connectors[tokenDecoderServiceName])
 }
 
 func (c *config) Close() error {

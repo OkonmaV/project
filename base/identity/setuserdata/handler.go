@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"project/base/identity/repo"
 	"strings"
 	"thin-peak/logs/logger"
 
@@ -11,29 +10,18 @@ import (
 	"github.com/big-larry/suckhttp"
 )
 
-type SetUserData struct {
-	mgoSession *mgo.Session
-	mgoColl    *mgo.Collection
+type Handler struct {
+	mgoColl *mgo.Collection
 }
 
 // Варнинг: через потенциальный сервис изменения пользовательских данных (при подмене куки и хреновой авторизации) есть вероятность создать левый акк в обход регистрации (без записи в тарантуле для аутентификации, но все же)
 
-func NewSetUserData(mgodb string, mgoAddr string, mgoColl string) (*SetUserData, error) {
+func NewHandler(mgocol *mgo.Collection) (*Handler, error) {
 
-	mgosession, err := repo.ConnectToMongo(mgoAddr, mgodb)
-	if err != nil {
-		return nil, err
-	}
-
-	return &SetUserData{mgoSession: mgosession, mgoColl: mgosession.DB(mgodb).C(mgoColl)}, nil
+	return &Handler{mgoColl: mgocol}, nil
 }
 
-func (c *SetUserData) Close() error {
-	c.mgoSession.Close()
-	return nil
-}
-
-func (conf *SetUserData) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
+func (conf *Handler) Handle(r *suckhttp.Request, l *logger.Logger) (*suckhttp.Response, error) {
 
 	if !strings.Contains(r.GetHeader(suckhttp.Content_Type), "application/json") || r.GetMethod() != suckhttp.PUT || len(r.Body) == 0 {
 		l.Debug("Request", "not PUT or content-type not application/json or body is empty")
