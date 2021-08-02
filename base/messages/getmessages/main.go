@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"project/base/messages/repo"
 	"thin-peak/httpservice"
 	"thin-peak/logs/logger"
 
@@ -30,13 +31,11 @@ func (c *config) GetConfiguratorAddress() string {
 	return c.Configurator
 }
 func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.ServiceName]*httpservice.InnerService) (httpservice.HttpService, error) {
-	var err error
-	c.mgoSession, err = mgo.Dial(c.MgoAddr)
+	mgosession, col, err := repo.ConnectToMongo(c.MgoAddr, c.MgoDB, c.MgoColl)
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("Mongo", "Connected!")
-	mgoCollection := c.mgoSession.DB(c.MgoDB).C(c.MgoColl)
+	c.mgoSession = mgosession
 
 	chConn := clickhouse.NewConn(c.ClickhouseAddr, clickhouse.NewHttpTransport())
 	//"CREATE TABLE IF NOT EXISTS chats.messages (`time` DateTime('Asia/Yekaterinburg'),`chatid` String,`userid` String,`message` String,`type` Int) ENGINE = MergeTree() ORDER BY (time,chatid)"
@@ -45,7 +44,7 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 		return nil, err
 	}
 	logger.Info("Clickhouse", "Connected!")
-	return NewHandler(mgoCollection, connectors[tokenDecoderServiceName], chConn, c.ClickhouseTable)
+	return NewHandler(col, connectors[tokenDecoderServiceName], chConn, c.ClickhouseTable)
 }
 
 func (conf *config) Close() error {

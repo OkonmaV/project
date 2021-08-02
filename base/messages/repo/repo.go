@@ -37,10 +37,10 @@ func GetTemplate(filename string) (*template.Template, error) {
 
 }
 
-func ConnectToMongo(mgoAddr string) (*mgo.Session, error) {
-	mgoSession, err := mgo.Dial(mgoAddr)
+func ConnectToMongo(addr, db, col string) (*mgo.Session, *mgo.Collection, error) {
+	mgoSession, err := mgo.Dial(addr)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return mgoSession, nil
+	return mgoSession, mgoSession.DB(db).C(col), nil
 }

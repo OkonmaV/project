@@ -31,10 +31,12 @@ func (c *config) CreateHandler(ctx context.Context, connectors map[httpservice.S
 	if err != nil {
 		return nil, err
 	}
-	if c.mgoSession, err = repo.ConnectToMongo(c.MgoAddr, c.MgoDB); err != nil {
+	mgosession, col, err := repo.ConnectToMongo(c.MgoAddr, c.MgoDB, c.MgoColl)
+	if err != nil {
 		return nil, err
 	}
-	return NewHandler(c.mgoSession.DB(c.MgoDB).C(c.MgoColl), connectors[tokenDecoderServiceName], templ)
+	c.mgoSession = mgosession
+	return NewHandler(col, connectors[tokenDecoderServiceName], templ)
 }
 
 func (c *config) Close() error {
