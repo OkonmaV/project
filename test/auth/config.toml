@@ -1,0 +1,3 @@
+DatafilePath = "data"
+KeyLen = 32
+ValueLen = 32
