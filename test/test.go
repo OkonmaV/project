@@ -4,9 +4,6 @@ import (
 	"fmt"
 	"lib"
 	"time"
-
-	"github.com/big-larry/mgo"
-	"github.com/big-larry/mgo/bson"
 )
 
 type chatInfo struct {
@@ -125,25 +122,28 @@ func main() {
 	//err = trntlConn.SelectTyped("regcodes", "primary", 0, 1, tarantool.IterEq, []interface{}{28258}, &trntlRes)
 	// //_, err = trntlConn.Update("regcodes", "primary", []interface{}{28258}, []interface{}{[]interface{}{"=", "metaid", "h"}, []interface{}{"=", "metaname", "hh"}})
 
-	mgoSession, err := mgo.Dial("127.0.0.1")
-	if err != nil {
-		return
-	}
-	mgoColl := mgoSession.DB("test").C("test")
+	// mgoSession, err := mgo.Dial("127.0.0.1")
+	// if err != nil {
+	// 	return
+	// }
+	// mgoColl := mgoSession.DB("test").C("test")
 
-	ch, err := mgoColl.Upsert(bson.M{"field": 750}, bson.M{"$set": bson.M{"fi": 100}, "$setOnInsert": bson.M{"field": 750}})
-	fmt.Println("errinsert: ", err)
+	// ch, err := mgoColl.Upsert(bson.M{"field": 750}, bson.M{"$set": bson.M{"fi": 100}, "$setOnInsert": bson.M{"field": 750}})
+	// fmt.Println("errinsert: ", err)
 
-	fmt.Println("err: ", err, ch.Matched, ch.Updated)
-	change := mgo.Change{
-		Upsert:    false,
-		Remove:    false,
-		ReturnNew: true,
-		Update:    bson.M{"$addToSet": bson.M{"fis": 2100}, "$setOnInsert": bson.M{"field": 1750}},
-	}
-	var res interface{}
-	ch, err = mgoColl.Find(bson.M{"field": 1750}).Apply(change, &res)
-	fmt.Println("errFindAndModify: ", err, ch.UpsertedId, "res:", res)
+	// fmt.Println("err: ", err, ch.Matched, ch.Updated)
+	// change := mgo.Change{
+	// 	Upsert:    false,
+	// 	Remove:    false,
+	// 	ReturnNew: true,
+	// 	Update:    bson.M{"$addToSet": bson.M{"fis": 2100}, "$setOnInsert": bson.M{"field": 1750}},
+	// }
+	// var res interface{}
+	// ch, err = mgoColl.Find(bson.M{"field": 1750}).Apply(change, &res)
+	// fmt.Println("errFindAndModify: ", err, ch.UpsertedId, "res:", res)
+	b := make([]byte, 5)
+	copy(b[2:], []byte("a"))
+	fmt.Println(b, 6/2*10)
 
 	//query2 := bson.M{"type": 1, "users": bson.M{"$all": []bson.M{{"$elemMatch": bson.M{"userid": "withUserId"}}, {"$elemMatch": bson.M{"userid": "userId"}}}}}
 	//query2 := bson.M{"type": 1, "$or": []bson.M{{"users.0.userid": "withUserId", "users.1.userid": "userId"}, {"users.0.userid": "userId", "users.1.userid": "withUserId"}}}
