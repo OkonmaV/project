@@ -38,8 +38,8 @@ func main() {
 		for {
 			time.Sleep(time.Second * 5)
 			rand.Seed(time.Now().UnixNano())
-			setRuleIntValue("ccc", rand.Intn(50), conf)
-			setRuleIntValue("ggg", rand.Intn(50), conf)
+			setRuleIntValue("ccc", rand.Intn(98), conf)
+			setRuleIntValue("ggg", rand.Intn(98), conf)
 		}
 
 	}()
