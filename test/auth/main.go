@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"os"
 	"time"
 
@@ -18,41 +17,35 @@ type config struct {
 	FilePath string
 	KeyLen   int
 	ValueLen int
-	Rules    map[string]byte
+	Rules    map[string][]byte
 }
 
 func main() {
+	//----
 	var conf config
 	if _, err := toml.DecodeFile("config.toml", &conf); err != nil {
 		fmt.Println(err)
 		return
 	}
 	fmt.Println("config: ", conf)
+	//----
 
-	conf.Rules = make(map[string]byte)
-
+	conf.Rules = make(map[string][]byte)
+	ctx := context.Background()
 	er := make(chan error)
-	go warmUp(context.Background(), er, time.Second*3, conf)
-	//----
-	go func() {
-		for {
-			time.Sleep(time.Second * 5)
-			rand.Seed(time.Now().UnixNano())
-			setRuleIntValue("ccc", rand.Intn(98), conf)
-			setRuleIntValue("ggg", rand.Intn(98), conf)
-		}
+	go warmUp(ctx, er, time.Second*3, conf)
 
-	}()
-	//----
 	fmt.Println("wait for err...")
 	fmt.Println("error: ", <-er)
 
 }
 
-func warmUp(ctxx context.Context, er chan error, timeout time.Duration, conf config) { // err????
+func warmUp(ctxx context.Context, er chan error, timeout time.Duration, conf config) {
 	ctx, cancel := context.WithCancel(ctxx)
 	ticker := time.NewTicker(timeout)
+	rulelen := conf.KeyLen + conf.ValueLen
 	var lastmodified time.Time
+	var lastsize int64
 
 	file, err := os.Open(conf.FilePath)
 	if err != nil {
@@ -66,8 +59,8 @@ func warmUp(ctxx context.Context, er chan error, timeout time.Duration, conf con
 		case <-ctx.Done():
 			ticker.Stop()
 			file.Close()
-			cancel()
 			er <- err
+			cancel()
 			return
 
 		case <-ticker.C:
@@ -79,34 +72,60 @@ func warmUp(ctxx context.Context, er chan error, timeout time.Duration, conf con
 			}
 			if fileinfo.ModTime().After(lastmodified) {
 				lastmodified = fileinfo.ModTime()
-				filedata := make([]byte, fileinfo.Size()/int64(conf.KeyLen+conf.ValueLen)*int64(conf.KeyLen+conf.ValueLen)) //filedata:=make([]byte)
-				if _, err = file.Read(filedata); err != nil {
-					cancel()
-					break
-				}
 
-				r := bytes.NewReader(filedata)
-				rule := make([]byte, conf.KeyLen+conf.ValueLen)
-				for {
-					if _, err = r.Read(rule); err != nil {
-						if err == io.EOF {
-							break
-						}
+				if lastsize < fileinfo.Size() {
+					if _, err = file.Seek(lastsize, 0); err != nil {
+						cancel()
+						er <- err
+						break
 					}
-					conf.Rules[string(rule[:conf.KeyLen])] = rule[len(rule)-1]
-					//conf.Rules[string(rule[:conf.KeyLen])] = string(rule[conf.KeyLen:])
-				}
-				fmt.Println(conf.Rules)
 
+					filedata := make([]byte, fileinfo.Size()-lastsize)
+					if _, err = file.Read(filedata); err != nil {
+						er <- err
+						cancel()
+						break
+					}
+
+					r := bytes.NewReader(filedata)
+					rule := make([]byte, rulelen)
+					for {
+						if _, err = r.Read(rule); err != nil {
+							if err == io.EOF {
+								break
+							}
+						}
+						conf.Rules[string(rule[:conf.KeyLen])] = rule[conf.KeyLen:]
+					}
+					fileinfo.Sys()
+				} else if lastsize > fileinfo.Size() { // перечитываем файл полностью
+					filedata := make([]byte, fileinfo.Size()/int64(rulelen)*int64(rulelen))
+					if _, err = file.Read(filedata); err != nil {
+						er <- err
+						cancel()
+						break
+					}
+
+					r := bytes.NewReader(filedata)
+					rule := make([]byte, rulelen)
+					for {
+						if _, err = r.Read(rule); err != nil {
+							if err == io.EOF {
+								break
+							}
+						}
+						conf.Rules[string(rule[:conf.KeyLen])] = rule[conf.KeyLen:]
+					}
+				}
 			}
 		}
 	}
 
 }
 
-func setRuleIntValue(key string, value int, conf config) error {
+func setRule(ctx context.Context, key string, value []byte, conf config) error {
 
-	file, err := suckutils.OpenConcurrentFile(context.Background(), conf.FilePath, time.Millisecond*100)
+	file, err := suckutils.OpenConcurrentFile(ctx, conf.FilePath, time.Millisecond*100)
 	if err != nil {
 		return err
 	}
@@ -117,44 +136,13 @@ func setRuleIntValue(key string, value int, conf config) error {
 	if len(key) == conf.KeyLen {
 		copy(data, []byte(key))
 	} else {
-		return errors.New("fuck key len")
+		return errors.New("key len mismatch")
 	}
 
-	data[conf.KeyLen] = byte(value)
-
-	fileinfo, err := file.File.Stat()
-	if err != nil {
-		return err
-	}
-
-	if _, err = file.File.Seek(fileinfo.Size()/int64(conf.KeyLen+conf.ValueLen)*int64(conf.KeyLen+conf.ValueLen), 0); err != nil {
-		return err
-	}
-	if _, err = file.File.Write(data); err != nil {
-		return err
-	}
-	return nil
-}
-
-func setRuleStrValue(key string, value string, conf config) error {
-
-	file, err := suckutils.OpenConcurrentFile(context.Background(), conf.FilePath, time.Millisecond*100)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	data := make([]byte, conf.KeyLen+conf.ValueLen)
-
-	if len(key) == conf.KeyLen {
-		copy(data, []byte(key))
-	} else {
-		return errors.New("fuck key len")
-	}
 	if len(value) == conf.ValueLen {
 		copy(data[conf.KeyLen:], []byte(value))
 	} else {
-		return errors.New("fuck value len")
+		return errors.New("value len mismatch")
 	}
 
 	fileinfo, err := file.File.Stat()
