@@ -1,3 +1,5 @@
-FilePath = "data"
-KeyLen = 3
-ValueLen = 1
+Configurator = "tcp:127.0.0.1:8090"
+Listen = "tcp:127.0.0.1:8111"
+AuthFilePath = "data"
+AuthKeyLen = 3
+AuthValueLen = 1

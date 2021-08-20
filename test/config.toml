@@ -1,0 +1,3 @@
+AuthFilePath = "data"
+AuthKeyLen = 3
+AuthValueLen = 1
