@@ -258,6 +258,8 @@ func main() {
 	fmt.Println(catchError(someError))
 	fmt.Println("end")
 
+	fmt.Println("test:\n", LengthDefined(5))
+
 	//http.HandleFunc("/", HomeHandler)
 	//err := http.ListenAndServe(":8090", nil)
 	//fmt.Println(err)
@@ -287,3 +289,38 @@ func catchError(someError chan error) error {
 // 	return nil, err
 // }
 // //
+
+type DemoStruct struct {
+	iterationIndex int
+	stringValue    string
+	used           bool
+}
+
+const someStringValue = "AbCdEfG123"
+
+func LengthDefined(iterations int) []DemoStruct {
+	DemoStructs := make([]DemoStruct, iterations)
+
+	for i := 0; i < iterations; i++ {
+		fmt.Println("\n", DemoStructs)
+		DemoStructs[i].iterationIndex = i
+		DemoStructs[i].stringValue = someStringValue
+		DemoStructs[i].used = true
+	}
+
+	return DemoStructs
+}
+
+func DynamicLength(iterations int) []DemoStruct {
+	var DemoStructs []DemoStruct
+
+	for i := 0; i < iterations; i++ {
+		DemoStructs = append(DemoStructs, DemoStruct{
+			iterationIndex: i,
+			stringValue:    someStringValue,
+			used:           true,
+		})
+	}
+
+	return DemoStructs
+}
