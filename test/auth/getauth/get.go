@@ -5,31 +5,30 @@ import (
 	"context"
 	"io"
 	"os"
+	"project/test/auth/errorscontainer"
 	"time"
 )
 
 type GetAuthConfig struct {
-	filePath  string
-	keyLen    int
-	valueLen  int
-	rules     map[string][]byte
-	someError chan error
+	filePath string
+	keyLen   int
+	valueLen int
+	rules    map[string][]byte
 }
 
-func InitGetAuthorizer(ctx context.Context, filepath string, keylen int, valuelen int, warmingticktime time.Duration, backupticktime time.Duration) *GetAuthConfig {
+func InitGetAuthorizer(ctx context.Context, filepath string, keylen int, valuelen int, warmingticktime time.Duration, errors *errorscontainer.ErrorsContainer) *GetAuthConfig {
 
-	conf := &GetAuthConfig{filePath: filepath, keyLen: keylen, valueLen: valuelen, rules: make(map[string][]byte), someError: make(chan error, 1)}
+	conf := &GetAuthConfig{filePath: filepath, keyLen: keylen, valueLen: valuelen, rules: make(map[string][]byte)}
 
-	go conf.warmUp(ctx, warmingticktime)
+	go conf.warmUp(ctx, warmingticktime, errors)
 	return conf
 }
 
-// жирновато?
 func (c *GetAuthConfig) Check(key string, value []byte) bool {
 	return bytes.Equal(c.rules[key], value)
 }
 
-func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration) {
+func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration, errors *errorscontainer.ErrorsContainer) {
 	ctx, cancel := context.WithCancel(ctx)
 	ticker := time.NewTicker(ticktime)
 	rulelen := c.keyLen + c.valueLen
@@ -39,7 +38,7 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration) {
 	file, err := os.OpenFile(c.filePath, os.O_CREATE|os.O_RDONLY, 0777)
 	if err != nil {
 		cancel()
-		c.someError <- err
+		errors.AddError(err)
 		return
 	}
 
@@ -48,7 +47,6 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration) {
 		case <-ctx.Done():
 			ticker.Stop()
 			file.Close()
-			//c.someError <- err
 			cancel()
 			return
 
@@ -56,7 +54,7 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration) {
 			fileinfo, err := file.Stat()
 			if err != nil {
 				cancel()
-				c.someError <- err
+				errors.AddError(err)
 				break
 			}
 			if fileinfo.ModTime().After(lastmodified) {
@@ -64,13 +62,13 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration) {
 
 				if _, err = file.Seek(lastsize, 0); err != nil {
 					cancel()
-					c.someError <- err
+					errors.AddError(err)
 					break
 				}
 
 				filedata := make([]byte, fileinfo.Size()-lastsize)
 				if _, err = file.Read(filedata); err != nil {
-					c.someError <- err
+					errors.AddError(err)
 					cancel()
 					break
 				}
