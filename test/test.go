@@ -1,11 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"lib"
-	"net/http"
-	"project/test/auth/errorscontainer"
+	"unsafe"
+
 	"syscall"
 	"time"
 )
@@ -26,11 +24,6 @@ type flags struct {
 }
 type Testconn struct {
 	conn *string
-}
-
-func changer() (r *lib.Cookie) {
-	r = &lib.Cookie{}
-	return r
 }
 
 type codesTuple struct {
@@ -226,26 +219,17 @@ type answer struct {
 // fmt.Println("num: ", ss, er, len(s))
 
 //}
-func worker() {
-	fmt.Println(time.Now())
-	time.Sleep(time.Second * 5)
-	fmt.Println("end")
-}
 
-func HomeHandler(w http.ResponseWriter, r *http.Request) {
-	go worker()
-	w.Write([]byte("pshhhh"))
-}
-
-type fff struct {
-	er *errorscontainer.ErrorsContainer
-}
-
-func (f fff) HandleError(err *errorscontainer.Error) {
-	fmt.Println(err.Time.UTC(), err.Err.Error())
-}
+// func (f fff) HandleError(err *errorscontainer.Error) {
+// 	fmt.Println(err.Time.UTC(), err.Err.Error())
+// }
 
 func main() {
+
+	a := struct{}{}
+	b := struct{}{}
+	fmt.Printf("%p, %p, %d, %v", &a, &b, unsafe.Sizeof(a), a)
+	return
 
 	// Sys () returns interface {}, so you need a type assertion. Different platforms need different types. On linux, * syscall. Stat_t
 
@@ -254,12 +238,12 @@ func main() {
 	// // if err == nil {
 	// // 	file.File.Write([]byte("smth"))
 	// // }
-	foo := &fff{}
-	foo.er = errorscontainer.NewErrorsContainer(foo, 1)
-	foo.er.AddError(errors.New("first"))
-	foo.er.AddError(errors.New("second"))
-	foo.er.AddError(errors.New("third"))
-	time.Sleep(time.Second * 2)
+	// foo := &fff{}
+	// foo.er = errorscontainer.NewErrorsContainer(foo, 1)
+	// foo.er.AddError(errors.New("first"))
+	// foo.er.AddError(errors.New("second"))
+	// foo.er.AddError(errors.New("third"))
+	// time.Sleep(time.Second * 2)
 
 	//http.HandleFunc("/", HomeHandler)
 	//err := http.ListenAndServe(":8090", nil)

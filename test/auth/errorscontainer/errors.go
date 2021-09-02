@@ -1,34 +1,25 @@
 package errorscontainer
 
-import (
-	"time"
-)
-
 type ErrorsContainer struct {
-	errors chan Error
-}
-
-type Error struct {
-	Time time.Time
-	Err  error
+	errors chan error
 }
 
 type ErrorsHandling interface {
-	HandleError(*Error)
+	Flush(error)
 }
 
 func NewErrorsContainer(f ErrorsHandling, capacity uint) *ErrorsContainer {
-	ch := make(chan Error, capacity)
+	ch := make(chan error, capacity)
 	go errorslistener(f, ch)
 	return &ErrorsContainer{errors: ch}
 }
 
 func (c *ErrorsContainer) AddError(err error) {
-	c.errors <- Error{Time: time.Now(), Err: err}
+	c.errors <- err
 }
 
-func errorslistener(f ErrorsHandling, ch chan Error) {
+func errorslistener(f ErrorsHandling, ch chan error) {
 	for err := range ch {
-		f.HandleError(&err)
+		f.HandleError(err)
 	}
 }

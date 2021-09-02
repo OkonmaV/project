@@ -1,11 +1,16 @@
 package errorscontainer_test
 
 import (
+	"context"
+	"errors"
+	"sync"
 	"time"
 )
 
 type ErrorsContainer struct {
-	errors chan Error
+	errors      []Error
+	adderrmutex sync.Mutex
+	flushmutex  sync.Mutex
 }
 
 type Error struct {
@@ -14,31 +19,49 @@ type Error struct {
 }
 
 type ErrorsHandling interface {
-	HandleErrors([]*Error)
+	Flush([]Error) error
 }
 
-func NewErrorsContainer(f ErrorsHandling, capacity uint, ticktime time.Duration, errpackcapacity uint) *ErrorsContainer {
-	ch := make(chan Error, capacity)
-	go errorslistener(f, ch, ticktime, errpackcapacity)
-	return &ErrorsContainer{errors: ch}
+func NewErrorsContainer(ctx context.Context, f ErrorsHandling, capacity uint, ticktime time.Duration, errpackcapacity int) *ErrorsContainer {
+	errs := make([]Error, 0, capacity)
+	foo := &ErrorsContainer{errors: errs, adderrmutex: sync.Mutex{}, flushmutex: sync.Mutex{}}
+	go errorslistener(ctx, f, foo, ticktime, errpackcapacity)
+	return foo
 }
-func (c *ErrorsContainer) AddError(err error) {
-	c.errors <- Error{Time: time.Now(), Err: err}
+func (errs *ErrorsContainer) AddError(err error) {
+	errs.adderrmutex.Lock()
+	errs.errors = append(errs.errors, Error{Time: time.Now(), Err: err})
+	errs.adderrmutex.Unlock()
 }
 
-func errorslistener(f ErrorsHandling, ch chan Error, ticktime time.Duration, errpackcapacity uint) {
+func errorslistener(ctx context.Context, f ErrorsHandling, errs *ErrorsContainer, ticktime time.Duration, minflushinglen int) {
+	if minflushinglen == 0 || minflushinglen > cap(errs.errors) {
+		minflushinglen = cap(errs.errors)
+		errs.AddError(errors.New("bad minflushinglen, changed to cap(errs)"))
+	}
 	ticker := time.NewTicker(ticktime)
-	errpack := make([]*Error, 0, errpackcapacity)
-	for range ticker.C {
-		for err := range ch {
-			if len(errpack) < int(errpackcapacity) {
-				errpack = append(errpack, &err)
-			} else {
-				f.HandleErrors(errpack) //если посыпятся ошибки и хэндлер тоже сдохнет, то блокировка из-за аддеррор // либо хэндлер по другому должен ловить ошибки, шо неоч
-				errpack = errpack[:0]
-				break // максимум один флуш за тик, иначе риск петли при лавине ошибок
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			errs.adderrmutex.Lock()
+			if len(errs.errors) >= minflushinglen {
+				flushingerrs := make([]Error, len(errs.errors)) //o/ flushniggers
+				copy(flushingerrs, errs.errors)
+				errs.errors = errs.errors[:0] //
+
+				go func() {
+					errs.flushmutex.Lock()
+					if err := f.Flush(flushingerrs); err != nil {
+						errs.AddError(err) // потенциальная блокировка?
+					}
+					errs.flushmutex.Unlock()
+				}()
+
 			}
-			// break ??
+			errs.adderrmutex.Unlock()
+
 		}
 	}
 }
