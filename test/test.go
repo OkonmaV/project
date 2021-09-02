@@ -1,10 +1,11 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"lib"
 	"net/http"
-	"os"
+	"project/test/auth/errorscontainer"
 	"syscall"
 	"time"
 )
@@ -233,7 +234,15 @@ func worker() {
 
 func HomeHandler(w http.ResponseWriter, r *http.Request) {
 	go worker()
-	w.Write([]byte("Hello, World!"))
+	w.Write([]byte("pshhhh"))
+}
+
+type fff struct {
+	er *errorscontainer.ErrorsContainer
+}
+
+func (f fff) HandleError(err *errorscontainer.Error) {
+	fmt.Println(err.Time.UTC(), err.Err.Error())
 }
 
 func main() {
@@ -245,20 +254,12 @@ func main() {
 	// // if err == nil {
 	// // 	file.File.Write([]byte("smth"))
 	// // }
-	finfo, _ := os.Stat("g")
-	stat_t := finfo.Sys().(*syscall.Stat_t)
-	// atime, CTime and mtime are access time, creation time and modification time, respectively. See Man 2 stat for details.
-	fmt.Println(timespecToTime(stat_t.Atim))
-	fmt.Println(timespecToTime(stat_t.Ctim))
-	fmt.Println(timespecToTime(stat_t.Mtim))
-
-	someError := make(chan error, 1)
-	fmt.Println("1")
-	//someError <- errors.New("how how")
-	fmt.Println(catchError(someError))
-	fmt.Println("end")
-
-	fmt.Println("test:\n", LengthDefined(5))
+	foo := &fff{}
+	foo.er = errorscontainer.NewErrorsContainer(foo, 1)
+	foo.er.AddError(errors.New("first"))
+	foo.er.AddError(errors.New("second"))
+	foo.er.AddError(errors.New("third"))
+	time.Sleep(time.Second * 2)
 
 	//http.HandleFunc("/", HomeHandler)
 	//err := http.ListenAndServe(":8090", nil)

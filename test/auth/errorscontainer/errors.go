@@ -1,43 +1,34 @@
 package errorscontainer
 
 import (
-	"sync"
 	"time"
 )
 
 type ErrorsContainer struct {
-	capacity int
-	iter     int
-	errors   []rec
-	mutex    sync.Mutex
+	errors chan Error
 }
 
-type rec struct {
-	time time.Time
-	err  error
+type Error struct {
+	Time time.Time
+	Err  error
 }
 
-func NewErrorsContainer(capacity int) *ErrorsContainer {
-	return &ErrorsContainer{capacity: capacity, iter: 0, errors: make([]rec, 0, capacity), mutex: sync.Mutex{}}
+type ErrorsHandling interface {
+	HandleError(*Error)
+}
+
+func NewErrorsContainer(f ErrorsHandling, capacity uint) *ErrorsContainer {
+	ch := make(chan Error, capacity)
+	go errorslistener(f, ch)
+	return &ErrorsContainer{errors: ch}
 }
 
 func (c *ErrorsContainer) AddError(err error) {
-	c.mutex.Lock()
-	if len(c.errors) < c.capacity {
-		c.errors = append(c.errors, rec{time: time.Now(), err: err})
-		c.iter++
-	} else {
-		// ШО ЭЛСЕ ?
-	}
-	c.mutex.Unlock()
+	c.errors <- Error{Time: time.Now(), Err: err}
 }
 
-func (c *ErrorsContainer) UnloadErrors() []rec {
-	var res []rec
-	c.mutex.Lock()
-	res = c.errors
-	c.errors = make([]rec, 0, c.capacity)
-	c.iter = 0
-	c.mutex.Unlock()
-	return res
+func errorslistener(f ErrorsHandling, ch chan Error) {
+	for err := range ch {
+		f.HandleError(&err)
+	}
 }
