@@ -2,6 +2,7 @@ package errorscontainer_test
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 )
@@ -17,35 +18,46 @@ type Error struct {
 	Err  error
 }
 
-type ErrorsHandling interface {
+type ErrorsFlusher interface {
 	Flush([]Error) error
 }
 
-func NewErrorsContainer(ctx context.Context, f ErrorsHandling, capacity int, ticktime time.Duration, minflushinglen int) *ErrorsContainer {
+func NewErrorsContainer(ctx context.Context, f ErrorsFlusher, capacity int, flushperiod time.Duration, minflushinglen int) (*ErrorsContainer, error) {
 
 	if capacity < 1 {
-		capacity = 10
+		return nil, errors.New("capacity < 1")
+	}
+	if minflushinglen < 1 {
+		return nil, errors.New("minflushinglen > capacity")
 	}
 	if minflushinglen < 1 || minflushinglen > capacity {
-		minflushinglen = capacity
+		return nil, errors.New("minflushinglen < 1")
 	}
 
-	errs := make([]Error, 0, capacity)
-	container := &ErrorsContainer{errors: errs, adderrmutex: sync.Mutex{}, flushmutex: sync.Mutex{}}
+	container := &ErrorsContainer{
+		errors:      make([]Error, 0, capacity),
+		adderrmutex: sync.Mutex{},
+		flushmutex:  sync.Mutex{},
+	}
 
-	go errorslistener(ctx, f, container, ticktime, minflushinglen)
+	go errorslistener(ctx, f, container, flushperiod, minflushinglen)
 
-	return container
+	return container, nil
 }
 func (errs *ErrorsContainer) AddError(err error) {
 	errs.adderrmutex.Lock()
+	defer errs.adderrmutex.Unlock()
+	if err == nil {
+		return
+	}
+	// А где проверка на длину массива и флуш!? У тебя получается флуш только по тику... М вчера говорили о том, что флуш может быть как по тику, так и при большом количестве ошибок...
 	errs.errors = append(errs.errors, Error{Time: time.Now(), Err: err})
-	errs.adderrmutex.Unlock()
 }
 
-func errorslistener(ctx context.Context, f ErrorsHandling, errs *ErrorsContainer, ticktime time.Duration, minflushinglen int) {
+// Все что ниже обсудим
+func errorslistener(ctx context.Context, f ErrorsFlusher, errs *ErrorsContainer, flushperiod time.Duration, minflushinglen int) {
 
-	ticker := time.NewTicker(ticktime)
+	ticker := time.NewTicker(flushperiod)
 	var wg sync.WaitGroup
 
 	for {
@@ -76,7 +88,7 @@ func errorslistener(ctx context.Context, f ErrorsHandling, errs *ErrorsContainer
 	}
 }
 
-func initflush(wg *sync.WaitGroup, errs *ErrorsContainer, f ErrorsHandling, flusherrs []Error) {
+func initflush(wg *sync.WaitGroup, errs *ErrorsContainer, f ErrorsFlusher, flusherrs []Error) {
 	defer wg.Done()
 	errs.flushmutex.Lock()
 	if err := f.Flush(flusherrs); err != nil {
