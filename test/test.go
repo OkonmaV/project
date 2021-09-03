@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"unsafe"
+	"math/rand"
+	"project/test/auth/errorscontainer"
+	"strconv"
+	"sync/atomic"
 
-	"syscall"
 	"time"
 )
 
@@ -224,88 +228,64 @@ type answer struct {
 // 	fmt.Println(err.Time.UTC(), err.Err.Error())
 // }
 
+type Test struct {
+	foo string
+	o   *errorscontainer.ErrorsContainer
+}
+
 func main() {
-
-	a := struct{}{}
-	b := struct{}{}
-	fmt.Printf("%p, %p, %d, %v", &a, &b, unsafe.Sizeof(a), a)
-	return
-
-	// Sys () returns interface {}, so you need a type assertion. Different platforms need different types. On linux, * syscall. Stat_t
-
-	// // file, err := suckutils.OpenConcurrentFile(context.Background(), "g", time.Millisecond*100)
-	// // defer file.Close()
-	// // if err == nil {
-	// // 	file.File.Write([]byte("smth"))
-	// // }
-	// foo := &fff{}
-	// foo.er = errorscontainer.NewErrorsContainer(foo, 1)
-	// foo.er.AddError(errors.New("first"))
-	// foo.er.AddError(errors.New("second"))
-	// foo.er.AddError(errors.New("third"))
-	// time.Sleep(time.Second * 2)
-
-	//http.HandleFunc("/", HomeHandler)
-	//err := http.ListenAndServe(":8090", nil)
-	//fmt.Println(err)
-}
-func timespecToTime(ts syscall.Timespec) time.Time {
-	return time.Unix(int64(ts.Sec), int64(ts.Nsec))
-}
-func catchError(someError chan error) error {
-	fmt.Println("2")
-	select {
-	case err := <-someError:
-		return err
-	default:
-		return nil
+	ctx, cancel := context.WithCancel(context.Background())
+	f := &Test{foo: "fuck"}
+	c, err := errorscontainer.NewErrorsContainer(ctx, f, 50, time.Second*1, 3)
+	if err != nil {
+		fmt.Println(err)
+		return
 	}
-}
-
-// // check root meta ?????
-// query := &bson.M{"_id": froot, "deleted": bson.M{"$exists": false}, "$or": []bson.M{{"metas": &meta{Type: 0, Id: metaid}}, {"metas": &meta{Type: 1, Id: metaid}}}}
-// var foo interface{}
-
-// err = conf.mgoColl.Find(query).One(&foo)
-// if err != nil {
-// 	if err == mgo.ErrNotFound {
-// 		return suckhttp.NewResponse(403, "Forbidden"), nil
-// 	}
-// 	return nil, err
-// }
-// //
-
-type DemoStruct struct {
-	iterationIndex int
-	stringValue    string
-	used           bool
-}
-
-const someStringValue = "AbCdEfG123"
-
-func LengthDefined(iterations int) []DemoStruct {
-	DemoStructs := make([]DemoStruct, iterations)
-
-	for i := 0; i < iterations; i++ {
-		fmt.Println("\n", DemoStructs)
-		DemoStructs[i].iterationIndex = i
-		DemoStructs[i].stringValue = someStringValue
-		DemoStructs[i].used = true
+	f.o = c
+	c.AddError(errors.New("ONE"))
+	c.AddError(errors.New("TWO"))
+	c.AddError(errors.New("THREE"))
+	fmt.Println("sleep 1")
+	time.Sleep(time.Second * 3)
+	c.AddError(errors.New("FOUR"))
+	//fmt.Println("hi mark1")
+	c.AddError(errors.New("FIVE"))
+	//fmt.Println("hi mark2")
+	c.AddError(errors.New("SIX"))
+	c.AddError(errors.New("SEVEN"))
+	c.AddError(errors.New("EIGHT"))
+	c.AddError(errors.New("NINE"))
+	c.AddError(errors.New("TEN"))
+	c.AddError(errors.New("ELEVEN"))
+	var i int32
+	f1 := func(n int) {
+		for {
+			time.Sleep(time.Nanosecond * time.Duration(rand.Intn(1000)+1000))
+			c.AddError(errors.New(strconv.Itoa(n) + " " + strconv.Itoa(int(atomic.AddInt32(&i, 1)))))
+		}
 	}
-
-	return DemoStructs
+	for j := 0; j < 5; j++ {
+		go f1(j)
+	}
+	go func() {
+		time.Sleep(time.Second * 20)
+		cancel()
+		fmt.Println("CANCELLED1")
+	}()
+	time.Sleep(time.Second * 2)
+	<-ctx.Done()
+	time.Sleep(time.Second * 2)
+	fmt.Println("CANCELLED2", c.AddCount, c.FlushCount)
+	//time.Sleep(time.Hour)
 }
 
-func DynamicLength(iterations int) []DemoStruct {
-	var DemoStructs []DemoStruct
-
-	for i := 0; i < iterations; i++ {
-		DemoStructs = append(DemoStructs, DemoStruct{
-			iterationIndex: i,
-			stringValue:    someStringValue,
-			used:           true,
-		})
+func (s *Test) Flush(errs []errorscontainer.Error) error {
+	fmt.Println("--- start flush at: ", time.Now())
+	for i := 0; i < len(errs); i++ {
+		fmt.Println(s.o.AddCount, s.o.FlushCount, "err added: ", errs[i].Time, errs[i].AddTime, " --- err: ", errs[i].Err, " --- len: ", len(errs), " --- cap: ", cap(errs))
 	}
-
-	return DemoStructs
+	fmt.Println("sleep flush")
+	time.Sleep(time.Second * 2)
+	fmt.Println("--- end flush at: ", time.Now())
+	return errors.New("FLUSH ERROR")
 }
