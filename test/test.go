@@ -242,21 +242,6 @@ func main() {
 		return
 	}
 	f.o = c
-	c.AddError(errors.New("ONE"))
-	c.AddError(errors.New("TWO"))
-	c.AddError(errors.New("THREE"))
-	fmt.Println("sleep 1")
-	time.Sleep(time.Second * 3)
-	c.AddError(errors.New("FOUR"))
-	//fmt.Println("hi mark1")
-	c.AddError(errors.New("FIVE"))
-	//fmt.Println("hi mark2")
-	c.AddError(errors.New("SIX"))
-	c.AddError(errors.New("SEVEN"))
-	c.AddError(errors.New("EIGHT"))
-	c.AddError(errors.New("NINE"))
-	c.AddError(errors.New("TEN"))
-	c.AddError(errors.New("ELEVEN"))
 	var i int32
 	f1 := func(n int) {
 		for {
@@ -264,18 +249,45 @@ func main() {
 			c.AddError(errors.New(strconv.Itoa(n) + " " + strconv.Itoa(int(atomic.AddInt32(&i, 1)))))
 		}
 	}
-	for j := 0; j < 5; j++ {
+	for j := 0; j < 1; j++ {
 		go f1(j)
 	}
 	go func() {
-		time.Sleep(time.Second * 20)
+		time.Sleep(time.Second * 5)
 		cancel()
 		fmt.Println("CANCELLED1")
 	}()
 	time.Sleep(time.Second * 2)
 	<-ctx.Done()
-	time.Sleep(time.Second * 2)
+	time.Sleep(time.Second * 4)
+	<-c.Done
 	fmt.Println("CANCELLED2", c.AddCount, c.FlushCount)
+	fmt.Println("i =", i)
+	// ////////////////////////////////////////////////////////////
+	// chh := make(chan int, 1)
+	// var ii int32
+	// f2 := func(n int) {
+	// 	//for {
+	// 	chh <- int(atomic.AddInt32(&ii, 1))
+	// 	//}
+	// }
+	// for j := 0; j < 150; j++ {
+	// 	go f2(j)
+	// }
+	// go func() {
+	// 	for v := range chh {
+	// 		fmt.Println(v)
+	// 	}
+
+	// }()
+	// time.Sleep(time.Second)
+	// fmt.Println("close chanel")
+	// close(chh)
+	// time.Sleep(time.Second * 4)
+	// fmt.Println("closed chanel", cap(chh))
+
+	//close(chh)
+
 	//time.Sleep(time.Hour)
 }
 
