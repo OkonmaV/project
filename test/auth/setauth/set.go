@@ -12,12 +12,11 @@ type SetAuthConfig struct {
 	filePath string
 	keyLen   int
 	valueLen int
-	rules    map[string][]byte
 }
 
 func InitSetAuthorizer(ctx context.Context, filepath string, keylen int, valuelen int) *SetAuthConfig {
 
-	conf := &SetAuthConfig{filePath: filepath, keyLen: keylen, valueLen: valuelen, rules: make(map[string][]byte)}
+	conf := &SetAuthConfig{filePath: filepath, keyLen: keylen, valueLen: valuelen}
 
 	return conf
 }

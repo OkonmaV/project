@@ -37,7 +37,7 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration, erro
 
 	file, err := os.OpenFile(c.filePath, os.O_CREATE|os.O_RDONLY, 0777)
 	if err != nil {
-		cancel()
+
 		errors.AddError(err)
 		return
 	}

@@ -5,7 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
-	"project/test/auth/errorscontainer"
+	"project/test/auth/logscontainer"
+	"project/test/auth/logscontainer/flushers"
 	"strconv"
 	"sync/atomic"
 
@@ -230,74 +231,39 @@ type answer struct {
 
 type Test struct {
 	foo string
-	o   *errorscontainer.ErrorsContainer
+	o   *logscontainer.LogsContainer
 }
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &Test{foo: "fuck"}
-	c, err := errorscontainer.NewErrorsContainer(ctx, f, 50, time.Second*1, 3)
+	f := &flushers.Console{}
+	c, err := logscontainer.NewLogsContainer(ctx, f, 50, time.Second*1, 3)
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	f.o = c
 	var i int32
 	f1 := func(n int) {
 		for {
 			time.Sleep(time.Nanosecond * time.Duration(rand.Intn(1000)+1000))
-			c.AddError(errors.New(strconv.Itoa(n) + " " + strconv.Itoa(int(atomic.AddInt32(&i, 1)))))
+			c.Error("Test Description", errors.New("fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1)))))
+			c.Debug("Test Description", "fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1))))
+			c.Warning("Test Description", "fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1))))
+			c.Info("Test Description", "fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1))))
 		}
 	}
-	for j := 0; j < 1; j++ {
+	for j := 0; j < 2; j++ {
 		go f1(j)
 	}
 	go func() {
 		time.Sleep(time.Second * 5)
 		cancel()
-		fmt.Println("CANCELLED1")
+		fmt.Println("CANCELLED")
 	}()
 	time.Sleep(time.Second * 2)
 	<-ctx.Done()
 	time.Sleep(time.Second * 4)
 	<-c.Done
-	fmt.Println("CANCELLED2", c.AddCount, c.FlushCount)
+	fmt.Println("DONE CANCEL")
 	fmt.Println("i =", i)
-	// ////////////////////////////////////////////////////////////
-	// chh := make(chan int, 1)
-	// var ii int32
-	// f2 := func(n int) {
-	// 	//for {
-	// 	chh <- int(atomic.AddInt32(&ii, 1))
-	// 	//}
-	// }
-	// for j := 0; j < 150; j++ {
-	// 	go f2(j)
-	// }
-	// go func() {
-	// 	for v := range chh {
-	// 		fmt.Println(v)
-	// 	}
-
-	// }()
-	// time.Sleep(time.Second)
-	// fmt.Println("close chanel")
-	// close(chh)
-	// time.Sleep(time.Second * 4)
-	// fmt.Println("closed chanel", cap(chh))
-
-	//close(chh)
-
-	//time.Sleep(time.Hour)
-}
-
-func (s *Test) Flush(errs []errorscontainer.Error) error {
-	fmt.Println("--- start flush at: ", time.Now())
-	for i := 0; i < len(errs); i++ {
-		fmt.Println(s.o.AddCount, s.o.FlushCount, "err added: ", errs[i].Time, errs[i].AddTime, " --- err: ", errs[i].Err, " --- len: ", len(errs), " --- cap: ", cap(errs))
-	}
-	fmt.Println("sleep flush")
-	time.Sleep(time.Second * 2)
-	fmt.Println("--- end flush at: ", time.Now())
-	return errors.New("FLUSH ERROR")
 }
