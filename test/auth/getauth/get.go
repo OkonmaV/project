@@ -3,9 +3,11 @@ package getauth
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
-	"project/test/auth/errorscontainer"
+	"project/test/auth/logscontainer"
 	"time"
 )
 
@@ -16,20 +18,22 @@ type GetAuthConfig struct {
 	rules    map[string][]byte
 }
 
-func InitGetAuthorizer(ctx context.Context, filepath string, keylen int, valuelen int, warmingticktime time.Duration, errors *errorscontainer.ErrorsContainer) *GetAuthConfig {
-
+func InitGetAuthorizer(ctx context.Context, filepath string, keylen int, valuelen int, warmingticktime time.Duration, l *logscontainer.LogsContainer) (*GetAuthConfig, error) {
+	if warmingticktime == 0 {
+		return nil, errors.New("ticktime must be greater than 0")
+	}
 	conf := &GetAuthConfig{filePath: filepath, keyLen: keylen, valueLen: valuelen, rules: make(map[string][]byte)}
 
-	go conf.warmUp(ctx, warmingticktime, errors)
-	return conf
+	go conf.warmUp(ctx, warmingticktime, l)
+	return conf, nil
 }
 
 func (c *GetAuthConfig) Check(key string, value []byte) bool {
 	return bytes.Equal(c.rules[key], value)
 }
 
-func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration, errors *errorscontainer.ErrorsContainer) {
-	ctx, cancel := context.WithCancel(ctx)
+func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration, l *logscontainer.LogsContainer) {
+	ctx, cancel := context.WithCancel(ctx) //
 	ticker := time.NewTicker(ticktime)
 	rulelen := c.keyLen + c.valueLen
 	var lastmodified time.Time
@@ -37,8 +41,7 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration, erro
 
 	file, err := os.OpenFile(c.filePath, os.O_CREATE|os.O_RDONLY, 0777)
 	if err != nil {
-
-		errors.AddError(err)
+		l.Error("OpenFile", err)
 		return
 	}
 
@@ -47,28 +50,28 @@ func (c *GetAuthConfig) warmUp(ctx context.Context, ticktime time.Duration, erro
 		case <-ctx.Done():
 			ticker.Stop()
 			file.Close()
-			cancel()
 			return
 
 		case <-ticker.C:
 			fileinfo, err := file.Stat()
+			fmt.Println("FS:", fileinfo) //
 			if err != nil {
+				l.Error("FileStat", err)
 				cancel()
-				errors.AddError(err)
 				break
 			}
 			if fileinfo.ModTime().After(lastmodified) {
 				lastmodified = fileinfo.ModTime()
 
 				if _, err = file.Seek(lastsize, 0); err != nil {
+					l.Error("FileSeek", err)
 					cancel()
-					errors.AddError(err)
 					break
 				}
 
 				filedata := make([]byte, fileinfo.Size()-lastsize)
 				if _, err = file.Read(filedata); err != nil {
-					errors.AddError(err)
+					l.Error("FileRead", err)
 					cancel()
 					break
 				}

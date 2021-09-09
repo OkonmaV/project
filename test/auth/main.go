@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
-	"project/test/auth/errorscontainer"
+
 	"project/test/auth/getauth"
+	"project/test/auth/logscontainer"
+	"project/test/auth/logscontainer/flushers"
 	"project/test/auth/setauth"
 	"time"
 
@@ -31,44 +33,48 @@ func main() {
 		fmt.Println(err)
 		return
 	}
-	errors := errorscontainer.NewErrorsContainer(3)
-	fmt.Println("err:", errors)
 	ctx := context.Background()
-	getAuth := getauth.InitGetAuthorizer(ctx, conf.AuthFilePath, conf.AuthKeyLen, conf.AuthValueLen, time.Second*2, errors)
+	l, err := logscontainer.NewLogsContainer(ctx, flushers.NewConsoleFlusher("ohhimark"), 3, time.Second, 2)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	getAuth, err := getauth.InitGetAuthorizer(ctx, conf.AuthFilePath, conf.AuthKeyLen, conf.AuthValueLen, time.Second*2, l)
 	setAuth := setauth.InitSetAuthorizer(ctx, conf.AuthFilePath, conf.AuthKeyLen, conf.AuthValueLen)
 	//
-	if err := setAuth.SetRule(ctx, "AAA", []byte("1")); err != nil {
-		errors.AddError(err)
+	if err != nil {
 		fmt.Println(err)
+		return
 	}
-	if err := setAuth.SetRule(ctx, "BBB", []byte("1")); err != nil {
-		errors.AddError(err)
-		fmt.Println(errors)
+	if err = setAuth.SetRule(ctx, "AAA", []byte("1")); err != nil {
+		l.Error("SetRule", err)
+
+	}
+	if err = setAuth.SetRule(ctx, "BBB", []byte("1")); err != nil {
+		l.Error("SetRule", err)
 	}
 	time.Sleep(time.Second * 3)
 	fmt.Println("AAA true:", getAuth.Check("AAA", []byte("1")), "BBB false:", getAuth.Check("BBB", []byte("2")))
 	//
-	if err := setAuth.SetRule(ctx, "AAA", []byte("2")); err != nil {
-		errors.AddError(err)
-		fmt.Println(errors)
+	if err = setAuth.SetRule(ctx, "AAA", []byte("2")); err != nil {
+		l.Error("SetRule", err)
 	}
 	time.Sleep(time.Second * 3)
 	fmt.Println("AAA edited true:", getAuth.Check("AAA", []byte("2")))
 	// checking errors
-	if err := setAuth.SetRule(ctx, "BBB", []byte("111")); err != nil {
-		errors.AddError(err)
-		fmt.Println("errors:", errors)
+	if err = setAuth.SetRule(ctx, "BBB", []byte("111")); err != nil {
+		l.Error("SetRule", err)
 	}
-	if err := setAuth.SetRule(ctx, "BBBB", []byte("1")); err != nil {
-		errors.AddError(err)
-		fmt.Println("errors:", errors)
+	if err = setAuth.SetRule(ctx, "BBBB", []byte("1")); err != nil {
+		l.Error("SetRule", err)
 	}
-	if err := setAuth.SetRule(ctx, "", []byte("1")); err != nil {
-		errors.AddError(err)
-		fmt.Println("errors:", errors)
+	if err = setAuth.SetRule(ctx, "", []byte("1")); err != nil {
+		l.Error("SetRule", err)
 	}
-	if err := setAuth.SetRule(ctx, "BBB", []byte("")); err != nil {
-		errors.AddError(err)
-		fmt.Println("errors:", errors)
+	if err = setAuth.SetRule(ctx, "BBB", []byte("")); err != nil {
+		l.Error("SetRule", err)
 	}
+	fmt.Println("sleep")
+	time.Sleep(time.Second * 10)
 }
