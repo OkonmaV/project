@@ -2,15 +2,13 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math/rand"
-	"project/test/auth/logscontainer"
-	"project/test/auth/logscontainer/flushers"
-	"strconv"
-	"sync/atomic"
+	"net"
+	"net/http"
 
 	"time"
+
+	"github.com/gobwas/ws"
 )
 
 type chatInfo struct {
@@ -228,42 +226,118 @@ type answer struct {
 // func (f fff) HandleError(err *errorscontainer.Error) {
 // 	fmt.Println(err.Time.UTC(), err.Err.Error())
 // }
+type S string
 
-type Test struct {
-	foo string
-	o   *logscontainer.LogsContainer
+func (s *S) edit() {
+	*s = S("str")
+}
+
+func getfreeport() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
+	}
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	fmt.Println("ADDR:", l.Addr().String())
+	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 func main() {
-	ctx, cancel := context.WithCancel(context.Background())
-	f := &flushers.Console{}
-	c, err := logscontainer.NewLogsContainer(ctx, f, 50, time.Second*1, 3)
+	var addr string
+	d := ws.Dialer{
+		Header: ws.HandshakeHeaderHTTP(http.Header{
+			"X-listen-here-u-little-shit": []string{"1"},
+		}),
+		OnHeader: func(key, value []byte) (err error) {
+			addr = string(value)
+			return nil
+		},
+	}
+	conn, _, hs, err := d.Dial(context.Background(), "ws://127.0.0.1:8089/test.test")
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println("Dial err:", err)
 		return
 	}
-	var i int32
-	f1 := func(n int) {
-		for {
-			time.Sleep(time.Nanosecond * time.Duration(rand.Intn(1000)+1000))
-			c.Error("Test Description", errors.New("fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1)))))
-			c.Debug("Test Description", "fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1))))
-			c.Warning("Test Description", "fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1))))
-			c.Info("Test Description", "fuck"+strconv.Itoa(int(atomic.AddInt32(&i, 1))))
-		}
+
+	fmt.Println(hs, conn.LocalAddr(), ">", conn.RemoteAddr())
+
+	ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi"))))
+
+	_, err = net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Println("bad address")
+		return
 	}
-	for j := 0; j < 2; j++ {
-		go f1(j)
+	fmt.Println("listen to", addr)
+	conn.Close()
+	time.Sleep(time.Hour)
+	// for {
+	// 	conn, err := ln.Accept()
+	// 	if err != nil {
+	// 		fmt.Println(2, err)
+	// 		return
+	// 	}
+	// 	_, err = ws.Upgrade(conn)
+	// 	if err != nil {
+	// 		fmt.Println(3, err)
+	// 		return
+	// 	}
+
+	// 	go func() {
+	// 		defer conn.Close()
+
+	// 		for {
+	// 			header, err := ws.ReadHeader(conn)
+	// 			if err != nil {
+	// 				fmt.Println(4, err)
+	// 				return
+	// 			}
+
+	// 			payload := make([]byte, header.Length)
+	// 			_, err = io.ReadFull(conn, payload)
+	// 			if err != nil {
+	// 				fmt.Println(5, err)
+	// 				return
+	// 			}
+	// 			if header.Masked {
+	// 				ws.Cipher(payload, header.Mask, 0)
+	// 			}
+
+	// 			// Reset the Masked flag, server frames must not be masked as
+	// 			// RFC6455 says.
+	// 			header.Masked = false
+
+	// 			if err := ws.WriteHeader(conn, header); err != nil {
+	// 				fmt.Println(6, err)
+	// 				return
+	// 			}
+	// 			if _, err := conn.Write(payload); err != nil {
+	// 				fmt.Println(7, err)
+	// 				return
+	// 			}
+
+	// 			if header.OpCode == ws.OpClose {
+	// 				return
+	// 			}
+	// 		}
+	// 	}()
+}
+
+func GetFreePort() (int, error) {
+	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, err
 	}
-	go func() {
-		time.Sleep(time.Second * 5)
-		cancel()
-		fmt.Println("CANCELLED")
-	}()
-	time.Sleep(time.Second * 2)
-	<-ctx.Done()
-	time.Sleep(time.Second * 4)
-	<-c.Done
-	fmt.Println("DONE CANCEL")
-	fmt.Println("i =", i)
+
+	l, err := net.ListenTCP("tcp", addr)
+	if err != nil {
+		return 0, err
+	}
+	defer l.Close()
+	return l.Addr().(*net.TCPAddr).Port, nil
 }

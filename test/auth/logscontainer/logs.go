@@ -20,20 +20,35 @@ type LogsContainer struct {
 type Log struct {
 	Time        time.Time
 	Description string
-	Type        string
+	Lvl         loglevel
 	Log         error
 }
 
 type LogsFlusher interface {
 	Flush([]Log) error
 }
+type loglevel uint8
 
 const (
-	debug   string = "DBG"
-	info    string = "INF"
-	err     string = "ERR"
-	warning string = "WRN"
+	debug   = 1
+	info    = 2
+	warning = 3
+	err     = 4
 )
+
+func (l loglevel) String() string {
+	switch l {
+	case debug:
+		return "DBG"
+	case info:
+		return "INF"
+	case warning:
+		return "WRN"
+	case err:
+		return "ERR"
+	}
+	return "UNK"
+}
 
 func NewLogsContainer(ctx context.Context, f LogsFlusher, capacity int, flushperiod time.Duration, minflushinglen int) (*LogsContainer, error) {
 
@@ -63,13 +78,13 @@ var deflogs *LogsContainer
 
 func Setup() {
 	deflogs = &LogsContainer{
-		logs:        make([]Log, 0, 10),
+		logs:        make([]Log, 0, 2),
 		addlogmutex: sync.Mutex{},
 		flushing:    make(chan []Log, 1),
 		Done:        make(chan struct{}, 1),
 	}
 
-	go listener(context.Background(), &defflusher{name: "main"}, deflogs, time.Second*2, 1)
+	go listener(context.Background(), &defflusher{name: "main"}, deflogs, time.Second*1, 1)
 }
 func Error(descr string, data error) {
 	deflogs.addlog(descr, err, data)
@@ -98,7 +113,7 @@ func (l *LogsContainer) Info(descr string, data string) {
 	l.addlog(descr, info, errors.New(data))
 }
 
-func (l *LogsContainer) addlog(descr string, typee string, err error) {
+func (l *LogsContainer) addlog(descr string, lvl loglevel, err error) {
 	now := time.Now()
 	l.addlogmutex.Lock()
 	defer l.addlogmutex.Unlock()
@@ -110,7 +125,7 @@ func (l *LogsContainer) addlog(descr string, typee string, err error) {
 		l.flushing <- l.logs
 		l.logs = make([]Log, 0, cap(l.logs))
 	}
-	l.logs = append(l.logs, Log{Time: now, Description: descr, Type: typee, Log: err})
+	l.logs = append(l.logs, Log{Time: now, Description: descr, Lvl: lvl, Log: err})
 }
 
 func listener(ctx context.Context, f LogsFlusher, l *LogsContainer, flushperiod time.Duration, minflushinglen int) {
@@ -154,7 +169,7 @@ type defflusher struct {
 
 func (c *defflusher) Flush(logs []Log) error {
 	for i := 0; i < len(logs); i++ {
-		fmt.Fprintf(os.Stdout, "[%s] [%s] [%s] [%s] %s\n", logs[i].Type, logs[i].Description, c.name, logs[i].Time.Format("2006-01-02T15:04:05Z07:00"), logs[i].Log.Error())
+		fmt.Fprintf(os.Stdout, "[%s] [%s] [%s] [%s] %s\n", logs[i].Lvl, logs[i].Description, c.name, logs[i].Time.Format("2006-01-02T15:04:05Z07:00"), logs[i].Log.Error())
 	}
 	return nil
 }
