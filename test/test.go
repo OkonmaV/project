@@ -11,75 +11,85 @@ import (
 	"github.com/gobwas/ws"
 )
 
-type chatInfo struct {
-	Id    string   `bson:"_id"`
-	Users []string `bson:"users"`
-	Name  []string `bson:"name"`
-	Type  int      `bson:"type"`
-}
-type Tuple struct {
-	Id string
-}
+func main() {
+	var addr string
+	d := ws.Dialer{
+		Header: ws.HandshakeHeaderHTTP(http.Header{
+			"X-listen-here-u-little-shit": []string{"1"},
+		}),
+		OnHeader: func(key, value []byte) (err error) {
+			addr = string(value)
+			return nil
+		},
+	}
+	conn, _, _, err := d.Dial(context.Background(), "ws://127.0.0.1:8089/test.test")
+	if err != nil {
+		fmt.Println("Dial err:", err)
+		return
+	}
 
-type flags struct {
-	trntlAddr  string
-	trntlTable string
-}
-type Testconn struct {
-	conn *string
-}
+	fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
 
-type codesTuple struct {
-	MetaId string `msgpack:"metaid"`
-}
-type folder struct {
-	//Id bson.ObjectId `bson:"_id"`
-	//Id    string   `bson:"_id" json:"_id,omitempty"`
-	Roots []string `bson:"users,omitempty" json:"users,omitempty"`
-	Name  string   `bson:"name,omitempty" json:"name,omitempty"`
-	Metas []meta   `bson:"metas,omitempty" json:"metas,omitempty"`
-	Time  string   `bson:"time,omitempty" json:"time,omitempty"`
-}
+	ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi"))))
 
-type meta struct {
-	Meta string
-}
+	_, err = net.Listen("tcp", addr)
+	if err != nil {
+		fmt.Println("bad address")
+		return
+	}
+	fmt.Println("listen to", addr)
+	//conn.Close()
+	time.Sleep(time.Hour)
+	// for {
+	// 	conn, err := ln.Accept()
+	// 	if err != nil {
+	// 		fmt.Println(2, err)
+	// 		return
+	// 	}
+	// 	_, err = ws.Upgrade(conn)
+	// 	if err != nil {
+	// 		fmt.Println(3, err)
+	// 		return
+	// 	}
 
-type chat struct {
-	Id    string `bson:"_id"`
-	Type  int    `bson:"type"`
-	Users []user `bson:"users"`
-	Name  string `bson:"name,omitempty"`
-}
-type user struct {
-	UserId        string    `bson:"userid"`
-	Type          int       `bson:"type"`
-	StartDateTime time.Time `bson:"startdatetime"`
-	EndDateTime   time.Time `bson:"enddatetime,omitempty"`
-}
-type tuple struct {
-	Code     int
-	Hash     string
-	Data     string
-	MetaId   string
-	Surname  string
-	Name     string
-	Password string
-	Status   int
-}
-type quiz struct {
-	Questions map[string]question
-}
-type question struct {
-	Type     int      `bson:"question_type" json:"question_type"`
-	TypeTag  string   `bson:"-" json:"-"`
-	Position int      `bson:"question_position" json:"question_position"`
-	Text     string   `bson:"question_text" json:"question_text"`
-	Answers  []answer `bson:"answers" json:"answers"`
-}
-type answer struct {
-	Id   string `bson:"answer_id" json:"id"`
-	Text string `bson:"answer_text" json:"text"`
+	// 	go func() {
+	// 		defer conn.Close()
+
+	// 		for {
+	// 			header, err := ws.ReadHeader(conn)
+	// 			if err != nil {
+	// 				fmt.Println(4, err)
+	// 				return
+	// 			}
+
+	// 			payload := make([]byte, header.Length)
+	// 			_, err = io.ReadFull(conn, payload)
+	// 			if err != nil {
+	// 				fmt.Println(5, err)
+	// 				return
+	// 			}
+	// 			if header.Masked {
+	// 				ws.Cipher(payload, header.Mask, 0)
+	// 			}
+
+	// 			// Reset the Masked flag, server frames must not be masked as
+	// 			// RFC6455 says.
+	// 			header.Masked = false
+
+	// 			if err := ws.WriteHeader(conn, header); err != nil {
+	// 				fmt.Println(6, err)
+	// 				return
+	// 			}
+	// 			if _, err := conn.Write(payload); err != nil {
+	// 				fmt.Println(7, err)
+	// 				return
+	// 			}
+
+	// 			if header.OpCode == ws.OpClose {
+	// 				return
+	// 			}
+	// 		}
+	// 	}()
 }
 
 //func main() {
@@ -226,118 +236,3 @@ type answer struct {
 // func (f fff) HandleError(err *errorscontainer.Error) {
 // 	fmt.Println(err.Time.UTC(), err.Err.Error())
 // }
-type S string
-
-func (s *S) edit() {
-	*s = S("str")
-}
-
-func getfreeport() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	fmt.Println("ADDR:", l.Addr().String())
-	return l.Addr().(*net.TCPAddr).Port, nil
-}
-
-func main() {
-	var addr string
-	d := ws.Dialer{
-		Header: ws.HandshakeHeaderHTTP(http.Header{
-			"X-listen-here-u-little-shit": []string{"1"},
-		}),
-		OnHeader: func(key, value []byte) (err error) {
-			addr = string(value)
-			return nil
-		},
-	}
-	conn, _, hs, err := d.Dial(context.Background(), "ws://127.0.0.1:8089/test.test")
-	if err != nil {
-		fmt.Println("Dial err:", err)
-		return
-	}
-
-	fmt.Println(hs, conn.LocalAddr(), ">", conn.RemoteAddr())
-
-	ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi"))))
-
-	_, err = net.Listen("tcp", addr)
-	if err != nil {
-		fmt.Println("bad address")
-		return
-	}
-	fmt.Println("listen to", addr)
-	conn.Close()
-	time.Sleep(time.Hour)
-	// for {
-	// 	conn, err := ln.Accept()
-	// 	if err != nil {
-	// 		fmt.Println(2, err)
-	// 		return
-	// 	}
-	// 	_, err = ws.Upgrade(conn)
-	// 	if err != nil {
-	// 		fmt.Println(3, err)
-	// 		return
-	// 	}
-
-	// 	go func() {
-	// 		defer conn.Close()
-
-	// 		for {
-	// 			header, err := ws.ReadHeader(conn)
-	// 			if err != nil {
-	// 				fmt.Println(4, err)
-	// 				return
-	// 			}
-
-	// 			payload := make([]byte, header.Length)
-	// 			_, err = io.ReadFull(conn, payload)
-	// 			if err != nil {
-	// 				fmt.Println(5, err)
-	// 				return
-	// 			}
-	// 			if header.Masked {
-	// 				ws.Cipher(payload, header.Mask, 0)
-	// 			}
-
-	// 			// Reset the Masked flag, server frames must not be masked as
-	// 			// RFC6455 says.
-	// 			header.Masked = false
-
-	// 			if err := ws.WriteHeader(conn, header); err != nil {
-	// 				fmt.Println(6, err)
-	// 				return
-	// 			}
-	// 			if _, err := conn.Write(payload); err != nil {
-	// 				fmt.Println(7, err)
-	// 				return
-	// 			}
-
-	// 			if header.OpCode == ws.OpClose {
-	// 				return
-	// 			}
-	// 		}
-	// 	}()
-}
-
-func GetFreePort() (int, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
-}

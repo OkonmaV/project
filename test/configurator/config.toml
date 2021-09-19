@@ -1,3 +1,2 @@
 Listen = "127.0.0.1:8089"
-Settings = "settings"
-Servers = [ "http://127.0.0.1" ]
+Settings = "settings.conf"

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"project/test/configurator/gopool"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -18,12 +21,12 @@ import (
 type config struct {
 	Listen   string
 	Settings string
-	Servers  []string
+	Hosts    []string
 }
 
 // короче надо всю эту хуету хранить как то не так
 type configurator struct {
-	services       map[string]serviceinstance
+	services       map[string]*serviceinstance
 	servicesStatus map[string]int // TODO: write to memcacshed and add mutex
 	hosts          map[string]struct{}
 }
@@ -33,21 +36,10 @@ type serviceinstance struct {
 	wsconn net.Conn
 }
 
-// type service struct {
-// 	instances []serviceInstance
-// 	listeners []net.Conn
-// }
-
-// type serviceInstance struct {
-// 	addr   string
-// 	wsconn net.Conn
-// }
-
-func readTomlConfig(path string, conf *config) error {
+func (conf *config) readTomlConfig(path string) error {
 	if _, err := toml.DecodeFile(path, conf); err != nil {
 		return err
 	}
-	fmt.Println("config: ", conf)
 	return nil
 }
 
@@ -63,7 +55,7 @@ func (c *configurator) handle(conn net.Conn, poller netpoll.Poller, pool *gopool
 		OnRequest: func(uri []byte) error {
 			servicename = string(uri[1:])
 			if _, ok := c.services[servicename]; !ok {
-				fmt.Println("OnReq 403", servicename, "|", string(uri[1:])) //
+				fmt.Println("Unknown servicename \"", servicename, "\"") //
 				return ws.RejectConnectionError(
 					ws.RejectionStatus(403),
 				)
@@ -71,17 +63,23 @@ func (c *configurator) handle(conn net.Conn, poller netpoll.Poller, pool *gopool
 			return nil
 		},
 		OnHost: func(host []byte) error {
+			ind := bytes.Index(host, []byte{58}) // for cutting port
+			if _, ok := c.hosts[string(host[:ind])]; !ok {
+				fmt.Println("Unknown host \"", string(host), "\"")
+				return ws.RejectConnectionError(
+					ws.RejectionStatus(403),
+				)
+			}
 			return nil
 		},
 		OnBeforeUpgrade: func() (header ws.HandshakeHeader, err error) {
-			s := c.services[servicename]
-			if s.addr == "*" {
-				if s.addr, err = getfreeaddr(); err != nil {
+			if c.services[servicename].addr == "*" {
+				if c.services[servicename].addr, err = getfreeaddr(); err != nil {
 					ws.RejectConnectionError(
 						ws.RejectionStatus(500),
 					)
 				}
-				c.services[servicename] = s
+				c.servicesStatus[servicename] = 1
 			}
 			return ws.HandshakeHeaderHTTP(http.Header{
 				"X-listen-here-u-little-shit": []string{c.services[servicename].addr},
@@ -89,7 +87,6 @@ func (c *configurator) handle(conn net.Conn, poller netpoll.Poller, pool *gopool
 		},
 	}
 
-	// Zero-copy upgrade to WebSocket connection.
 	hs, err := u.Upgrade(conn)
 	if err != nil {
 		log.Printf("%s: upgrade error: %v", nameConn(conn), err)
@@ -107,20 +104,17 @@ func (c *configurator) handle(conn net.Conn, poller netpoll.Poller, pool *gopool
 	}
 
 	// Subscribe to events about conn.
-	poller.Start(desc, func(ev netpoll.Event) {
+	if err = poller.Start(desc, func(ev netpoll.Event) {
 		if ev&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
 			// When ReadHup or Hup received, this mean that client has
 			// closed at least write end of the connection or connections
 			// itself. So we want to stop receive events about such conn.
 			poller.Stop(desc)
+			conn.Close()
 			fmt.Println("CLOSED", nameConn(conn), "at event", ev)
 			return
 		}
-		// Here we can read some new message from connection.
-		// We can not read it right here in callback, because then we will
-		// block the poller's inner loop.
-		// We do not want to spawn a new goroutine to read single message.
-		// But we want to reuse previously spawned goroutine.
+
 		pool.Schedule(func() {
 			r := wsutil.NewReader(conn, ws.StateServerSide)
 			h, err := r.NextFrame()
@@ -152,22 +146,35 @@ func (c *configurator) handle(conn net.Conn, poller netpoll.Poller, pool *gopool
 				}
 			}
 
-			fmt.Println("PAYLOAD:", string(payload))
+			fmt.Println("PAYLOAD:", string(payload)) //
 		})
-	})
-}
-func main() {
-	ln, err := net.Listen("tcp", "localhost:8089")
-	if err != nil {
-		fmt.Println("Listen err:", err)
+	}); err != nil {
+		fmt.Println("Starting poller err:", err)
+		conn.Close()
 	}
 
-	c := &configurator{services: make(map[string]serviceinstance), hosts: map[string]struct{}{}}
-	c.hosts["127.0.0.1"] = struct{}{}
-	c.services["test.test"] = serviceinstance{addr: "*"}
+}
+func main() {
 
-	// Initialize netpoll instance. We will use it to be noticed about incoming
-	// events from listener of user connections.
+	conf := &config{}
+	if err := conf.readTomlConfig("config.toml"); err != nil {
+		fmt.Println("Read toml err:", err)
+		return
+	}
+
+	ln, err := net.Listen("tcp", conf.Listen)
+	if err != nil {
+		fmt.Println("Listen err:", err)
+		return
+	}
+
+	c := &configurator{services: make(map[string]*serviceinstance), servicesStatus: make(map[string]int), hosts: map[string]struct{}{}}
+	if err := c.readsettings(conf.Settings); err != nil {
+		fmt.Println("Reading settings:", err)
+		return
+	}
+	c.hosts["127.0.0.1"] = struct{}{}
+
 	poller, err := netpoll.New(nil)
 	if err != nil {
 		fmt.Println("Init netpoll err:", err)
@@ -186,7 +193,7 @@ func main() {
 	}
 	accept := make(chan error, 1)
 
-	poller.Start(acceptDesc, func(e netpoll.Event) {
+	if err = poller.Start(acceptDesc, func(e netpoll.Event) {
 		// We do not want to accept incoming connection when goroutine pool is
 		// busy. So if there are no free goroutines during 1ms we want to
 		// cooldown the server and do not receive connection for some short
@@ -212,17 +219,41 @@ func main() {
 				goto cooldown
 			}
 
-			log.Fatalf("accept error: %v", err)
+			log.Println("Accept err:", err)
 
 		cooldown:
 			delay := 5 * time.Millisecond
-			log.Printf("accept error: %v; retrying in %s", err, delay)
+			log.Printf("Accept err: %v; retrying in %s", err, delay)
 			time.Sleep(delay)
 		}
 
 		poller.Resume(acceptDesc)
-	})
+	}); err != nil {
+		fmt.Println("Start accept poller err:", err)
+		return
+	}
 	<-exit
+}
+
+func (c *configurator) readsettings(settingspath string) error {
+	data, err := ioutil.ReadFile(settingspath)
+	if err != nil {
+		return err
+	}
+	datastr := string(data)
+	lines := strings.Split(datastr, "\n")
+	for _, line := range lines {
+		if len(line) < 2 || strings.HasPrefix(line, "#") {
+			continue
+		}
+		s := strings.Split(strings.TrimSpace(line), " ")
+		if len(s) < 2 {
+			continue
+		}
+		c.services[s[0]] = &serviceinstance{addr: s[1]}
+		c.servicesStatus[s[0]] = 0
+	}
+	return nil
 }
 
 func getfreeaddr() (string, error) {
