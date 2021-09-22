@@ -29,17 +29,19 @@ func main() {
 	}
 
 	fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
+	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
+	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
+	conn.Close()
+	net.Listen("tcp", addr)
 
-	ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi"))))
-
-	_, err = net.Listen("tcp", addr)
-	if err != nil {
-		fmt.Println("bad address")
-		return
-	}
 	fmt.Println("listen to", addr)
 	//conn.Close()
+	time.Sleep(time.Second * 3)
+	// r := wsutil.NewReader(conn, ws.StateClientSide)
+	// h, err := r.NextFrame()
+	// fmt.Println("H:", h.OpCode.IsControl(), err)
 	time.Sleep(time.Hour)
+
 	// for {
 	// 	conn, err := ln.Accept()
 	// 	if err != nil {
