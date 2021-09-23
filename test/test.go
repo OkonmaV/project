@@ -2,16 +2,80 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
 
 	"time"
 
+	"github.com/big-larry/suckutils"
 	"github.com/gobwas/ws"
 )
 
-func main() {
+type something struct {
+	conn net.Conn
+}
+
+func SendTextToServer(conn net.Conn, text []byte) error {
+	return ws.WriteFrame(conn, ws.MaskFrame(ws.NewTextFrame(text)))
+}
+
+func SendCloseToServer(conn net.Conn, reason []byte) error {
+	return ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame(reason)))
+}
+
+func handlews(conn net.Conn) {
+	for {
+		frame, err := ws.ReadFrame(conn)
+		if err != nil {
+			if err == net.ErrClosed {
+				return
+			}
+			fmt.Println("ReadFrame", err)
+			conn.Close() //
+			return
+		}
+		if frame.Header.Masked {
+			ws.Cipher(frame.Payload, frame.Header.Mask, 0)
+		}
+		if frame.Header.OpCode.IsReserved() {
+			fmt.Println(ws.ErrProtocolOpCodeReserved)
+			return
+		}
+		if frame.Header.OpCode.IsControl() {
+			switch {
+			case frame.Header.OpCode == ws.OpClose:
+				// Короче, кто-то должен рвать соединение.
+				// Так как по спецификации на close-фрейм нужно ответить close-фреймом,
+				// то если сразу рвать соединение после отправки, другая сторона тупо его не успеет прочитать.
+				// Хэндлер конфигуратора у меня не рвет соединение
+				// ?Решение - забить хуй на ответный close и рвать его будет получающая сторона?
+				// ?Решение2 - отправляющий close ждет ответа и рвет соединение (но это накладно для конфигуратора при неаварийном завершении им работы)?
+				if err = SendCloseToServer(conn, nil); err != nil {
+					if err == net.ErrClosed {
+						return
+					}
+					fmt.Println("SendCloseFrame", err)
+					return
+				}
+			case frame.Header.OpCode == ws.OpPing:
+				// TODO:
+				break
+			case frame.Header.OpCode == ws.OpPong:
+				// TODO:
+				break
+			default:
+				fmt.Println("OpControl", errors.New("not a control frame"))
+			}
+		}
+		fmt.Println("PAYLOAD:", string(frame.Payload))
+
+		// как-то обрабатываем
+	}
+}
+
+func ConnectToConfigurator(configuratoraddr string, thisservicename string) (net.Conn, string, error) {
 	var addr string
 	d := ws.Dialer{
 		Header: ws.HandshakeHeaderHTTP(http.Header{
@@ -22,9 +86,20 @@ func main() {
 			return nil
 		},
 	}
-	conn, _, _, err := d.Dial(context.Background(), "ws://127.0.0.1:8089/test.test")
+	conn, _, _, err := d.Dial(context.Background(), suckutils.ConcatFour("ws://", configuratoraddr, "/", thisservicename))
 	if err != nil {
-		fmt.Println("Dial err:", err)
+		return nil, "", err
+	}
+	go func() {
+		handlews(conn)
+	}()
+	return conn, addr, nil
+}
+
+func main() {
+	conn, addrToListen, err := ConnectToConfigurator("127.0.0.1:8089", "test.test")
+	if err != nil {
+		fmt.Println(err)
 		return
 	}
 
@@ -32,66 +107,68 @@ func main() {
 	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
 	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
 	conn.Close()
-	net.Listen("tcp", addr)
+	net.Listen("tcp", addrToListen)
 
-	fmt.Println("listen to", addr)
-	//conn.Close()
+	fmt.Println("listen to", addrToListen)
 	time.Sleep(time.Second * 3)
-	// r := wsutil.NewReader(conn, ws.StateClientSide)
-	// h, err := r.NextFrame()
-	// fmt.Println("H:", h.OpCode.IsControl(), err)
+
 	time.Sleep(time.Hour)
 
 	// for {
 	// 	conn, err := ln.Accept()
 	// 	if err != nil {
-	// 		fmt.Println(2, err)
+	// 		fmt.Println(1, err)
 	// 		return
 	// 	}
 	// 	_, err = ws.Upgrade(conn)
 	// 	if err != nil {
-	// 		fmt.Println(3, err)
+	// 		fmt.Println(2, err)
 	// 		return
 	// 	}
-
 	// 	go func() {
 	// 		defer conn.Close()
 
 	// 		for {
 	// 			header, err := ws.ReadHeader(conn)
 	// 			if err != nil {
-	// 				fmt.Println(4, err)
+	// 				fmt.Println(3, err)
 	// 				return
 	// 			}
 
 	// 			payload := make([]byte, header.Length)
 	// 			_, err = io.ReadFull(conn, payload)
 	// 			if err != nil {
-	// 				fmt.Println(5, err)
+	// 				fmt.Println(4, err)
 	// 				return
 	// 			}
+
 	// 			if header.Masked {
 	// 				ws.Cipher(payload, header.Mask, 0)
 	// 			}
-
+	// 			fmt.Println("PAYLOAD:", string(payload))
 	// 			// Reset the Masked flag, server frames must not be masked as
 	// 			// RFC6455 says.
 	// 			header.Masked = false
 
-	// 			if err := ws.WriteHeader(conn, header); err != nil {
-	// 				fmt.Println(6, err)
-	// 				return
-	// 			}
-	// 			if _, err := conn.Write(payload); err != nil {
-	// 				fmt.Println(7, err)
-	// 				return
-	// 			}
-
+	// 			// if err := ws.WriteHeader(conn, header); err != nil {
+	// 			// 	fmt.Println(5, err)
+	// 			// 	return
+	// 			// }
 	// 			if header.OpCode == ws.OpClose {
+	// 				fmt.Println("CLOSED")
 	// 				return
+	// 			}
+	// 			// if _, err := conn.Write(payload); err != nil {
+	// 			// 	fmt.Println(6, err)
+	// 			// 	return
+	// 			// }
+	// 			fr := ws.NewFrame(ws.OpText, true, []byte("hi mark"))
+	// 			if err = ws.WriteFrame(conn, fr); err != nil {
+	// 				fmt.Println(err)
 	// 			}
 	// 		}
 	// 	}()
+	// }
 }
 
 //func main() {
