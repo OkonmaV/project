@@ -13,29 +13,54 @@ import (
 
 	"github.com/big-larry/suckutils"
 	"github.com/mailru/easygo/netpoll"
+	"github.com/tarantool/go-tarantool"
 )
 
 type Configurator struct {
-	services       map[string]*serviceinstance
-	servicesStatus map[string]int // TODO: write to memcacshed and add mutex
-	hosts          map[string]struct{}
-	poller         netpoll.Poller
-	pool           *gopool.Pool
+	services  map[string]*serviceinstance
+	hosts     map[string]struct{}
+	poller    netpoll.Poller
+	pool      *gopool.Pool
+	trntlConn *tarantool.Connection
+	TrntlErr  chan struct{} //
 }
 
 type serviceinstance struct {
-	mutex  sync.Mutex
 	addr   string
+	mutex  sync.Mutex
 	wsconn net.Conn
 }
 
-func NewConfigurator(settingspath string) (*Configurator, error) {
-	c := &Configurator{services: make(map[string]*serviceinstance), servicesStatus: make(map[string]int), hosts: map[string]struct{}{}}
+// TODO: додумать разные инстансы одного сервиса
+type trntlTuple struct {
+	name     string
+	addr     string
+	status   bool
+	lastseen int64
+}
+
+func NewConfigurator(settingspath, tarantooladdr string) (*Configurator, error) {
+	trntlConn, err := tarantool.Connect(tarantooladdr, tarantool.Opts{
+		// User: ,
+		// Pass: ,
+		Timeout:       500 * time.Millisecond,
+		Reconnect:     1 * time.Second,
+		MaxReconnects: 4,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err = trntlConn.UpsertAsync("configurator", []interface{}{"conf.configurator", "", true, 0}, []interface{}{
+		[]interface{}{"=", "status", true},
+		[]interface{}{"=", "lastseen", 0}}).Err(); err != nil {
+		return nil, err
+	}
+	c := &Configurator{trntlConn: trntlConn, TrntlErr: make(chan struct{}), services: make(map[string]*serviceinstance), hosts: map[string]struct{}{}}
 	if err := c.readsettings(settingspath); err != nil {
 		return nil, err
 	}
+
 	c.hosts["127.0.0.1"] = struct{}{}
-	var err error
 	c.poller, err = netpoll.New(nil)
 	if err != nil {
 		return nil, err
@@ -45,12 +70,27 @@ func NewConfigurator(settingspath string) (*Configurator, error) {
 	return c, nil
 }
 
+func (c *Configurator) CloseTarantoolWithUpdateStatus(l *logscontainer.LogsContainer) error {
+	if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{"conf.configurator"}, []interface{}{
+		[]interface{}{"=", "status", false},
+		[]interface{}{"=", "lastseen", time.Now().Unix()},
+	}).Err(); err != nil {
+		l.Error("TrntlUpdate", err)
+	}
+	return c.trntlConn.Close()
+}
+
 func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer, addr string) error {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	l.Info("Start service", suckutils.ConcatTwo("Configurator start listening at ", addr))
+	if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{"conf.configurator"}, []interface{}{
+		[]interface{}{"=", "addr", addr},
+	}).Err(); err != nil {
+		return err
+	}
+	l.Info("Start service", suckutils.ConcatTwo("conf.configurator start listening at ", addr))
 
 	acceptDesc, err := netpoll.HandleListener(ln, netpoll.EventRead|netpoll.EventOneShot)
 	if err != nil {
@@ -118,7 +158,6 @@ func (c *Configurator) readsettings(settingspath string) error {
 			continue
 		}
 		c.services[s[0]] = &serviceinstance{addr: s[1]}
-		c.servicesStatus[s[0]] = 0
 	}
 	return nil
 }

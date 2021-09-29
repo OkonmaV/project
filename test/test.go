@@ -106,7 +106,7 @@ func main() {
 	fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
 	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
 	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
-	conn.Close()
+	//conn.Close()
 	net.Listen("tcp", addrToListen)
 
 	fmt.Println("listen to", addrToListen)

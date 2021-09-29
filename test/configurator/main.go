@@ -14,8 +14,9 @@ import (
 )
 
 type config struct {
-	Listen   string
-	Settings string
+	Listen    string
+	Settings  string
+	TrntlAddr string
 	//Hosts    []string
 }
 
@@ -38,16 +39,22 @@ func main() {
 		return
 	}
 	defer func() {
+
 		cancel()
 		logscancel()
 		<-l.Done
 	}()
 
-	c, err := NewConfigurator(conf.Settings)
+	c, err := NewConfigurator(conf.Settings, conf.TrntlAddr)
 	if err != nil {
 		l.Error("NewConfigurator", err)
 		return
 	}
+	defer func() {
+		if err = c.CloseTarantoolWithUpdateStatus(l); err != nil {
+			l.Error("CloseTrntlWithUpdateStatus", err)
+		}
+	}()
 	if err = c.Serve(ctx, l, conf.Listen); err != nil {
 		l.Error("Serve", err)
 	}
