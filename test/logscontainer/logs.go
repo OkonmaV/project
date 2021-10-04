@@ -23,12 +23,15 @@ type Log struct {
 	Description string
 	Lvl         loglevel
 	Log         error
-	Tags        []string
+	Tags        []string // TODO: map
 }
 
 type LogsFlusher interface {
 	Flush([]Log) error
 }
+
+type LogTags map[string]string
+
 type loglevel uint8
 
 const (
@@ -38,7 +41,7 @@ const (
 	err     = 4
 )
 
-var defaultLastFlushesTimeout time.Duration = time.Second * 20
+const defaultLastFlushesTimeout time.Duration = time.Second * 20
 
 func (l loglevel) String() string {
 	switch l {
@@ -92,12 +95,11 @@ func SetupDefault() {
 }
 
 func (l *LogsContainer) WaitAllFlushesDone() {
-	timer := time.NewTimer(defaultLastFlushesTimeout)
 	select {
 	case <-l.allflushesdone:
 		return
-	case <-timer.C:
-		println("[", time.Now().UTC().String(), "] Last flushes interrupted because of timeout ", defaultLastFlushesTimeout.String())
+	case t := <-time.After(defaultLastFlushesTimeout): // TODO: CHECK
+		println("[", t.UTC().String(), "] Last flushes interrupted because of timeout ", defaultLastFlushesTimeout.String())
 		return
 	}
 }
@@ -105,9 +107,9 @@ func Error(descr string, data error) {
 	deflogs.addlog(descr, err, data)
 }
 
-func Debug(descr string, data string) {
-	deflogs.addlog(descr, debug, errors.New(data))
-}
+// func Debug(tags LogTags, descr string, data string) {
+// 	deflogs.addlog(tags, descr, debug, errors.New(data))
+// }
 func Warning(descr string, data string) {
 	deflogs.addlog(descr, warning, errors.New(data))
 }
