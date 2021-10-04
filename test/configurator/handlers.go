@@ -10,8 +10,8 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"project/test/auth/logscontainer"
 	"project/test/configurator/gopool"
+	"project/test/logscontainer"
 	"strconv"
 	"time"
 
@@ -114,8 +114,8 @@ func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.LogsContainer,
 			//
 			return
 		}
-
 		pool.Schedule(func() {
+			println(12)
 			c.services[servicename].mutex.Lock()
 			c.handlews(l, servicename, poller, desc)
 			c.services[servicename].mutex.Unlock()
@@ -131,6 +131,7 @@ func (c *Configurator) handlews(l *logscontainer.LogsContainer, servicename stri
 	h, err := r.NextFrame()
 	if err != nil {
 		if err != net.ErrClosed {
+			fmt.Println(h, "|", err)
 			l.Error("NextFrame", err)
 		} else {
 			l.Debug("NextFrame", err.Error())
@@ -168,7 +169,7 @@ func (c *Configurator) handlews(l *logscontainer.LogsContainer, servicename stri
 					l.Debug("Close wsconn", suckutils.ConcatThree(err.Error(), "; from ", c.services[servicename].wsconn.RemoteAddr().String()))
 				}
 				poller.Stop(desc)
-				c.services[servicename].wsconn.Close()
+				//c.services[servicename].wsconn.Close()
 				if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{servicename}, []interface{}{
 					[]interface{}{"=", "status", false},
 					[]interface{}{"=", "lastseen", time.Now().Unix()},
@@ -223,9 +224,9 @@ func handlecontrolframe(c net.Conn, h ws.Header, r io.Reader, state ws.State) er
 			defer pbytes.Put(p)
 
 			w := wsutil.NewControlWriterBuffer(c, state, ws.OpPong, p)
-			if state.ServerSide() {
-				r = wsutil.NewCipherReader(r, h.Mask)
-			}
+			// if state.ServerSide() {
+			// 	r = wsutil.NewCipherReader(r, h.Mask)
+			// }
 			_, err := io.Copy(w, r)
 			if err == nil {
 				err = w.Flush()
@@ -244,12 +245,13 @@ func handlecontrolframe(c net.Conn, h ws.Header, r io.Reader, state ws.State) er
 		if h.Length == 0 {
 			return closederr{code: 1005}
 		}
-		if state.ServerSide() {
-			r = wsutil.NewCipherReader(r, h.Mask) //
-		}
 		payload := make([]byte, h.Length)
-		if _, err := io.ReadFull(r, payload); err != nil {
-			return err
+		if _, err := r.Read(payload); err != nil {
+			if err == io.EOF {
+				err = nil
+			} else {
+				return err
+			}
 		}
 		closeerr := closederr{}
 		if len(payload) < 2 {

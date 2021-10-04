@@ -4,8 +4,9 @@ import (
 	"context"
 	"net"
 
-	"project/test/auth/logscontainer"
-	"project/test/auth/logscontainer/flushers"
+	"project/test/logscontainer"
+	"project/test/logscontainer/flushers"
+
 	"thin-peak/httpservice"
 	"time"
 
@@ -42,7 +43,7 @@ func main() {
 
 		cancel()
 		logscancel()
-		<-l.Done
+		l.WaitAllFlushesDone()
 	}()
 
 	c, err := NewConfigurator(conf.Settings, conf.TrntlAddr)

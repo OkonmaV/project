@@ -5,8 +5,9 @@ import (
 	"fmt"
 
 	"project/test/auth/getauth"
-	"project/test/auth/logscontainer"
-	"project/test/auth/logscontainer/flushers"
+	"project/test/logscontainer"
+	"project/test/logscontainer/flushers"
+
 	"project/test/auth/setauth"
 	"time"
 

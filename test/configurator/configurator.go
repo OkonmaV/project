@@ -6,8 +6,9 @@ import (
 
 	"io/ioutil"
 	"net"
-	"project/test/auth/logscontainer"
+
 	"project/test/configurator/gopool"
+	"project/test/logscontainer"
 	"strings"
 	"time"
 

@@ -10,11 +10,12 @@ import (
 )
 
 type LogsContainer struct {
-	logs         []Log
-	addlogmutex  sync.Mutex
-	flushing     chan []Log
-	doneflushing bool
-	Done         chan struct{}
+	logs        []Log
+	addlogmutex sync.Mutex
+	flushing    chan []Log
+	// Сигнал при завершении работы, сообщающий что новые флуши инициализироваться не будут, а значит все новые добавляемые логи не обрабатываются (выкидываются)
+	doneflushing   bool
+	allflushesdone chan struct{}
 }
 
 type Log struct {
@@ -22,6 +23,7 @@ type Log struct {
 	Description string
 	Lvl         loglevel
 	Log         error
+	Tags        []string
 }
 
 type LogsFlusher interface {
@@ -35,6 +37,8 @@ const (
 	warning = 3
 	err     = 4
 )
+
+var defaultLastFlushesTimeout time.Duration = time.Second * 20
 
 func (l loglevel) String() string {
 	switch l {
@@ -63,10 +67,10 @@ func NewLogsContainer(ctx context.Context, f LogsFlusher, capacity int, flushper
 	}
 
 	l := &LogsContainer{
-		logs:        make([]Log, 0, capacity),
-		addlogmutex: sync.Mutex{},
-		flushing:    make(chan []Log, 1),
-		Done:        make(chan struct{}, 1),
+		logs:           make([]Log, 0, capacity),
+		addlogmutex:    sync.Mutex{},
+		flushing:       make(chan []Log, 1),
+		allflushesdone: make(chan struct{}, 1),
 	}
 
 	go listener(ctx, f, l, flushperiod, minflushinglen)
@@ -76,15 +80,26 @@ func NewLogsContainer(ctx context.Context, f LogsFlusher, capacity int, flushper
 
 var deflogs *LogsContainer
 
-func Setup() {
+func SetupDefault() {
 	deflogs = &LogsContainer{
-		logs:        make([]Log, 0, 2),
-		addlogmutex: sync.Mutex{},
-		flushing:    make(chan []Log, 1),
-		Done:        make(chan struct{}, 1),
+		logs:           make([]Log, 0, 2),
+		addlogmutex:    sync.Mutex{},
+		flushing:       make(chan []Log, 1),
+		allflushesdone: make(chan struct{}, 1),
 	}
 
 	go listener(context.Background(), &defflusher{name: "main"}, deflogs, time.Second*1, 1)
+}
+
+func (l *LogsContainer) WaitAllFlushesDone() {
+	timer := time.NewTimer(defaultLastFlushesTimeout)
+	select {
+	case <-l.allflushesdone:
+		return
+	case <-timer.C:
+		println("[", time.Now().UTC().String(), "] Last flushes interrupted because of timeout ", defaultLastFlushesTimeout.String())
+		return
+	}
 }
 func Error(descr string, data error) {
 	deflogs.addlog(descr, err, data)
@@ -137,7 +152,7 @@ func listener(ctx context.Context, f LogsFlusher, l *LogsContainer, flushperiod 
 				//errs.AddError(err)
 			}
 		}
-		l.Done <- struct{}{}
+		l.allflushesdone <- struct{}{}
 	}()
 	go func() {
 		for range ticker.C {

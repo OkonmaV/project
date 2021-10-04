@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -97,21 +98,32 @@ func ConnectToConfigurator(configuratoraddr string, thisservicename string) (net
 }
 
 func main() {
+	// ctx, cancellogs := context.WithCancel(context.Background())
+	// l, err := logscontainer.NewLogsContainer(ctx, flushers.NewConsoleFlusher("test"), 4, time.Second*1, 1)
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+
 	conn, addrToListen, err := ConnectToConfigurator("127.0.0.1:8089", "test.test")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-
+	i := uint16(1000)
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, i)
+	fmt.Println(b)
 	fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
-	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
-	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
+	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
+	time.Sleep(time.Second)
+	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{3, 232, 115, 111, 109, 101, 32, 114, 101, 97, 115, 111, 110}))))
 	//conn.Close()
 	net.Listen("tcp", addrToListen)
 
 	fmt.Println("listen to", addrToListen)
 	time.Sleep(time.Second * 3)
-
+	//fmt.Println("close err:", conn.Close())
 	time.Sleep(time.Hour)
 
 	// for {
