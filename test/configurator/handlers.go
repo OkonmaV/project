@@ -4,15 +4,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net"
 	"net/http"
 	"project/test/configurator/gopool"
 	"project/test/logscontainer"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/big-larry/suckutils"
@@ -30,8 +31,7 @@ type closederr struct {
 func (err closederr) Error() string {
 	return suckutils.Concat("closeframe statuscode: ", strconv.Itoa(int(err.code)), "; reason: ", err.reason)
 }
-
-func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.LogsContainer, poller netpoll.Poller, pool *gopool.Pool) {
+func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.WrappedLogsContainer, poller netpoll.Poller, pool *gopool.Pool) {
 
 	var servicename string
 
@@ -44,6 +44,7 @@ func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.LogsContainer,
 					ws.RejectionStatus(403),
 				)
 			}
+			l.AddTag("conn-with-serv", servicename)
 			return nil
 		},
 		OnHost: func(host []byte) error {
@@ -67,7 +68,7 @@ func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.LogsContainer,
 
 			}
 			return ws.HandshakeHeaderHTTP(http.Header{ // TODO: delete http
-				"X-listen-here-u-little-shit": []string{c.services[servicename].addr},
+				"x-get-addr": []string{c.services[servicename].addr},
 			}), nil
 		},
 	}
@@ -83,98 +84,69 @@ func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.LogsContainer,
 
 	desc, err := netpoll.HandleRead(conn)
 	if err != nil {
-		l.Error("Creating wsconn descriptor ", err)
+		l.Error("netpoll.HandleRead", err)
 		conn.Close()
 		return
 	}
-	//
 	c.services[servicename].wsconn = conn
-	if err := c.trntlConn.UpsertAsync("configurator", []interface{}{servicename, c.services[servicename].addr, true, 0}, []interface{}{
-		[]interface{}{"=", "status", true},
-		[]interface{}{"=", "addr", c.services[servicename].addr},
-		[]interface{}{"=", "lastseen", 0},
-	}).Err(); err != nil {
-		l.Error("TrntlUpsert", err)
+
+	if err := updateStatusToOn(c.memcConn, servicename, c.services[servicename].addr); err != nil {
+		l.Error("updateStatusToOn", err)
 		conn.Close()
 		return
 	}
-	//
-	if err = poller.Start(desc, func(ev netpoll.Event) {
+	poller.Start(desc, func(ev netpoll.Event) {
+		rand.Seed(time.Now().UnixNano())
+		wl := l.ReWrap(map[string]string{"message-rand-id": strconv.Itoa(rand.Intn(10000))})
 		if ev&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
-			l.Debug("Close wsconn", suckutils.ConcatFour("EventHup recieved from service ", servicename, " from ", conn.RemoteAddr().String()))
+			wl.Debug("Close wsconn", suckutils.ConcatFour("EventHup recieved from service ", servicename, " from ", conn.RemoteAddr().String()))
 			poller.Stop(desc)
 			conn.Close()
-			//
-			if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{servicename}, []interface{}{
-				[]interface{}{"=", "status", false},
-				[]interface{}{"=", "lastseen", time.Now().Unix()},
-			}).Err(); err != nil {
-				l.Error("TrntlUpdate", err)
+			if err := updateStatusToOff(c.memcConn, servicename, c.services[servicename].addr); err != nil {
+				wl.Error("updateStatusToOff", err)
 			}
-			//
 			return
 		}
+
 		pool.Schedule(func() {
-			println(12)
 			c.services[servicename].mutex.Lock()
-			c.handlews(l, servicename, poller, desc)
+			c.handlews(wl, servicename, poller, desc)
 			c.services[servicename].mutex.Unlock()
 		})
-	}); err != nil {
-		fmt.Println("Starting poller err:", err)
-		conn.Close()
-	}
+	})
+
 }
 
-func (c *Configurator) handlews(l *logscontainer.LogsContainer, servicename string, poller netpoll.Poller, desc *netpoll.Desc) {
+func (c *Configurator) handlews(l *logscontainer.WrappedLogsContainer, servicename string, poller netpoll.Poller, desc *netpoll.Desc) {
 	r := wsutil.NewReader(c.services[servicename].wsconn, ws.StateServerSide)
 	h, err := r.NextFrame()
 	if err != nil {
-		if err != net.ErrClosed {
-			fmt.Println(h, "|", err)
-			l.Error("NextFrame", err)
+		if strings.Contains(err.Error(), net.ErrClosed.Error()) { //типа костыль
+			l.Warning("NextFrame", err.Error())
 		} else {
-			l.Debug("NextFrame", err.Error())
+			l.Error("NextFrame", err)
 		}
-		//
-		if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{servicename}, []interface{}{
-			[]interface{}{"=", "status", false},
-			[]interface{}{"=", "lastseen", time.Now().Unix()},
-		}).Err(); err != nil {
-			l.Error("TrntlUpdate", err)
+		if err := updateStatusToOff(c.memcConn, servicename, c.services[servicename].addr); err != nil {
+			l.Error("updateStatusToOff", err)
 		}
-		//
 		poller.Stop(desc)
 		return
 	}
 	if h.OpCode.IsControl() {
-		// if err = wsutil.ControlFrameHandler(c.services[servicename].wsconn, ws.StateServerSide)(h, r); err != nil { // TODO: отказаться от wsutil
-		// 	if err.(wsutil.ClosedError).Code != 1005 {
-		// 		l.Error("Control frame handling", err)
-		// 		l.Debug("Close wsconn", suckutils.ConcatFour("err at handling OpControl recieved from service ", servicename, " from ", c.services[servicename].wsconn.RemoteAddr().String()))
-		// 	} else {
-		// 		l.Debug("Close wsconn", suckutils.ConcatFour("OpClose recieved from service ", servicename, " from ", c.services[servicename].wsconn.RemoteAddr().String()))
-		// 	}
-		// 	//
 		if err = handlecontrolframe(c.services[servicename].wsconn, h, r, ws.StateServerSide); err != nil {
 			if _, ok := err.(closederr); ok {
 				switch err.(closederr).code {
 				case 1005:
-					l.Error("Control frame handling", errors.New("recieved close frame with no statuscode"))
-					l.Debug("Close wsconn", suckutils.ConcatFour("err at handling OpControl recieved from service ", servicename, " from ", c.services[servicename].wsconn.RemoteAddr().String()))
+					l.Warning("Control frame handling", "recieved close frame with no statuscode")
 				case 1002:
-					l.Error("Control frame handling", errors.New("recieved close frame with protocol error (len(payload)<2)"))
-					l.Debug("Close wsconn", suckutils.ConcatFour("err at handling OpControl recieved from service ", servicename, " from ", c.services[servicename].wsconn.RemoteAddr().String()))
-				default:
-					l.Debug("Close wsconn", suckutils.ConcatThree(err.Error(), "; from ", c.services[servicename].wsconn.RemoteAddr().String()))
+					l.Warning("Control frame handling", "recieved close frame with protocol error (len(payload)<2)")
 				}
+				l.Debug("Close wsconn", suckutils.ConcatTwo("recieved ", err.Error()))
+				c.services[servicename].wsconn.Close()
 				poller.Stop(desc)
-				//c.services[servicename].wsconn.Close()
-				if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{servicename}, []interface{}{
-					[]interface{}{"=", "status", false},
-					[]interface{}{"=", "lastseen", time.Now().Unix()},
-				}).Err(); err != nil {
-					l.Error("TrntlUpdate", err)
+
+				if err := updateStatusToOff(c.memcConn, servicename, c.services[servicename].addr); err != nil {
+					l.Error("updateStatusToOff", err)
 				}
 			} else {
 				l.Error("Control frame handling", err)
@@ -183,20 +155,17 @@ func (c *Configurator) handlews(l *logscontainer.LogsContainer, servicename stri
 		}
 		return
 	}
+
 	payload := make([]byte, h.Length)
 	if _, err = r.Read(payload); err != nil {
 		if err == io.EOF {
 			err = nil
 		} else {
 			l.Error("Reading payload", err)
-			//
-			if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{servicename}, []interface{}{
-				[]interface{}{"=", "status", false},
-				[]interface{}{"=", "lastseen", time.Now().Unix()},
-			}).Err(); err != nil {
-				l.Error("TrntlUpdate", err)
+			if err := updateStatusToOff(c.memcConn, servicename, c.services[servicename].addr); err != nil {
+				l.Error("updateStatusToOff", err)
 			}
-			//
+			c.services[servicename].wsconn.Close()
 			poller.Stop(desc)
 			return
 		}
@@ -205,12 +174,12 @@ func (c *Configurator) handlews(l *logscontainer.LogsContainer, servicename stri
 	log.Println("PAYLOAD:", string(payload)) // TODO: DELETE THIS <----------------------------------
 }
 
-func handlecontrolframe(c net.Conn, h ws.Header, r io.Reader, state ws.State) error {
+func handlecontrolframe(w io.Writer, h ws.Header, r io.Reader, state ws.State) error {
 	switch h.OpCode {
 	case ws.OpPing:
 		if h.Length == 0 {
 			if h.Length == 0 {
-				return ws.WriteHeader(c, ws.Header{
+				return ws.WriteHeader(w, ws.Header{
 					Fin:    true,
 					OpCode: ws.OpPong,
 					Masked: state.ClientSide(),
@@ -223,7 +192,7 @@ func handlecontrolframe(c net.Conn, h ws.Header, r io.Reader, state ws.State) er
 			}))
 			defer pbytes.Put(p)
 
-			w := wsutil.NewControlWriterBuffer(c, state, ws.OpPong, p)
+			w := wsutil.NewControlWriterBuffer(w, state, ws.OpPong, p)
 			// if state.ServerSide() {
 			// 	r = wsutil.NewCipherReader(r, h.Mask)
 			// }
@@ -245,13 +214,11 @@ func handlecontrolframe(c net.Conn, h ws.Header, r io.Reader, state ws.State) er
 		if h.Length == 0 {
 			return closederr{code: 1005}
 		}
+
 		payload := make([]byte, h.Length)
-		if _, err := r.Read(payload); err != nil {
-			if err == io.EOF {
-				err = nil
-			} else {
-				return err
-			}
+
+		if _, err := io.ReadFull(r, payload); err != nil {
+			return err
 		}
 		closeerr := closederr{}
 		if len(payload) < 2 {

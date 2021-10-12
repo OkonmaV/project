@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"sync"
 
 	"io/ioutil"
@@ -13,17 +14,17 @@ import (
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/mailru/easygo/netpoll"
-	"github.com/tarantool/go-tarantool"
 )
 
 type Configurator struct {
-	services  map[string]*serviceinstance
-	hosts     map[string]struct{}
-	poller    netpoll.Poller
-	pool      *gopool.Pool
-	trntlConn *tarantool.Connection
-	TrntlErr  chan struct{} //
+	services map[string]*serviceinstance
+	hosts    map[string]struct{}
+	poller   netpoll.Poller
+	pool     *gopool.Pool
+	memcConn *memcache.Client
+	//TrntlErr  chan struct{} //
 }
 
 type serviceinstance struct {
@@ -40,45 +41,23 @@ type trntlTuple struct {
 	lastseen int64
 }
 
-func NewConfigurator(settingspath, tarantooladdr string) (*Configurator, error) {
-	trntlConn, err := tarantool.Connect(tarantooladdr, tarantool.Opts{
-		// User: ,
-		// Pass: ,
-		Timeout:       500 * time.Millisecond,
-		Reconnect:     1 * time.Second,
-		MaxReconnects: 4,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err = trntlConn.UpsertAsync("configurator", []interface{}{"conf.configurator", "", true, 0}, []interface{}{
-		[]interface{}{"=", "status", true},
-		[]interface{}{"=", "lastseen", 0}}).Err(); err != nil {
-		return nil, err
-	}
-	c := &Configurator{trntlConn: trntlConn, TrntlErr: make(chan struct{}), services: make(map[string]*serviceinstance), hosts: map[string]struct{}{}}
-	if err := c.readsettings(settingspath); err != nil {
-		return nil, err
-	}
+func NewConfigurator(settingspath, memcaddr string) (*Configurator, error) {
 
-	c.hosts["127.0.0.1"] = struct{}{}
-	c.poller, err = netpoll.New(nil)
+	c := &Configurator{memcConn: memcache.New(memcaddr), services: make(map[string]*serviceinstance), hosts: map[string]struct{}{}}
+	err := c.memcConn.Set(&memcache.Item{Key: "conf.conf", Value: []byte("this")})
 	if err != nil {
+		return nil, err
+	}
+	if err = c.readsettings(settingspath); err != nil {
+		return nil, err
+	}
+	if c.poller, err = netpoll.New(nil); err != nil {
 		return nil, err
 	}
 	c.pool = gopool.NewPool(5, 1, 1)
+	c.hosts["127.0.0.1"] = struct{}{} // TODO
 
 	return c, nil
-}
-
-func (c *Configurator) CloseTarantoolWithUpdateStatus(l *logscontainer.LogsContainer) error {
-	if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{"conf.configurator"}, []interface{}{
-		[]interface{}{"=", "status", false},
-		[]interface{}{"=", "lastseen", time.Now().Unix()},
-	}).Err(); err != nil {
-		l.Error("TrntlUpdate", err)
-	}
-	return c.trntlConn.Close()
 }
 
 func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer, addr string) error {
@@ -86,11 +65,7 @@ func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer
 	if err != nil {
 		return err
 	}
-	if err := c.trntlConn.UpdateAsync("configurator", "primary", []interface{}{"conf.configurator"}, []interface{}{
-		[]interface{}{"=", "addr", addr},
-	}).Err(); err != nil {
-		return err
-	}
+	updateStatusToOn(c.memcConn, "conf.conf", "addr")
 	l.Info("Start service", suckutils.ConcatTwo("conf.configurator start listening at ", addr))
 
 	acceptDesc, err := netpoll.HandleListener(ln, netpoll.EventRead|netpoll.EventOneShot)
@@ -100,19 +75,15 @@ func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer
 	accept := make(chan error, 1)
 
 	if err = c.poller.Start(acceptDesc, func(e netpoll.Event) {
-		// We do not want to accept incoming connection when goroutine pool is
-		// busy. So if there are no free goroutines during 1ms we want to
-		// cooldown the server and do not receive connection for some short
-		// time.
 		err := c.pool.ScheduleTimeout(time.Millisecond, func() {
 			conn, err := ln.Accept()
 			if err != nil {
 				accept <- err
 				return
 			}
-
 			accept <- nil
-			c.handlehttp(conn, l, c.poller, c.pool)
+			wl := l.Wrap(map[string]string{"remote-addr": conn.RemoteAddr().String()})
+			c.handlehttp(conn, wl, c.poller, c.pool)
 		})
 		if err == nil {
 			err = <-accept
@@ -158,7 +129,30 @@ func (c *Configurator) readsettings(settingspath string) error {
 		if len(s) < 2 {
 			continue
 		}
+		c.memcConn.Set(&memcache.Item{Key: s[0], Value: []byte(s[1])})
 		c.services[s[0]] = &serviceinstance{addr: s[1]}
 	}
 	return nil
+}
+
+func updateStatusToOn(memcConn *memcache.Client, servicename, serviceaddress string) error {
+	b := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b, uint64(time.Now().Unix()))
+	return memcConn.Set(&memcache.Item{Key: suckutils.ConcatThree(servicename, ".", serviceaddress), Value: b})
+}
+
+func updateStatusToOff(memcConn *memcache.Client, servicename, serviceaddress string) error {
+	key := suckutils.ConcatThree(servicename, ".", serviceaddress)
+	item, err := memcConn.Get(key)
+	if err != nil {
+		return err
+	}
+	if len(item.Value) < 8 {
+		b := make([]byte, 16)
+		b = append(b, item.Value...)
+		item.Value = b
+	}
+	binary.LittleEndian.PutUint64(item.Value[:8], uint64(time.Now().Unix()))
+	return memcConn.Set(item)
+
 }

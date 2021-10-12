@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"project/test/logscontainer"
-	"strings"
 )
 
 type Console struct {
@@ -20,7 +19,7 @@ func (c *Console) Flush(logs []logscontainer.Log) error {
 		if len(log.Tags) == 0 {
 			fmt.Fprintf(os.Stdout, "[%s] [%s] [%s] [%s] %s\n", log.Lvl.String(), log.Description, c.name, log.Time.Format("2006-01-02T15:04:05Z07:00"), log.Log.Error())
 		} else {
-			fmt.Fprintf(os.Stdout, "[%s] [%s] [%s] [%s] [%s] %s\n", log.Lvl.String(), log.Description, c.name, log.Time.Format("2006-01-02T15:04:05Z07:00"), strings.Join(log.Tags, "] ["), log.Log.Error())
+			fmt.Fprintf(os.Stdout, "[%s] [%s] [%s] [%s] [%s] %s\n", log.Lvl.String(), log.Description, c.name, log.Time.Format("2006-01-02T15:04:05Z07:00"), log.Tags.String(), log.Log.Error())
 		}
 	}
 	return nil

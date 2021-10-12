@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"project/test/auth/logscontainer"
+	"project/test/logscontainer"
+
 	"time"
 )
 

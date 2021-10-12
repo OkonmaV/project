@@ -2,85 +2,71 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
+	"project/test/logscontainer"
+	"project/test/logscontainer/flushers"
+	"sync"
 
 	"time"
 
+	"github.com/BurntSushi/toml"
+	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"github.com/gobwas/ws"
 )
 
-type something struct {
-	conn net.Conn
+type config struct {
+	ConfiguratorAddr string
 }
 
-func SendTextToServer(conn net.Conn, text []byte) error {
-	return ws.WriteFrame(conn, ws.MaskFrame(ws.NewTextFrame(text)))
+const thisservicename = "test.test"
+
+type HttpService interface {
+	Handle(r *suckhttp.Request, logger *logscontainer.WrappedLogsContainer) (*suckhttp.Response, error)
 }
 
-func SendCloseToServer(conn net.Conn, reason []byte) error {
-	return ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame(reason)))
-}
+type HandlerFunc func(ctx context.Context, conn net.Conn) error
 
-func handlews(conn net.Conn) {
-	for {
-		frame, err := ws.ReadFrame(conn)
-		if err != nil {
-			if err == net.ErrClosed {
-				return
-			}
-			fmt.Println("ReadFrame", err)
-			conn.Close() //
-			return
-		}
-		if frame.Header.Masked {
-			ws.Cipher(frame.Payload, frame.Header.Mask, 0)
-		}
-		if frame.Header.OpCode.IsReserved() {
-			fmt.Println(ws.ErrProtocolOpCodeReserved)
-			return
-		}
-		if frame.Header.OpCode.IsControl() {
-			switch {
-			case frame.Header.OpCode == ws.OpClose:
-				// Короче, кто-то должен рвать соединение.
-				// Так как по спецификации на close-фрейм нужно ответить close-фреймом,
-				// то если сразу рвать соединение после отправки, другая сторона тупо его не успеет прочитать.
-				// Хэндлер конфигуратора у меня не рвет соединение
-				// ?Решение - забить хуй на ответный close и рвать его будет получающая сторона?
-				// ?Решение2 - отправляющий close ждет ответа и рвет соединение (но это накладно для конфигуратора при неаварийном завершении им работы)?
-				if err = SendCloseToServer(conn, nil); err != nil {
-					if err == net.ErrClosed {
-						return
-					}
-					fmt.Println("SendCloseFrame", err)
-					return
-				}
-			case frame.Header.OpCode == ws.OpPing:
-				// TODO:
-				break
-			case frame.Header.OpCode == ws.OpPong:
-				// TODO:
-				break
-			default:
-				fmt.Println("OpControl", errors.New("not a control frame"))
-			}
-		}
-		fmt.Println("PAYLOAD:", string(frame.Payload))
-
-		// как-то обрабатываем
+func InitNewService(l *logscontainer.LogsContainer, thisservicename, configuratoraddr string, resolveServices ...string) error {
+	conf := &config{}
+	if _, err := toml.DecodeFile("config.toml", conf); err != nil {
+		return err
 	}
+	if conf.ConfiguratorAddr == "" {
+		return errors.New("some fields in config.toml are empty or not specified")
+	}
+
+	ctx, cancel := CreateContextWithInterruptSignal()
+	logsctx, logscancel := context.WithCancel(context.Background())
+	defer func() {
+		cancel()
+		logscancel()
+		l.WaitAllFlushesDone()
+	}()
+
+	l, err := logscontainer.NewLogsContainer(logsctx, flushers.NewConsoleFlusher(thisservicename), 1, time.Second, 1)
+	if err != nil {
+		return err
+	}
+	wl := l.Wrap(map[string]string{"conn-with-serv": "conf.conf"})
+
+	confconn, addrToListen, err := ConnectToConfigurator(ctx, wl, configuratoraddr, thisservicename)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func ConnectToConfigurator(configuratoraddr string, thisservicename string) (net.Conn, string, error) {
+func ConnectToConfigurator(ctx context.Context, l *logscontainer.WrappedLogsContainer, configuratoraddr string, thisservicename string, innerServices map[string]string) (net.Conn, string, error) {
 	var addr string
 	d := ws.Dialer{
 		Header: ws.HandshakeHeaderHTTP(http.Header{
-			"X-listen-here-u-little-shit": []string{"1"},
+			"x-get-addr": []string{"1"},
 		}),
 		OnHeader: func(key, value []byte) (err error) {
 			addr = string(value)
@@ -91,97 +77,309 @@ func ConnectToConfigurator(configuratoraddr string, thisservicename string) (net
 	if err != nil {
 		return nil, "", err
 	}
+	c := &Configurator{conn: conn}
+
 	go func() {
-		handlews(conn)
+		for {
+			select {
+			case <-ctx.Done():
+
+			}
+		}
+	}()
+
+	go func() {
+		handlews(ctx, l, c, configuratoraddr, thisservicename)
 	}()
 	return conn, addr, nil
 }
 
-func main() {
-	// ctx, cancellogs := context.WithCancel(context.Background())
-	// l, err := logscontainer.NewLogsContainer(ctx, flushers.NewConsoleFlusher("test"), 4, time.Second*1, 1)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
+type Configurator struct {
+	conn          net.Conn
+	innerservices map[string]net.Conn
+	done          chan struct{}
+}
 
+func handlews(ctx context.Context, l *logscontainer.WrappedLogsContainer, c *Configurator, configuratoraddr string, thisservicename string) {
+	reconnectconf := make(chan struct{}, 1)
+	var err error
+	for {
+		select {
+		case <-reconnectconf:
+			l.Error("Reconnect", errors.New("lost conn, trying to reconnect"))
+			for {
+				c.conn, _, _, err = ws.Dial(context.Background(), suckutils.ConcatFour("ws://", configuratoraddr, "/", thisservicename))
+				if err != nil {
+					l.Warning("configurator", "unsuccessful reconnect")
+					time.Sleep(time.Second * 2)
+				}
+				l.Info("Reconnect", "reconnected!")
+				break
+			}
+
+		default:
+			frame, err := ws.ReadFrame(c.conn)
+			if err != nil {
+				if err == net.ErrClosed {
+					return
+				}
+				fmt.Println("ReadFrame", err)
+				c.conn.Close() //
+				return
+			}
+			if frame.Header.Masked {
+				ws.Cipher(frame.Payload, frame.Header.Mask, 0)
+			}
+			if frame.Header.OpCode.IsReserved() {
+				fmt.Println(ws.ErrProtocolOpCodeReserved)
+				return
+			}
+			if frame.Header.OpCode.IsControl() {
+				switch {
+				case frame.Header.OpCode == ws.OpClose:
+					//TODO:
+					break
+				case frame.Header.OpCode == ws.OpPing:
+					// TODO:
+					break
+				case frame.Header.OpCode == ws.OpPong:
+					// TODO:
+					break
+				default:
+					fmt.Println("OpControl", errors.New("not a control frame"))
+				}
+			}
+			fmt.Println("PAYLOAD:", string(frame.Payload))
+
+			// как-то обрабатываем
+		}
+	}
+}
+
+func main() {
+
+	m := make(chan int, 5)
+	m <- 5
+	fmt.Println("M:", m, len(m))
 	conn, addrToListen, err := ConnectToConfigurator("127.0.0.1:8089", "test.test")
 	if err != nil {
 		fmt.Println(err)
 		return
 	}
-	i := uint16(1000)
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, i)
-	fmt.Println(b)
+	// i := uint16(1000)
+	// b := make([]byte, 2)
+	// binary.BigEndian.PutUint16(b, i)
+	// fmt.Println(b)
 	fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
 	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
 	time.Sleep(time.Second)
-	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{3, 232, 115, 111, 109, 101, 32, 114, 101, 97, 115, 111, 110}))))
+	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpClose, true, []byte{3, 232}))))
+	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{3, 232, 115, 111, 109, 101, 32, 114, 101, 97, 115, 111, 110}))))
+
+	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
+	time.Sleep(time.Second * 2)
+	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
 	//conn.Close()
 	net.Listen("tcp", addrToListen)
-
 	fmt.Println("listen to", addrToListen)
-	time.Sleep(time.Second * 3)
-	//fmt.Println("close err:", conn.Close())
 	time.Sleep(time.Hour)
-
-	// for {
-	// 	conn, err := ln.Accept()
-	// 	if err != nil {
-	// 		fmt.Println(1, err)
-	// 		return
-	// 	}
-	// 	_, err = ws.Upgrade(conn)
-	// 	if err != nil {
-	// 		fmt.Println(2, err)
-	// 		return
-	// 	}
-	// 	go func() {
-	// 		defer conn.Close()
-
-	// 		for {
-	// 			header, err := ws.ReadHeader(conn)
-	// 			if err != nil {
-	// 				fmt.Println(3, err)
-	// 				return
-	// 			}
-
-	// 			payload := make([]byte, header.Length)
-	// 			_, err = io.ReadFull(conn, payload)
-	// 			if err != nil {
-	// 				fmt.Println(4, err)
-	// 				return
-	// 			}
-
-	// 			if header.Masked {
-	// 				ws.Cipher(payload, header.Mask, 0)
-	// 			}
-	// 			fmt.Println("PAYLOAD:", string(payload))
-	// 			// Reset the Masked flag, server frames must not be masked as
-	// 			// RFC6455 says.
-	// 			header.Masked = false
-
-	// 			// if err := ws.WriteHeader(conn, header); err != nil {
-	// 			// 	fmt.Println(5, err)
-	// 			// 	return
-	// 			// }
-	// 			if header.OpCode == ws.OpClose {
-	// 				fmt.Println("CLOSED")
-	// 				return
-	// 			}
-	// 			// if _, err := conn.Write(payload); err != nil {
-	// 			// 	fmt.Println(6, err)
-	// 			// 	return
-	// 			// }
-	// 			fr := ws.NewFrame(ws.OpText, true, []byte("hi mark"))
-	// 			if err = ws.WriteFrame(conn, fr); err != nil {
-	// 				fmt.Println(err)
-	// 			}
-	// 		}
-	// 	}()
-	// }
 }
+
+func ServeHTTPService(ctx context.Context, l *logscontainer.LogsContainer, serviceName string, network, address string, connectionAlive bool, maxConnections int, handler HttpService) error {
+	return ServeServiceWithContext(ctx, l, network, address, connectionAlive, maxConnections, func(ctx context.Context, conn net.Conn) error {
+		request, err := suckhttp.ReadRequest(ctx, conn, time.Minute)
+		if err != nil {
+			return err
+		}
+		if request.GetHeader("x-request-id") == "" {
+			return errors.New("not set x-request-id")
+		}
+		wl := l.Wrap(map[string]string{"req-id": request.GetHeader("x-request-id"), "remote-addr": request.GetRemoteAddr()})
+		//l.Debug(logsName, suckutils.ConcatFour("Readed from ", request.GetRemoteAddr(), " for ", request.Time.String()))
+		response, err := handler.Handle(request, wl)
+		if err != nil {
+			l.Error("Handle", err)
+			if response == nil {
+				response = suckhttp.NewResponse(500, "Internal Server Error")
+			}
+			if writeErr := response.Write(conn, time.Minute); writeErr != nil {
+				l.Error("Write response", writeErr)
+			}
+			return err
+		}
+		//logger.Debug("Service", "Writing response...")
+		err = response.Write(conn, time.Minute)
+		if err != nil {
+			l.Error("Write response", err)
+		} else {
+			l.Debug("Responce handling", "Done")
+		}
+		return err
+	})
+}
+
+func ServeServiceWithContext(ctx context.Context, logger *logscontainer.LogsContainer, network, address string, connectionAlive bool, maxconnections int, handler HandlerFunc) error {
+	l, err := net.Listen(network, address)
+	if err != nil {
+		return err
+	}
+	listenerLocker := sync.Mutex{}
+	done := make(chan error, 1)
+
+	goroutines := make(chan struct{}, maxconnections) // Ограничитель горутин
+	group := sync.WaitGroup{}                         // Все запросы будут выполенены
+	connections := make([]net.Conn, maxconnections)
+	conmux := sync.Mutex{}
+
+	go func() {
+		<-ctx.Done()
+		logger.Info("Service "+address, "Shutdowning...")
+		listenerLocker.Lock()
+		err := l.Close()
+		//l.Close()
+		l = nil
+		listenerLocker.Unlock()
+		conmux.Lock()
+		for i, c := range connections {
+			if c != nil {
+				connections[i].Close()
+			}
+		}
+		conmux.Unlock()
+		logger.Info("Service "+address, "Shutdown waiting...")
+		group.Wait() // Ждем завершения обработки всех запросов
+		done <- err
+		logger.Info("Service "+address, "Shutdown")
+	}()
+
+	for {
+		listenerLocker.Lock()
+		if l == nil {
+			break
+		}
+		listenerLocker.Unlock()
+
+		fd, err := l.Accept()
+		if err != nil {
+			logger.Error("Accept", err)
+			continue
+		}
+		group.Add(1)
+		goroutines <- struct{}{} // Ограничивает количество горутин
+		conmux.Lock()
+		ncon := -1
+		for {
+			for i, c := range connections {
+				if c == nil {
+					connections[i] = fd
+					ncon = i
+					break
+				}
+			}
+			if ncon == -1 {
+				time.Sleep(time.Millisecond)
+				continue
+			}
+			break
+		}
+		conmux.Unlock()
+
+		go func(conn net.Conn, nconn int) {
+			logger.Debug(suckutils.ConcatTwo("Service ", address), suckutils.Concat("Open connection from ", conn.LocalAddr().String(), " to ", conn.RemoteAddr().String()))
+			for {
+				if err := handler(ctx, conn); err != nil {
+					logger.Error("Handle "+conn.RemoteAddr().String(), err)
+					break
+				}
+				if !connectionAlive {
+					break
+				}
+				conn.SetDeadline(time.Time{})
+			}
+			logger.Debug(suckutils.ConcatTwo("Service ", address), suckutils.Concat("Connection closing from ", conn.LocalAddr().String(), " to ", conn.RemoteAddr().String()))
+			if err := conn.Close(); err != nil {
+				logger.Error("Close", err)
+			}
+			group.Done()
+			<-goroutines
+			conmux.Lock()
+			conn.Close()
+			connections[nconn] = nil
+			conmux.Unlock()
+			// logger.Debug("Service "+address, "end for")
+		}(fd, ncon)
+	}
+
+	return <-done
+}
+
+func CreateContextWithInterruptSignal() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt)
+
+	go func() {
+		<-stop
+		cancel()
+	}()
+	return ctx, cancel
+}
+
+// for {
+// 	conn, err := ln.Accept()
+// 	if err != nil {
+// 		fmt.Println(1, err)
+// 		return
+// 	}
+// 	_, err = ws.Upgrade(conn)
+// 	if err != nil {
+// 		fmt.Println(2, err)
+// 		return
+// 	}
+// 	go func() {
+// 		defer conn.Close()
+
+// 		for {
+// 			header, err := ws.ReadHeader(conn)
+// 			if err != nil {
+// 				fmt.Println(3, err)
+// 				return
+// 			}
+
+// 			payload := make([]byte, header.Length)
+// 			_, err = io.ReadFull(conn, payload)
+// 			if err != nil {
+// 				fmt.Println(4, err)
+// 				return
+// 			}
+
+// 			if header.Masked {
+// 				ws.Cipher(payload, header.Mask, 0)
+// 			}
+// 			fmt.Println("PAYLOAD:", string(payload))
+// 			// Reset the Masked flag, server frames must not be masked as
+// 			// RFC6455 says.
+// 			header.Masked = false
+
+// 			// if err := ws.WriteHeader(conn, header); err != nil {
+// 			// 	fmt.Println(5, err)
+// 			// 	return
+// 			// }
+// 			if header.OpCode == ws.OpClose {
+// 				fmt.Println("CLOSED")
+// 				return
+// 			}
+// 			// if _, err := conn.Write(payload); err != nil {
+// 			// 	fmt.Println(6, err)
+// 			// 	return
+// 			// }
+// 			fr := ws.NewFrame(ws.OpText, true, []byte("hi mark"))
+// 			if err = ws.WriteFrame(conn, fr); err != nil {
+// 				fmt.Println(err)
+// 			}
+// 		}
+// 	}()
+// }
 
 //func main() {
 

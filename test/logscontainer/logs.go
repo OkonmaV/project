@@ -23,16 +23,8 @@ type Log struct {
 	Description string
 	Lvl         loglevel
 	Log         error
-	Tags        []string // TODO: map
+	Tags        LogTags
 }
-
-type LogsFlusher interface {
-	Flush([]Log) error
-}
-
-type LogTags map[string]string
-
-type loglevel uint8
 
 const (
 	debug   = 1
@@ -42,20 +34,6 @@ const (
 )
 
 const defaultLastFlushesTimeout time.Duration = time.Second * 20
-
-func (l loglevel) String() string {
-	switch l {
-	case debug:
-		return "DBG"
-	case info:
-		return "INF"
-	case warning:
-		return "WRN"
-	case err:
-		return "ERR"
-	}
-	return "UNK"
-}
 
 func NewLogsContainer(ctx context.Context, f LogsFlusher, capacity int, flushperiod time.Duration, minflushinglen int) (*LogsContainer, error) {
 
@@ -99,7 +77,7 @@ func (l *LogsContainer) WaitAllFlushesDone() {
 	case <-l.allflushesdone:
 		return
 	case t := <-time.After(defaultLastFlushesTimeout): // TODO: CHECK
-		println("[", t.UTC().String(), "] Last flushes interrupted because of timeout ", defaultLastFlushesTimeout.String())
+		println("[", t.UTC().String(), "] Last flushes waiting interrupted because of timeout ", defaultLastFlushesTimeout.String())
 		return
 	}
 }
@@ -150,9 +128,7 @@ func listener(ctx context.Context, f LogsFlusher, l *LogsContainer, flushperiod 
 	ticker := time.NewTicker(flushperiod)
 	go func() {
 		for errpack := range l.flushing {
-			if err := f.Flush(errpack); err != nil {
-				//errs.AddError(err)
-			}
+			f.Flush(errpack)
 		}
 		l.allflushesdone <- struct{}{}
 	}()

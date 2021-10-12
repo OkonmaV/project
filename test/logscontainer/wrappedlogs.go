@@ -6,21 +6,36 @@ import (
 )
 
 type WrappedLogsContainer struct {
-	// [remoteaddr,requestid]
-	tags      []string
+	tags      LogTags
 	container *LogsContainer
 }
 
-func (l *LogsContainer) Wrap(tags ...string) *WrappedLogsContainer {
-	if len(tags) == 0 {
-		panic("unnecessary use of logscontainer wrapper")
+func (l *LogsContainer) Wrap(tags LogTags) *WrappedLogsContainer {
+	if len(tags) == 0 || tags == nil {
+		panic("tags must be non-nil and of length>0")
 	}
-
 	return &WrappedLogsContainer{tags: tags, container: l}
+}
+
+// return new wrappedlogs based on previous tags with adding new additional tags
+func (wl *WrappedLogsContainer) ReWrap(additionalTags LogTags) *WrappedLogsContainer {
+	if len(additionalTags) == 0 || additionalTags == nil {
+		panic("additionaltags must be non-nil and of length>0")
+	}
+	for key, value := range wl.tags {
+		if _, ok := additionalTags[key]; !ok {
+			additionalTags[key] = value
+		}
+	}
+	return &WrappedLogsContainer{tags: additionalTags, container: wl.container}
 }
 
 func (wl *WrappedLogsContainer) WaitAllFlushesDone() {
 	wl.container.WaitAllFlushesDone()
+}
+
+func (wl *WrappedLogsContainer) AddTag(key, value string) {
+	wl.tags.AddTag(key, value)
 }
 
 func (wl *WrappedLogsContainer) Error(descr string, data error) {
