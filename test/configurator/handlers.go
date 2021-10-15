@@ -17,70 +17,71 @@ import (
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gobwas/pool/pbytes"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/mailru/easygo/netpoll"
 )
 
-type closederr struct {
-	code   uint16
-	reason string
-}
-
-func (err closederr) Error() string {
-	return suckutils.Concat("closeframe statuscode: ", strconv.Itoa(int(err.code)), "; reason: ", err.reason)
-}
 func (c *Configurator) handlehttp(conn net.Conn, l *logscontainer.WrappedLogsContainer, poller netpoll.Poller, pool *gopool.Pool) {
 
-	var servicename string
+	servinfo := &serviceinfo{}
 
 	u := ws.Upgrader{
 		OnRequest: func(uri []byte) error {
-			servicename = string(uri[1:])
-			if _, ok := c.services[servicename]; !ok {
-				l.Debug("Upgrade request", suckutils.ConcatThree("Unknown servicename \"", servicename, "\""))
-				return ws.RejectConnectionError(
-					ws.RejectionStatus(403),
-				)
+			servinfo.name = ServiceName(uri[1:]) // skip "/"
+			if _, ok := c.localservices[servinfo.name]; !ok {
+				if servinfo.name != ConfServiceName {
+					l.Debug("Upgrade request", suckutils.ConcatThree("Unknown servicename \"", string(servinfo.name), "\""))
+					return ws.RejectConnectionError(
+						ws.RejectionStatus(403),
+					)
+				}
 			}
-			l.AddTag("conn-with-serv", servicename)
 			return nil
 		},
 		OnHost: func(host []byte) error {
 			ind := bytes.Index(host, []byte{58}) // for cutting port, 58=":"
-			if _, ok := c.hosts[string(host[:ind])]; !ok {
-				l.Warning("Upgrade request", suckutils.ConcatThree("Unknown host \"", string(host), "\""))
-				return ws.RejectConnectionError(
-					ws.RejectionStatus(403),
-				)
+			if string(host[:ind]) != "127.0.0.1" {
+				servinfo.isRemote = true
 			}
 			return nil
 		},
 		OnBeforeUpgrade: func() (header ws.HandshakeHeader, err error) {
-			if c.services[servicename].addr == "*" {
-				if c.services[servicename].addr, err = getfreeaddr(); err != nil {
-					l.Error("GetFreePort", err)
-					ws.RejectConnectionError(
-						ws.RejectionStatus(500),
-					)
+			if servinfo.name != ConfServiceName {
+				if c.localservices[servinfo.name].addr == nil {
+					if c.localservices[servinfo.name].addr, err = getfreeaddr(); err != nil {
+						l.Error("GetFreePort", err)
+						err = ws.RejectConnectionError(
+							ws.RejectionStatus(500),
+						)
+						return
+					}
 				}
-
+			} else if !servinfo.isRemote {
+				l.Warning("Upgrade request", suckutils.ConcatThree("localhosted ", string(ConfServiceName), " want to connect to localhosted brother"))
+				err = ws.RejectConnectionError(
+					ws.RejectionStatus(403),
+				)
+				return
 			}
-			return ws.HandshakeHeaderHTTP(http.Header{ // TODO: delete http
-				"x-get-addr": []string{c.services[servicename].addr},
-			}), nil
+
+			header = ws.HandshakeHeaderHTTP(http.Header{
+				"x-get-addr": []string{c.localservices[servinfo.name].addr.String()}},
+			)
+			return
 		},
 	}
 
-	_, err := u.Upgrade(conn)
-	if err != nil {
+	if _, err := u.Upgrade(conn); err != nil {
 		l.Error("Upgrade", errors.New(suckutils.ConcatFour("Upgrading connection from ", conn.RemoteAddr().String(), " error: ", err.Error())))
 		conn.Close()
 		return
 	}
 
-	l.Debug("Established new wsconn", suckutils.ConcatFour("Service ", servicename, " from ", conn.RemoteAddr().String()))
+	l.Debug("Established new wsconn", suckutils.ConcatFour("Service ", servinfo.nameWithLocationType(), " from ", conn.RemoteAddr().String()))
+	l.SetTag(logscontainer.TagNameOfConnectedService, servinfo.nameWithLocationType())
 
 	desc, err := netpoll.HandleRead(conn)
 	if err != nil {
@@ -232,15 +233,56 @@ func handlecontrolframe(w io.Writer, h ws.Header, r io.Reader, state ws.State) e
 	return errors.New("not a control frame")
 }
 
-func getfreeaddr() (string, error) {
+// service name must be specified with location type (local/remote)
+func AddSub(memcConn *memcache.Client, servicename string) error {
+	item, err := memcConn.Get(servicename)
+	if err != nil {
+		return err
+	}
+	servname := []byte(servicename)
+	subs := bytes.Split(item.Value, []byte{47}) // 47="/"
+	for _, sub := range subs {
+		if bytes.Equal(sub, servname) {
+			return nil
+		}
+	}
+
+	item.Value = make([]byte, 0, len(item.Value)+len(servname)+1)
+	item.Value = append(append(append(item.Value, servname...), 47), item.Value...)
+	return memcConn.Set(item)
+}
+
+func updateStatusToOff(memcConn *memcache.Client, servicename ServiceName) error {
+	item, err := memcConn.Get(servicename.Local())
+	if err != nil {
+		return err
+	}
+	if len(item.Value) < 7 { // TODO: ?
+		return errors.New("violation of data: not standard local.service value length")
+	}
+	return memcConn.Set(&memcache.Item{Key: item.Key, Value: Addr(item.Value).WithStatus(StatusOff)})
+}
+
+func updateStatusToSuspended(memcConn *memcache.Client, servicename ServiceName) error {
+	item, err := memcConn.Get(servicename.Local())
+	if err != nil {
+		return err
+	}
+	if len(item.Value) < 7 { // TODO: ?
+		return errors.New("violation of data: not standard local.service value length")
+	}
+	return memcConn.Set(&memcache.Item{Key: item.Key, Value: Addr(item.Value).WithStatus(StatusSuspended)})
+}
+
+func getfreeaddr() (Addr, error) {
 	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	l, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	defer l.Close()
-	return l.Addr().String(), nil
+	l.Close()
+	return ParseIPv4withPort(addr.String()), nil
 }

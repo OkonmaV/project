@@ -34,8 +34,8 @@ func (wl *WrappedLogsContainer) WaitAllFlushesDone() {
 	wl.container.WaitAllFlushesDone()
 }
 
-func (wl *WrappedLogsContainer) AddTag(key, value string) {
-	wl.tags.AddTag(key, value)
+func (wl *WrappedLogsContainer) SetTag(tag Tag, value string) {
+	wl.tags.SetTag(tag, value)
 }
 
 func (wl *WrappedLogsContainer) Error(descr string, data error) {
@@ -63,5 +63,5 @@ func (wl *WrappedLogsContainer) addlog(descr string, lvl loglevel, err error) {
 		wl.container.flushing <- wl.container.logs
 		wl.container.logs = make([]Log, 0, cap(wl.container.logs))
 	}
-	wl.container.logs = append(wl.container.logs, Log{Time: now, Description: descr, Lvl: lvl, Log: err, Tags: wl.tags})
+	wl.container.logs = append(wl.container.logs, Log{Time: now, Description: descr, Lvl: lvl, Log: err, Tags: wl.tags.getcopy()})
 }

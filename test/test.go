@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -10,6 +11,8 @@ import (
 	"os/signal"
 	"project/test/logscontainer"
 	"project/test/logscontainer/flushers"
+	"strconv"
+	"strings"
 	"sync"
 
 	"time"
@@ -53,9 +56,9 @@ func InitNewService(l *logscontainer.LogsContainer, thisservicename, configurato
 	if err != nil {
 		return err
 	}
-	wl := l.Wrap(map[string]string{"conn-with-serv": "conf.conf"})
+	wl := l.Wrap(logscontainer.LogTags{1: "conf.conf"})
 
-	confconn, addrToListen, err := ConnectToConfigurator(ctx, wl, configuratoraddr, thisservicename)
+	_, _, err = ConnectToConfigurator(ctx, wl, configuratoraddr, thisservicename, nil)
 	if err != nil {
 		return err
 	}
@@ -77,6 +80,7 @@ func ConnectToConfigurator(ctx context.Context, l *logscontainer.WrappedLogsCont
 	if err != nil {
 		return nil, "", err
 	}
+	conn.RemoteAddr()
 	c := &Configurator{conn: conn}
 
 	go func() {
@@ -156,33 +160,63 @@ func handlews(ctx context.Context, l *logscontainer.WrappedLogsContainer, c *Con
 	}
 }
 
-func main() {
+type Addr []byte
 
-	m := make(chan int, 5)
-	m <- 5
-	fmt.Println("M:", m, len(m))
-	conn, addrToListen, err := ConnectToConfigurator("127.0.0.1:8089", "test.test")
-	if err != nil {
-		fmt.Println(err)
-		return
+func ParseIPv4withPort(addr string) Addr {
+	foo := strings.Split(addr, ":")
+	if len(foo) != 2 {
+		return nil
 	}
-	// i := uint16(1000)
-	// b := make([]byte, 2)
-	// binary.BigEndian.PutUint16(b, i)
-	// fmt.Println(b)
-	fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
-	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
-	time.Sleep(time.Second)
-	fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpClose, true, []byte{3, 232}))))
-	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{3, 232, 115, 111, 109, 101, 32, 114, 101, 97, 115, 111, 110}))))
+	fmt.Println(1, foo)
+	address := make([]byte, 0, 6)
+	address = append(address, net.ParseIP(foo[0]).To4()...)
+	address = append(address, []byte{0, 0}...)
+	fmt.Println(2, address)
+	port, err := strconv.ParseUint(foo[1], 10, 16)
+	fmt.Println(3, "err", err, "port", port, cap(address), len(address))
+	binary.BigEndian.PutUint16(address[4:], uint16(port))
+	fmt.Println(88, address)
+	fmt.Println(4, []byte{address[0], address[1], address[2], address[3], address[4], address[5], 0})
+	return address
+}
+func (address Addr) String() string {
+	if len(address) < 6 {
+		if len(address) == 4 {
+			return net.IPv4(address[0], address[1], address[2], address[3]).String()
+		}
+		return ""
+	}
+	return suckutils.ConcatThree(net.IPv4(address[0], address[1], address[2], address[3]).String(), ":", strconv.Itoa(int(binary.BigEndian.Uint16(address[4:]))))
+}
 
-	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
-	time.Sleep(time.Second * 2)
-	//fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
-	//conn.Close()
-	net.Listen("tcp", addrToListen)
-	fmt.Println("listen to", addrToListen)
-	time.Sleep(time.Hour)
+func main() {
+	f := ParseIPv4withPort("127.6.6.1:25")
+	fmt.Println(5, f)
+	fmt.Println(6, f[:4].String(), cap(f))
+	addrwithstatus := append(f, 255)
+	fmt.Println(7, addrwithstatus, cap(addrwithstatus), []byte("/"))
+	// conn, addrToListen, err := ConnectToConfigurator("127.0.0.1:8089", "test.test")
+	// if err != nil {
+	// 	fmt.Println(err)
+	// 	return
+	// }
+	// // i := uint16(1000)
+	// // b := make([]byte, 2)
+	// // binary.BigEndian.PutUint16(b, i)
+	// // fmt.Println(b)
+	// fmt.Println("Connected", conn.LocalAddr(), ">", conn.RemoteAddr())
+	// //fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpText, true, []byte("hi")))))
+	// time.Sleep(time.Second)
+	// fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewFrame(ws.OpClose, true, []byte{3, 232}))))
+	// //fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{3, 232, 115, 111, 109, 101, 32, 114, 101, 97, 115, 111, 110}))))
+
+	// //fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
+	// time.Sleep(time.Second * 2)
+	// //fmt.Println(ws.WriteFrame(conn, ws.MaskFrame(ws.NewCloseFrame([]byte{}))))
+	// //conn.Close()
+	// net.Listen("tcp", addrToListen)
+	// fmt.Println("listen to", addrToListen)
+	// time.Sleep(time.Hour)
 }
 
 func ServeHTTPService(ctx context.Context, l *logscontainer.LogsContainer, serviceName string, network, address string, connectionAlive bool, maxConnections int, handler HttpService) error {
@@ -194,7 +228,7 @@ func ServeHTTPService(ctx context.Context, l *logscontainer.LogsContainer, servi
 		if request.GetHeader("x-request-id") == "" {
 			return errors.New("not set x-request-id")
 		}
-		wl := l.Wrap(map[string]string{"req-id": request.GetHeader("x-request-id"), "remote-addr": request.GetRemoteAddr()})
+		wl := l.Wrap(logscontainer.LogTags{2: request.GetHeader("x-request-id"), 3: request.GetRemoteAddr()})
 		//l.Debug(logsName, suckutils.ConcatFour("Readed from ", request.GetRemoteAddr(), " for ", request.Time.String()))
 		response, err := handler.Handle(request, wl)
 		if err != nil {

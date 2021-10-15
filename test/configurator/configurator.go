@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"encoding/binary"
+	"errors"
 	"sync"
 
 	"io/ioutil"
@@ -19,32 +19,27 @@ import (
 )
 
 type Configurator struct {
-	services map[string]*serviceinstance
-	hosts    map[string]struct{}
-	poller   netpoll.Poller
-	pool     *gopool.Pool
-	memcConn *memcache.Client
-	//TrntlErr  chan struct{} //
+	localservices map[ServiceName]*serviceinstance
+	//localsubs           map[ServiceName]ServiceName // можно и прям ссылку на структуру пихать
+	remoteconfigurators map[string]*serviceinstance // KEY=ADDRESS without port
+	poller              netpoll.Poller
+	pool                *gopool.Pool
+	memcConn            *memcache.Client
 }
 
 type serviceinstance struct {
-	addr   string
+	addr   Addr
 	mutex  sync.Mutex
 	wsconn net.Conn
 }
 
-// TODO: додумать разные инстансы одного сервиса
-type trntlTuple struct {
-	name     string
-	addr     string
-	status   bool
-	lastseen int64
-}
-
 func NewConfigurator(settingspath, memcaddr string) (*Configurator, error) {
 
-	c := &Configurator{memcConn: memcache.New(memcaddr), services: make(map[string]*serviceinstance), hosts: map[string]struct{}{}}
-	err := c.memcConn.Set(&memcache.Item{Key: "conf.conf", Value: []byte("this")})
+	c := &Configurator{
+		memcConn:            memcache.New(memcaddr),
+		localservices:       make(map[ServiceName]*serviceinstance),
+		remoteconfigurators: make(map[string]*serviceinstance)}
+	err := c.memcConn.Set(&memcache.Item{Key: "local.conf", Value: []byte("this")})
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +50,6 @@ func NewConfigurator(settingspath, memcaddr string) (*Configurator, error) {
 		return nil, err
 	}
 	c.pool = gopool.NewPool(5, 1, 1)
-	c.hosts["127.0.0.1"] = struct{}{} // TODO
 
 	return c, nil
 }
@@ -65,8 +59,15 @@ func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer
 	if err != nil {
 		return err
 	}
-	updateStatusToOn(c.memcConn, "conf.conf", "addr")
-	l.Info("Start service", suckutils.ConcatTwo("conf.configurator start listening at ", addr))
+	byteaddr := ParseIPv4withPort(addr)
+	if byteaddr == nil {
+		return errors.New("can listen addr, but cant parseipv4withport it")
+	}
+	// TODO: add memc sub
+	if err = c.memcConn.Set(&memcache.Item{Key: "local.conf", Value: byteaddr.WithStatus(StatusOn)}); err != nil {
+		return err
+	}
+	l.Info("Start service", suckutils.ConcatTwo("configurator start listening at ", addr))
 
 	acceptDesc, err := netpoll.HandleListener(ln, netpoll.EventRead|netpoll.EventOneShot)
 	if err != nil {
@@ -110,7 +111,7 @@ func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer
 		return err
 	}
 	<-ctx.Done()
-	l.Info("Stop service", "Configurator stopping")
+	l.Info("Stop service", "configurator stopping")
 	return c.poller.Stop(acceptDesc)
 }
 
@@ -127,32 +128,58 @@ func (c *Configurator) readsettings(settingspath string) error {
 		}
 		s := strings.Split(strings.TrimSpace(line), " ")
 		if len(s) < 2 {
+			if len(s) == 1 {
+				c.memcConn.Set(&memcache.Item{Key: ServiceName(s[0]).Local(), Value: []byte{0, 0, 0, 0, 0, 0, 0}})
+				c.localservices[ServiceName(s[0])] = &serviceinstance{}
+			}
 			continue
 		}
-		c.memcConn.Set(&memcache.Item{Key: s[0], Value: []byte(s[1])})
-		c.services[s[0]] = &serviceinstance{addr: s[1]}
+		if ServiceName(s[0]) == ServiceName(ConfServiceName.Remote()) {
+			if len(s) < 2 {
+				continue
+			}
+			var remoteconfs []byte
+			if len(s) > 2 {
+				remoteconfs = make([]byte, 0, ((len(s) - 1) * 6))
+			} else {
+				remoteconfs = make([]byte, 0, 6)
+			}
+
+			for i := 1; i < len(s); i++ { // skip s[0]
+				addr := ParseIPv4withPort(s[i])
+				if addr == nil {
+					return errors.New(suckutils.ConcatTwo("wrong address format of ", string(ConfServiceName.Remote())))
+				}
+				if addr.IsLocalhost() {
+					return errors.New(suckutils.ConcatTwo(string(ConfServiceName.Remote()), " must not be at localhost"))
+				}
+				remoteconfs = append(remoteconfs, addr...)
+				c.remoteconfigurators[addr[:4].String()] = &serviceinstance{addr: addr} // key=addr without port
+			}
+
+			c.memcConn.Set(&memcache.Item{Key: s[0], Value: remoteconfs})
+			continue
+		}
+		addr := ParseIPv4withPort(s[1])
+		if addr == nil {
+			return errors.New(suckutils.ConcatTwo("wrong address format of service ", s[0]))
+		}
+		if !addr.IsLocalhost() {
+			return errors.New(suckutils.ConcatTwo("not localhost at service ", s[0]))
+		}
+		c.memcConn.Set(&memcache.Item{Key: ServiceName(s[0]).Local(), Value: addr.WithStatus(StatusOff)})
+		c.localservices[ServiceName(s[0])] = &serviceinstance{addr: addr}
 	}
 	return nil
 }
 
-func updateStatusToOn(memcConn *memcache.Client, servicename, serviceaddress string) error {
-	b := make([]byte, 8)
-	binary.LittleEndian.PutUint64(b, uint64(time.Now().Unix()))
-	return memcConn.Set(&memcache.Item{Key: suckutils.ConcatThree(servicename, ".", serviceaddress), Value: b})
-}
-
-func updateStatusToOff(memcConn *memcache.Client, servicename, serviceaddress string) error {
-	key := suckutils.ConcatThree(servicename, ".", serviceaddress)
-	item, err := memcConn.Get(key)
+func updateStatusToOn(memcConn *memcache.Client, servicename ServiceName) error {
+	item, err := memcConn.Get(servicename.Local())
 	if err != nil {
 		return err
 	}
-	if len(item.Value) < 8 {
-		b := make([]byte, 16)
-		b = append(b, item.Value...)
-		item.Value = b
+	if len(item.Value) < 7 { // TODO: ?
+		return errors.New("violation of data: not standard local.service value length")
 	}
-	binary.LittleEndian.PutUint64(item.Value[:8], uint64(time.Now().Unix()))
-	return memcConn.Set(item)
-
+	return memcConn.Set(&memcache.Item{Key: item.Key, Value: Addr(item.Value).WithStatus(StatusOn)})
 }

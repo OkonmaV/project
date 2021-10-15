@@ -25,11 +25,11 @@ type config struct {
 func main() {
 	conf := &config{}
 	if _, err := toml.DecodeFile("config.toml", conf); err != nil {
-		println("Read toml err:", err)
+		println("read toml err:", err)
 		return
 	}
 	if conf.Listen == "" || conf.Settings == "" {
-		println("Some fields in conf.toml are empty or not specified")
+		println("some fields in conf.toml are empty or not specified")
 	}
 
 	ctx, cancel := CreateContextWithInterruptSignal()
@@ -46,7 +46,7 @@ func main() {
 		l.WaitAllFlushesDone()
 	}()
 
-	c, err := NewConfigurator(conf.Settings, conf.TrntlAddr)
+	c, err := NewConfigurator(conf.Settings, conf.Memcached)
 	if err != nil {
 		l.Error("NewConfigurator", err)
 		return
