@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
@@ -163,20 +165,37 @@ func handlews(ctx context.Context, l *logscontainer.WrappedLogsContainer, c *Con
 type Addr []byte
 
 func ParseIPv4withPort(addr string) Addr {
-	foo := strings.Split(addr, ":")
-	if len(foo) != 2 {
+	return parseipv4(addr, true)
+}
+
+func ParseIPv4(addr string) Addr {
+	return parseipv4(addr, false)
+}
+
+func parseipv4(addr string, withport bool) Addr {
+	if len(addr) == 0 {
 		return nil
 	}
-	fmt.Println(1, foo)
-	address := make([]byte, 0, 6)
-	address = append(address, net.ParseIP(foo[0]).To4()...)
-	address = append(address, []byte{0, 0}...)
-	fmt.Println(2, address)
-	port, err := strconv.ParseUint(foo[1], 10, 16)
-	fmt.Println(3, "err", err, "port", port, cap(address), len(address))
-	binary.BigEndian.PutUint16(address[4:], uint16(port))
-	fmt.Println(88, address)
-	fmt.Println(4, []byte{address[0], address[1], address[2], address[3], address[4], address[5], 0})
+	var address []byte
+	pieces := strings.Split(addr, ":")
+	if withport {
+		if len(pieces) != 2 {
+			return nil
+		}
+		address = make([]byte, 6)
+		port, err := strconv.ParseUint(pieces[1], 10, 16)
+		if err != nil {
+			return nil
+		}
+		binary.BigEndian.PutUint16(address[4:], uint16(port))
+	} else {
+		address = make([]byte, 4)
+	}
+	ipv4 := net.ParseIP(pieces[0]).To4()
+	if ipv4 == nil {
+		return nil
+	}
+	copy(address[0:4], ipv4)
 	return address
 }
 func (address Addr) String() string {
@@ -189,12 +208,36 @@ func (address Addr) String() string {
 	return suckutils.ConcatThree(net.IPv4(address[0], address[1], address[2], address[3]).String(), ":", strconv.Itoa(int(binary.BigEndian.Uint16(address[4:]))))
 }
 
+type s string
+
 func main() {
+
+	url := "https://api.ipify.org?format=text" // we are using a pulib IP API, we're using ipify here, below are some others
+	// https://www.ipify.org
+	// http://myexternalip.com
+	// http://api.ident.me
+	// http://whatismyipaddress.com/api
+	fmt.Printf("Getting IP address from  ipify ...\n")
+	resp, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+	ip, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("My IP is:%s\n", ip)
+
 	f := ParseIPv4withPort("127.6.6.1:25")
-	fmt.Println(5, f)
-	fmt.Println(6, f[:4].String(), cap(f))
-	addrwithstatus := append(f, 255)
-	fmt.Println(7, addrwithstatus, cap(addrwithstatus), []byte("/"))
+	fmt.Println(5, f, len(f), string(f[:6]))
+	fmt.Println(6, f[:4].String(), cap(f), len(bytes.Split(nil, []byte{45})))
+	a := ""
+	b := []byte("example")
+	fmt.Println(s(b))
+	copy(b[0:2], []byte{8, 9})
+	//b = append(, ...)
+	fmt.Println(7, len(strings.Split(a, "/")), "|||", b)
 	// conn, addrToListen, err := ConnectToConfigurator("127.0.0.1:8089", "test.test")
 	// if err != nil {
 	// 	fmt.Println(err)

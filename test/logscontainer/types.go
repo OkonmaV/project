@@ -14,6 +14,7 @@ const (
 	TagRemoteAddr                   Tag = 2
 	TagRequestId                    Tag = 3
 	TagListenAddrOfConnectedService Tag = 4
+	TagRandEventId                  Tag = 5
 )
 
 func (tag Tag) String() string {
@@ -26,6 +27,8 @@ func (tag Tag) String() string {
 		return "req-id"
 	case TagListenAddrOfConnectedService:
 		return "connected-serv-ln-at"
+	case TagRandEventId:
+		return "rand-event-id"
 	default:
 		return "undefined-tag"
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"net"
 	"os"
 	"os/signal"
 
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/gobwas/ws"
 )
 
 type config struct {
@@ -58,10 +56,6 @@ func main() {
 		l.Error("Serve", err)
 	}
 
-}
-
-func SendTextToClient(conn net.Conn, text []byte) error {
-	return ws.WriteFrame(conn, ws.NewTextFrame(text))
 }
 
 func CreateContextWithInterruptSignal() (context.Context, context.CancelFunc) {

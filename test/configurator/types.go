@@ -9,6 +9,18 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
+type OperationCode byte
+
+const (
+	OperationCodeSetMyStatusOff       OperationCode = 1
+	OperationCodeSetMyStatusSuspended OperationCode = 2
+	OperationCodeSetMyStatusOn        OperationCode = 3
+	OperationCodeSubscribeToServices  OperationCode = 4
+	OperationCodeSetPubAddresses      OperationCode = 5
+	OperationCodeUpdatePubStatus      OperationCode = 6 // opcode + one byte for new pub's status + subscription servicename + subscription service addr
+	OperationCodeError                OperationCode = 7 // must not be handled but printed at service-caller, for debugging errors in caller's code
+)
+
 type serviceinfo struct {
 	name     ServiceName
 	isRemote bool
@@ -25,8 +37,8 @@ type ServiceStatus byte
 
 const (
 	StatusOff       ServiceStatus = 0
-	StatusOn        ServiceStatus = 1
-	StatusSuspended ServiceStatus = 2
+	StatusSuspended ServiceStatus = 1
+	StatusOn        ServiceStatus = 2
 )
 
 func (status ServiceStatus) String() string {
@@ -63,26 +75,51 @@ func (sn ServiceName) RemoteSub() string {
 }
 
 type Addr []byte
+type IPv4withPort Addr
+type IPv4 Addr
 
 var AddrByteOrder = binary.LittleEndian
 
-func ParseIPv4withPort(addr string) Addr {
-	foo := strings.Split(addr, ":")
-	if len(foo) != 2 {
+func ParseIPv4withPort(addr string) IPv4withPort {
+	return parseipv4(addr, true)
+}
+
+func ParseIPv4(addr string) IPv4 {
+	return parseipv4(addr, false)
+}
+
+func parseipv4(addr string, withport bool) []byte {
+	if len(addr) == 0 {
 		return nil
 	}
-	address := make([]byte, 0, 6)
-	address = append(address, net.ParseIP(foo[0]).To4()...)
-	if len(address) == 0 {
+	var address []byte
+	pieces := strings.Split(addr, ":")
+	if withport {
+		if len(pieces) != 2 {
+			return nil
+		}
+		address = make([]byte, 6)
+		port, err := strconv.ParseUint(pieces[1], 10, 16)
+		if err != nil {
+			return nil
+		}
+		AddrByteOrder.PutUint16(address[4:], uint16(port))
+	} else {
+		address = make([]byte, 4)
+	}
+	ipv4 := net.ParseIP(pieces[0]).To4()
+	if ipv4 == nil {
 		return nil
 	}
-	address = append(address, []byte{0, 0}...)
-	port, err := strconv.ParseUint(foo[1], 10, 16)
-	if err != nil {
-		return nil
-	}
-	AddrByteOrder.PutUint16(address[4:], uint16(port))
+	copy(address[0:4], ipv4)
 	return address
+}
+
+func (address IPv4) String() string {
+	return Addr(address).String()
+}
+func (address IPv4withPort) String() string {
+	return Addr(address).String()
 }
 
 // with or without port, else return empty string
@@ -103,16 +140,34 @@ func (address Addr) IsLocalhost() bool {
 	return address[0] == 127 && address[1] == 0 && address[2] == 0 && address[3] == 1
 }
 
-// length of address MUST NOT be less than 6
-func (address Addr) WithStatus(status ServiceStatus) []byte {
+// rewrites status
+func (address IPv4withPort) WithStatus(status ServiceStatus) []byte {
+	if len(address) < 6 {
+		return nil
+	}
 	return []byte{address[0], address[1], address[2], address[3], address[4], address[5], byte(status)}
 }
 
-// type closederr struct {
-// 	code   uint16
-// 	reason string
-// }
+func (address IPv4withPort) ConvertHost(newhost IPv4) IPv4withPort {
+	if len(address) < 4 || len(newhost) < 4 {
+		return nil
+	}
+	copy(address[0:4], IPv4withPort(newhost[0:4]))
+	return address
+}
 
-// func (err closederr) Error() string {
-// 	return suckutils.Concat("closeframe statuscode: ", strconv.Itoa(int(err.code)), "; reason: ", err.reason)
-// }
+func (address IPv4withPort) GetHost() IPv4 {
+	if len(address) < 4 {
+		return nil
+	}
+	return IPv4(address[0:4])
+}
+
+type closederr struct {
+	code   uint16
+	reason string
+}
+
+func (err closederr) Error() string {
+	return suckutils.Concat("closeframe statuscode: ", strconv.Itoa(int(err.code)), "; reason: ", err.reason)
+}
