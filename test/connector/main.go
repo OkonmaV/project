@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
+	"strconv"
 	"time"
 
 	"github.com/mailru/easygo/netpoll"
@@ -144,13 +146,32 @@ func (listener *Listener) Close() error {
 
 func main() {
 
-	listener, err := NewListener("tcp", "127.0.0.1:9000")
+	ctx := context.Background()
+	logcontainer, _ := NewLoggerContainer(ctx, DebugLevel, 10, time.Second*2)
+	consolelogger := &ConsoleLogger{}
+	onlinelogger, _ := NewOnlineLogger(DebugLevel)
+	go func() {
+		for {
+			select {
+			case l := <-onlinelogger.Flush():
+				logcontainer.Write(l.Time, l.Level, l.Name, l.Message)
+			case l := <-logcontainer.Flush():
+				consolelogger.WriteMany(l)
+			}
+		}
+	}()
+
+	for i := 0; i < 9; i++ {
+		logcontainer.Debug("test", strconv.Itoa(i))
+	}
+
+	listener, err := NewListener("tcp", "127.0.0.1:9001")
 	if err != nil {
 		log.Fatalln(err)
 	}
-	conn, err := net.Dial("tcp", "127.0.0.1:9000")
+	conn, err := net.Dial("tcp", "127.0.0.1:9001")
 	connector, err := NewConnector("mynameis", conn, func(message []byte) {
-		fmt.Println(string(message))
+		onlinelogger.Debug("1", string(message))
 	})
 	if err != nil {
 		log.Fatalln(err)
@@ -168,8 +189,10 @@ func main() {
 	if err = connector.Send([]byte("hello from client")); err != nil {
 		log.Fatalln(err)
 	}
+	onlinelogger.Debug("Done", "Done")
 	fmt.Scanln()
 	connector.Close()
 	listener.Close()
+	onlinelogger.Debug("Done", "Close")
 	time.Sleep(time.Second)
 }
