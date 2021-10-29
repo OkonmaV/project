@@ -1,13 +1,10 @@
-package main
+package connector
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
-	"strconv"
-	"time"
 
 	"github.com/mailru/easygo/netpoll"
 )
@@ -37,10 +34,6 @@ func NewConnector(name string, conn net.Conn, handler func([]byte)) (*Connector,
 	return connector, nil
 }
 
-func waiterr(err error) {
-	log.Panicln(err)
-}
-
 func (connector *Connector) handle(e netpoll.Event) {
 	log.Println("handle", connector.name, e)
 	if e != netpoll.EventRead {
@@ -68,6 +61,10 @@ func (connector *Connector) handle(e netpoll.Event) {
 	connector.poller.Resume(connector.desc)
 }
 
+func waiterr(err error) {
+	log.Panicln(err)
+}
+
 func (connector *Connector) Send(message []byte) error {
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, uint32(len(message)))
@@ -87,7 +84,7 @@ func (connector *Connector) Close() error {
 
 type Listener struct {
 	listener    net.Listener
-	connections map[string][]*Connector
+	Connections map[string][]*Connector
 }
 
 func NewListener(network, address string) (*Listener, error) {
@@ -95,7 +92,7 @@ func NewListener(network, address string) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	result := &Listener{listener: listener, connections: make(map[string][]*Connector)}
+	result := &Listener{listener: listener, Connections: make(map[string][]*Connector)}
 	go result.accept()
 	return result, nil
 }
@@ -121,7 +118,7 @@ func (listener *Listener) accept() {
 
 	var item []*Connector
 	var ok bool
-	if item, ok = listener.connections[name]; !ok {
+	if item, ok = listener.Connections[name]; !ok {
 		item = make([]*Connector, 1)
 		item[0], err = NewConnector("server for "+name, conn, func(message []byte) {
 			fmt.Println(string(message))
@@ -136,63 +133,10 @@ func (listener *Listener) accept() {
 	} else {
 		item = append(item, v)
 	}
-	listener.connections[name] = item
+	listener.Connections[name] = item
 	log.Println("Connected", name)
 }
 
 func (listener *Listener) Close() error {
 	return listener.listener.Close()
-}
-
-func main() {
-
-	ctx := context.Background()
-	logcontainer, _ := NewLoggerContainer(ctx, DebugLevel, 10, time.Second*2)
-	consolelogger := &ConsoleLogger{}
-	onlinelogger, _ := NewOnlineLogger(DebugLevel)
-	go func() {
-		for {
-			select {
-			case l := <-onlinelogger.Flush():
-				logcontainer.Write(l.Time, l.Level, l.Name, l.Message)
-			case l := <-logcontainer.Flush():
-				consolelogger.WriteMany(l)
-			}
-		}
-	}()
-
-	for i := 0; i < 9; i++ {
-		logcontainer.Debug("test", strconv.Itoa(i))
-	}
-
-	listener, err := NewListener("tcp", "127.0.0.1:9001")
-	if err != nil {
-		log.Fatalln(err)
-	}
-	conn, err := net.Dial("tcp", "127.0.0.1:9001")
-	connector, err := NewConnector("mynameis", conn, func(message []byte) {
-		onlinelogger.Debug("1", string(message))
-	})
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	if err = connector.Send([]byte("mynameis")); err != nil {
-		log.Fatalln(err)
-	}
-
-	time.Sleep(time.Millisecond * 50)
-
-	if err = listener.connections["mynameis"][0].Send([]byte("hello from server")); err != nil {
-		log.Fatalln(err)
-	}
-	if err = connector.Send([]byte("hello from client")); err != nil {
-		log.Fatalln(err)
-	}
-	onlinelogger.Debug("Done", "Done")
-	fmt.Scanln()
-	connector.Close()
-	listener.Close()
-	onlinelogger.Debug("Done", "Close")
-	time.Sleep(time.Second)
 }
