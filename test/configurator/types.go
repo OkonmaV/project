@@ -23,6 +23,7 @@ const (
 
 type serviceinfo struct {
 	name     ServiceName
+	ip       IPv4withPort
 	isRemote bool
 }
 
@@ -54,7 +55,7 @@ func (status ServiceStatus) String() string {
 	}
 }
 
-type ServiceName string
+type ServiceName string // only raw - without "local." or "remote."
 
 const ConfServiceName ServiceName = "conf"
 
@@ -77,6 +78,7 @@ func (sn ServiceName) RemoteSub() string {
 type Addr []byte
 type IPv4withPort Addr
 type IPv4 Addr
+type Unix []byte // Unix[0]=len(unixAddress)
 
 var AddrByteOrder = binary.LittleEndian
 
@@ -140,7 +142,6 @@ func (address Addr) IsLocalhost() bool {
 	return address[0] == 127 && address[1] == 0 && address[2] == 0 && address[3] == 1
 }
 
-// rewrites status
 func (address IPv4withPort) WithStatus(status ServiceStatus) []byte {
 	if len(address) < 6 {
 		return nil
@@ -161,6 +162,23 @@ func (address IPv4withPort) GetHost() IPv4 {
 		return nil
 	}
 	return IPv4(address[0:4])
+}
+func ParseUnix(unixaddr string) Unix {
+	if len(unixaddr) == 0 || len(unixaddr) > 255 {
+		return nil
+	}
+	b := []byte(unixaddr)
+	unix := make([]byte, 0, len(b)+1)
+	unix[0] = uint8(len(b))
+	return append(unix, b...)
+}
+
+func GenerateMemcStatusValue(ip IPv4withPort, unix Unix, status ServiceStatus) []byte {
+	if len(ip) != 6 || len(unix) == 0 {
+		return nil
+	}
+	v := make([]byte, 0, 7+len(unix))
+	return append(append(append(v, ip...), unix...), byte(status))
 }
 
 type closederr struct {

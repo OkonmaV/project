@@ -5,8 +5,7 @@ import (
 	"os"
 	"os/signal"
 
-	"project/test/logscontainer"
-	"project/test/logscontainer/flushers"
+	"project/test/logs"
 
 	"time"
 
@@ -14,11 +13,13 @@ import (
 )
 
 type config struct {
-	Listen    string
-	Settings  string
-	Memcached string
-	//Hosts    []string
+	ListenUNIX string
+	ListenTCP  string
+	Settings   string
+	Memcached  string
 }
+
+var l *logs.LoggerContainer
 
 func main() {
 	conf := &config{}
@@ -26,22 +27,26 @@ func main() {
 		println("read toml err:", err)
 		return
 	}
-	if conf.Listen == "" || conf.Settings == "" {
+	if (conf.ListenUNIX == "" && conf.ListenTCP == "") || conf.Settings == "" {
 		println("some fields in conf.toml are empty or not specified")
 	}
 
-	ctx, cancel := CreateContextWithInterruptSignal()
+	ctx, cancel := createContextWithInterruptSignal()
 	logsctx, logscancel := context.WithCancel(context.Background())
 
-	l, err := logscontainer.NewLogsContainer(logsctx, flushers.NewConsoleFlusher("CNFG"), 1, time.Second, 1)
-	if err != nil {
-		println("Logs init err:", err)
-		return
-	}
+	l, _ = logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
+	consolelogger := &logs.ConsoleLogger{}
+	//l, err := logscontainer.NewLogsContainer(logsctx, flushers.NewConsoleFlusher("CNFG"), 1, time.Second, 1)
+	go func() {
+		for {
+			logspack := <-l.Flush()
+			consolelogger.WriteMany(logspack)
+		}
+	}()
 	defer func() {
 		cancel()
 		logscancel()
-		l.WaitAllFlushesDone()
+		time.Sleep(time.Second * 3) // TODO: ждун в логгере
 	}()
 
 	c, err := NewConfigurator(conf.Settings, conf.Memcached)
@@ -52,13 +57,13 @@ func main() {
 	defer func() {
 
 	}()
-	if err = c.Serve(ctx, l, conf.Listen); err != nil {
+	if err = c.Serve(ctx, conf.ListenUNIX, conf.ListenTCP); err != nil {
 		l.Error("Serve", err)
 	}
 
 }
 
-func CreateContextWithInterruptSignal() (context.Context, context.CancelFunc) {
+func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt)

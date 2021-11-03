@@ -211,7 +211,13 @@ func (address Addr) String() string {
 type s string
 
 func main() {
-
+	bf := []byte{0, 1, 2, 3, 4, 5}
+	for i, bb := range bf {
+		if bb == 0 {
+			copy(bf[i:], bf[i+1:])
+		}
+	}
+	fmt.Println("bbbbbbbb: ", bf[:len(bf)-1])
 	url := "https://api.ipify.org?format=text" // we are using a pulib IP API, we're using ipify here, below are some others
 	// https://www.ipify.org
 	// http://myexternalip.com

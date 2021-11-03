@@ -3,16 +3,10 @@ package main
 import (
 	"context"
 	"errors"
-	"net/http"
-	"sync"
 
 	"io/ioutil"
-	"net"
 
-	"project/test/configurator/gopool"
-	"project/test/logscontainer"
 	"strings"
-	"time"
 
 	"github.com/big-larry/suckutils"
 	"github.com/bradfitz/gomemcache/memcache"
@@ -20,106 +14,56 @@ import (
 )
 
 type Configurator struct {
-	localservices map[ServiceName]*serviceinstance
-	//localsubs           map[ServiceName]ServiceName // можно и прям ссылку на структуру пихать
-	remoteconfigurators map[string]*serviceinstance // KEY=ADDRESS without port // МОЖЕТ В СЛАЙС ИХ ПИХАТЬ?
-	poller              netpoll.Poller
-	pool                *gopool.Pool
-	memcConn            *memcache.Client
-	externalIPapis      []string
-	myexternalIP        IPv4
-}
-
-type serviceinstance struct {
-	addr   IPv4withPort
-	mutex  sync.Mutex
-	wsconn net.Conn
+	memcConn       *memcache.Client
+	poller         netpoll.Poller
+	subscriptions  *connections
+	localListener  *Listener //unix
+	remoteListener *Listener //tcp
 }
 
 func NewConfigurator(settingspath, memcaddr string) (*Configurator, error) {
-
-	c := &Configurator{
-		memcConn:            memcache.New(memcaddr),
-		localservices:       make(map[ServiceName]*serviceinstance),
-		remoteconfigurators: make(map[string]*serviceinstance)}
-	err := c.memcConn.Set(&memcache.Item{Key: "local.conf", Value: []byte("this")})
+	c := &Configurator{subscriptions: &connections{connectors: make(map[ServiceName][]*Connector)}}
+	c.memcConn = memcache.New(memcaddr)
+	err := readsettings(c.memcConn, settingspath)
 	if err != nil {
-		return nil, err
-	}
-	if err = c.readsettings(settingspath); err != nil {
 		return nil, err
 	}
 	if c.poller, err = netpoll.New(nil); err != nil {
 		return nil, err
 	}
-	c.pool = gopool.NewPool(5, 1, 1)
-
 	return c, nil
 }
 
-func (c *Configurator) Serve(ctx context.Context, l *logscontainer.LogsContainer, addr string) error {
-	ln, err := net.Listen("tcp", addr)
+func (c *Configurator) Serve(ctx context.Context, localunixaddr, remoteipv4addr string) error {
+	localln, err := NewListener("unix", localunixaddr, c.handlews)
 	if err != nil {
 		return err
 	}
-	byteaddr := ParseIPv4withPort(addr)
-	if byteaddr == nil {
-		return errors.New("can listen addr, but cant parseipv4withport it")
-	}
-	// TODO: add memc sub
-	if err = c.memcConn.Set(&memcache.Item{Key: "local.conf", Value: byteaddr.WithStatus(StatusOn)}); err != nil {
-		return err
-	}
-	l.Info("Start service", suckutils.ConcatTwo("configurator start listening at ", addr))
-
-	acceptDesc, err := netpoll.HandleListener(ln, netpoll.EventRead|netpoll.EventOneShot)
+	remoteln, err := NewListener("tcp", remoteipv4addr, c.handlews)
 	if err != nil {
 		return err
 	}
-	accept := make(chan error, 1)
-
-	if err = c.poller.Start(acceptDesc, func(e netpoll.Event) {
-		err := c.pool.ScheduleTimeout(time.Millisecond, func() {
-			conn, err := ln.Accept()
-			if err != nil {
-				accept <- err
-				return
-			}
-			accept <- nil
-			wl := l.Wrap(map[logscontainer.Tag]string{logscontainer.TagRemoteAddr: conn.RemoteAddr().String()})
-			c.handleHTTP(conn, wl, c.poller, c.pool)
-		})
-		if err == nil {
-			err = <-accept
-		}
-		// TODO: test timeout
-		if err != nil {
-			if err != gopool.ErrScheduleTimeout {
-				goto cooldown
-			}
-			if ne, ok := err.(net.Error); ok && ne.Temporary() {
-				goto cooldown
-			}
-
-			l.Error("Accept", err)
-
-		cooldown:
-			delay := 3 * time.Millisecond
-			l.Warning("Accept", suckutils.ConcatFour("err: ", err.Error(), "; retrying in ", delay.String()))
-			time.Sleep(delay)
-		}
-
-		c.poller.Resume(acceptDesc)
-	}); err != nil {
-		//l.Error("poller.Start", err)
+	if err = c.memcConn.Set(&memcache.Item{Key: ConfServiceName.Local(),
+		Value: GenerateMemcStatusValue(ParseIPv4withPort(remoteipv4addr), ParseUnix(localunixaddr), StatusOn)}); err != nil {
 		return err
 	}
+	l.Info("Start service", suckutils.Concat("configurator start listening at ", localunixaddr, " for local, and at ", remoteipv4addr, " for remote"))
 	<-ctx.Done()
+	if err = c.memcConn.Set(&memcache.Item{Key: ConfServiceName.Local(),
+		Value: GenerateMemcStatusValue(ParseIPv4withPort(remoteipv4addr), ParseUnix(localunixaddr), StatusOn)}); err != nil {
+		l.Error("Memc Set", err)
+	}
+	if err = localln.Close(); err != nil {
+		l.Error("Listener.Close", err)
+	}
+	if err = remoteln.Close(); err != nil {
+		l.Error("Listener.Close", err)
+	}
 	l.Info("Stop service", "configurator stopping")
-	return c.poller.Stop(acceptDesc)
+	return nil
 }
 
-func (c *Configurator) readsettings(settingspath string) error {
+func readsettings(memcConn *memcache.Client, settingspath string) error {
 	data, err := ioutil.ReadFile(settingspath)
 	if err != nil {
 		return err
@@ -133,7 +77,7 @@ func (c *Configurator) readsettings(settingspath string) error {
 		s := strings.Split(strings.TrimSpace(line), " ")
 		if len(s) < 2 {
 			if len(s) == 1 {
-				c.memcConn.Set(&memcache.Item{Key: ServiceName(s[0]).Local(), Value: []byte{0, 0, 0, 0, 0, 0, byte(StatusOff)}})
+				memcConn.Set(&memcache.Item{Key: ServiceName(s[0]).Local(), Value: []byte{0, 0, 0, 0, 0, 0, byte(StatusOff)}})
 				c.localservices[ServiceName(s[0])] = &serviceinstance{}
 			}
 			continue
@@ -177,26 +121,26 @@ func (c *Configurator) readsettings(settingspath string) error {
 	return nil
 }
 
-func getMyExternalIPv4(l logscontainer.Logger, apiAddrs []string) (IPv4, error) {
-	for _, uri := range apiAddrs {
-		resp, err := http.Get(uri)
-		if err != nil {
-			l.Warning("ExternalIP API", suckutils.Concat("GET to ", uri, " caused error: ", err.Error()))
-			resp.Body.Close()
-			continue
-		}
-		ip, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			l.Warning("ExternalIP API", suckutils.Concat("ReadAll responce from ", uri, " caused error: ", err.Error()))
-			resp.Body.Close()
-			continue
-		}
-		resp.Body.Close()
-		if ipv4 := ParseIPv4(string(ip)); ipv4 != nil {
-			return ipv4, nil
-		} else {
-			l.Warning("ExternalIP API", suckutils.Concat("cant parse responce from ", uri, " to an IPv4"))
-		}
-	}
-	return nil, errors.New("non of responces from apis was satisfactory")
-}
+// func getMyExternalIPv4(l logscontainer.Logger, apiAddrs []string) (IPv4, error) {
+// 	for _, uri := range apiAddrs {
+// 		resp, err := http.Get(uri)
+// 		if err != nil {
+// 			l.Warning("ExternalIP API", suckutils.Concat("GET to ", uri, " caused error: ", err.Error()))
+// 			resp.Body.Close()
+// 			continue
+// 		}
+// 		ip, err := ioutil.ReadAll(resp.Body)
+// 		if err != nil {
+// 			l.Warning("ExternalIP API", suckutils.Concat("ReadAll responce from ", uri, " caused error: ", err.Error()))
+// 			resp.Body.Close()
+// 			continue
+// 		}
+// 		resp.Body.Close()
+// 		if ipv4 := ParseIPv4(string(ip)); ipv4 != nil {
+// 			return ipv4, nil
+// 		} else {
+// 			l.Warning("ExternalIP API", suckutils.Concat("cant parse responce from ", uri, " to an IPv4"))
+// 		}
+// 	}
+// 	return nil, errors.New("non of responces from apis was satisfactory")
+// }

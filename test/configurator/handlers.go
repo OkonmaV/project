@@ -144,7 +144,7 @@ func (c *Configurator) handleHTTP(conn net.Conn, l *logscontainer.WrappedLogsCon
 
 }
 
-func (c *Configurator) handleServiceWS(l *logscontainer.WrappedLogsContainer, servicename ServiceName, servinstance *serviceinstance, poller netpoll.Poller, desc *netpoll.Desc) {
+func (c *Configurator) handlews(connector *Connector, payload []byte) {
 	r := wsutil.NewReader(servinstance.wsconn, ws.StateServerSide)
 	h, err := r.NextFrame()
 	if err != nil {
