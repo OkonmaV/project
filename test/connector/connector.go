@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net"
-	"project/test/defaultlogger"
 	"sync"
 	"time"
 
@@ -20,6 +19,13 @@ type Connector struct {
 	mux  sync.Mutex
 }
 
+type ConnectorWriter interface { //TODO!
+	Send([]byte) error
+}
+
+type ConnectorHandle func(ConnectorWriter, []byte) error
+type ConnectorHandleDisconnect func() error
+
 type OperationCode byte
 
 const (
@@ -32,12 +38,6 @@ const (
 	OperationCodeError                OperationCode = 7 // must not be handled but printed at service-caller, for debugging errors in caller's code
 )
 
-type ConnectorData interface {
-	Handle(*Connector, OperationCode, []byte) error
-	HandleDisconnect(*Connector)
-	Getlogger() defaultlogger.DefaultLogger
-}
-
 var ErrNotResume error = errors.New("not resume")
 
 var poller netpoll.Poller
@@ -49,7 +49,7 @@ func init() {
 	}
 }
 
-func NewConnector(conn net.Conn, data ConnectorData) (*Connector, error) {
+func NewConnector(conn net.Conn) (*Connector, error) {
 
 	desc, err := netpoll.HandleRead(conn)
 	if err != nil {

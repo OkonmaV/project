@@ -79,7 +79,7 @@ func (listener *listener) accept(data *connectordata, isLocal bool) {
 	listener.connections.rwmux.Lock()
 	if item, ok = listener.connections.connectors[ServiceName(name)]; !ok {
 		item = make([]*connector.Connector, 1)
-		item[0], err = connector.NewConnector(conn, data)
+		item[0], err = connector.NewConnector(conn, data.Handle, data.HandleDisconnect) // TODO!
 		if err != nil {
 			l.Error("NewConnector", err)
 			listener.connections.rwmux.Unlock()
