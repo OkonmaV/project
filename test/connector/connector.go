@@ -2,71 +2,115 @@ package connector
 
 import (
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"log"
 	"net"
+	"project/test/defaultlogger"
+	"sync"
+	"time"
 
+	"github.com/big-larry/suckutils"
 	"github.com/mailru/easygo/netpoll"
 )
 
 type Connector struct {
-	name    string
-	conn    net.Conn
-	desc    *netpoll.Desc
-	poller  netpoll.Poller
-	handler func([]byte)
+	conn net.Conn
+	desc *netpoll.Desc
+	data ConnectorData
+	mux  sync.Mutex
 }
 
-func NewConnector(name string, conn net.Conn, handler func([]byte)) (*Connector, error) {
+type OperationCode byte
+
+const (
+	OperationCodeSetMyStatusOff       OperationCode = 1
+	OperationCodeSetMyStatusSuspended OperationCode = 2
+	OperationCodeSetMyStatusOn        OperationCode = 3
+	OperationCodeSubscribeToServices  OperationCode = 4
+	OperationCodeSetPubAddresses      OperationCode = 5
+	OperationCodeUpdatePubStatus      OperationCode = 6 // opcode + one byte for new pub's status + subscription servicename + subscription service addr
+	OperationCodeError                OperationCode = 7 // must not be handled but printed at service-caller, for debugging errors in caller's code
+)
+
+type ConnectorData interface {
+	Handle(*Connector, OperationCode, []byte) error
+	HandleDisconnect(*Connector)
+	Getlogger() defaultlogger.DefaultLogger
+}
+
+var ErrNotResume error = errors.New("not resume")
+
+var poller netpoll.Poller
+
+func init() {
+	var err error
+	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: waiterr}); err != nil { // ?как onwait тут работает?
+		panic("cant create poller for package \"connector\", error: " + err.Error())
+	}
+}
+
+func NewConnector(conn net.Conn, data ConnectorData) (*Connector, error) {
+
 	desc, err := netpoll.HandleRead(conn)
 	if err != nil {
 		return nil, err
 	}
-
-	poller, err := netpoll.New(&netpoll.Config{OnWaitError: waiterr})
-	if err != nil {
-		return nil, err
+	if poller == nil {
+		poller, err = netpoll.New(&netpoll.Config{OnWaitError: waiterr})
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	connector := &Connector{name: name, conn: conn, poller: poller, desc: desc, handler: handler}
+	connector := &Connector{conn: conn, desc: desc, data: data}
 	poller.Start(desc, connector.handle)
 
 	return connector, nil
 }
 
 func (connector *Connector) handle(e netpoll.Event) {
-	log.Println("handle", connector.name, e)
-	if e != netpoll.EventRead {
+	//connector.mux.Lock()
+	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
+		connector.Close()
+		connector.data.HandleDisconnect(connector)
+		//connector.mux.Unlock()
 		return
 	}
-	buf := make([]byte, 4)
-	n, err := connector.conn.Read(buf)
+
+	if e != netpoll.EventRead {
+		connector.data.Getlogger().Debug("Handle connector", suckutils.ConcatTwo(e.String(), " instead of EventRead"))
+		poller.Resume(connector.desc)
+		//connector.mux.Unlock()
+		return
+	}
+
+	connector.conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	buf := make([]byte, 5)
+	_, err := connector.conn.Read(buf)
 	if err != nil {
-		log.Println(connector.name, string(buf[:n]))
+		connector.data.Getlogger().Error("Read msg head", err)
+		poller.Resume(connector.desc)
+		//connector.mux.Unlock()
+		return // от паники из-за binary.BigEndian.Uint32(buf)
 	}
 	message_length := binary.BigEndian.Uint32(buf)
+
 	buf = make([]byte, message_length)
-	n, err = connector.conn.Read(buf)
+	_, err = connector.conn.Read(buf)
+	//connector.mux.Unlock()
 	if err != nil {
-		log.Println(connector.name, err)
-	} else {
-		log.Println(connector.name, string(buf[:n]))
-		connector.handler(buf)
+		connector.data.Getlogger().Error("Read msg", err)
+	} else if err = connector.data.Handle(connector, OperationCode(buf[4]), buf); err != ErrNotResume {
+		poller.Resume(connector.desc)
 	}
-	// if data, err := ioutil.ReadAll(connector.conn); err != nil {
-	// 	log.Println(err)
-	// } else {
-	// 	log.Println(string(data))
-	// }
-	connector.poller.Resume(connector.desc)
+	if err != nil {
+		connector.data.Getlogger().Error("Handle", err)
+	}
 }
 
-func waiterr(err error) {
-	log.Panicln(err)
-}
-
-func (connector *Connector) Send(message []byte) error {
-	buf := make([]byte, 4)
+func (connector *Connector) Send(opcode OperationCode, message []byte) error {
+	buf := make([]byte, 5)
+	buf[4] = byte(opcode)
 	binary.BigEndian.PutUint32(buf, uint32(len(message)))
 	if _, err := connector.conn.Write(buf); err != nil {
 		return err
@@ -76,67 +120,17 @@ func (connector *Connector) Send(message []byte) error {
 }
 
 func (connector *Connector) Close() error {
-	connector.poller.Stop(connector.desc)
+	poller.Stop(connector.desc)
 	connector.desc.Close()
 	return connector.conn.Close()
 
 }
 
-type Listener struct {
-	listener    net.Listener
-	Connections map[string][]*Connector
+// network,address
+func (connector *Connector) GetRemoteAddr() (string, string) {
+	return connector.conn.RemoteAddr().Network(), connector.conn.RemoteAddr().String()
 }
 
-func NewListener(network, address string) (*Listener, error) {
-	listener, err := net.Listen(network, address)
-	if err != nil {
-		return nil, err
-	}
-	result := &Listener{listener: listener, Connections: make(map[string][]*Connector)}
-	go result.accept()
-	return result, nil
-}
-
-func (listener *Listener) accept() {
-	conn, err := listener.listener.Accept()
-	if err != nil {
-		log.Println(err)
-	}
-
-	buf := make([]byte, 4)
-	_, err = conn.Read(buf)
-	if err != nil {
-		return
-	}
-
-	buf = make([]byte, binary.BigEndian.Uint32(buf))
-	n, err := conn.Read(buf)
-	if err != nil {
-		return
-	}
-	name := string(buf[:n])
-
-	var item []*Connector
-	var ok bool
-	if item, ok = listener.Connections[name]; !ok {
-		item = make([]*Connector, 1)
-		item[0], err = NewConnector("server for "+name, conn, func(message []byte) {
-			fmt.Println(string(message))
-		})
-		if err != nil {
-			log.Println(err)
-		}
-	} else if v, err := NewConnector("server for "+name, conn, func(message []byte) {
-		fmt.Println(string(message))
-	}); err != nil {
-		log.Println(err)
-	} else {
-		item = append(item, v)
-	}
-	listener.Connections[name] = item
-	log.Println("Connected", name)
-}
-
-func (listener *Listener) Close() error {
-	return listener.listener.Close()
+func waiterr(err error) {
+	log.Panicln(err)
 }

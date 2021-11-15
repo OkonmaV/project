@@ -199,25 +199,44 @@ func parseipv4(addr string, withport bool) Addr {
 	return address
 }
 func (address Addr) String() string {
-	if len(address) < 6 {
-		if len(address) == 4 {
-			return net.IPv4(address[0], address[1], address[2], address[3]).String()
-		}
-		return ""
+	switch len(address) {
+	case 4:
+		return net.IPv4(address[0], address[1], address[2], address[3]).String()
+	case 2:
+		return strconv.Itoa(int(binary.BigEndian.Uint16(address)))
+	case 6:
+		suckutils.ConcatThree(net.IPv4(address[0], address[1], address[2], address[3]).String(), ":", strconv.Itoa(int(binary.BigEndian.Uint16(address[4:]))))
 	}
-	return suckutils.ConcatThree(net.IPv4(address[0], address[1], address[2], address[3]).String(), ":", strconv.Itoa(int(binary.BigEndian.Uint16(address[4:]))))
+	return ""
+}
+func (address Addr) Port() Addr {
+	if len(address) < 6 {
+		return nil
+	}
+	return Addr(address[4:])
+}
+func separatePayload(payload []byte) [][]byte {
+	if len(payload) == 0 {
+		return nil
+	}
+	res := make([][]byte, 0, 1)
+	for i := 0; i < len(payload); {
+		print("\n", i)
+		length := uint8(payload[i])
+		if i+int(length)+1 > len(payload) {
+			return nil
+		}
+		res = append(res, payload[i+1:i+int(length)+1])
+		i = int(length) + 1 + i
+		print("\n", i)
+	}
+	return res
 }
 
-type s string
-
 func main() {
-	bf := []byte{0, 1, 2, 3, 4, 5}
-	for i, bb := range bf {
-		if bb == 0 {
-			copy(bf[i:], bf[i+1:])
-		}
-	}
-	fmt.Println("bbbbbbbb: ", bf[:len(bf)-1])
+	arr := []byte{0, 11, 12, 3, 4, 5, 6, 7, 8, 19, 10, 11, 12, 13, 14}
+	fmt.Println("aaaaaaaa:", arr[3:9], arr[9:15])
+	fmt.Println("bbbbbbbb: ", bytes.Compare([]byte{1}, []byte{2}))
 	url := "https://api.ipify.org?format=text" // we are using a pulib IP API, we're using ipify here, below are some others
 	// https://www.ipify.org
 	// http://myexternalip.com
@@ -240,7 +259,7 @@ func main() {
 	fmt.Println(6, f[:4].String(), cap(f), len(bytes.Split(nil, []byte{45})))
 	a := ""
 	b := []byte("example")
-	fmt.Println(s(b))
+	//fmt.Println(s(b))
 	copy(b[0:2], []byte{8, 9})
 	//b = append(, ...)
 	fmt.Println(7, len(strings.Split(a, "/")), "|||", b)

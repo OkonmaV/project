@@ -9,31 +9,6 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
-type OperationCode byte
-
-const (
-	OperationCodeSetMyStatusOff       OperationCode = 1
-	OperationCodeSetMyStatusSuspended OperationCode = 2
-	OperationCodeSetMyStatusOn        OperationCode = 3
-	OperationCodeSubscribeToServices  OperationCode = 4
-	OperationCodeSetPubAddresses      OperationCode = 5
-	OperationCodeUpdatePubStatus      OperationCode = 6 // opcode + one byte for new pub's status + subscription servicename + subscription service addr
-	OperationCodeError                OperationCode = 7 // must not be handled but printed at service-caller, for debugging errors in caller's code
-)
-
-type serviceinfo struct {
-	name     ServiceName
-	ip       IPv4withPort
-	isRemote bool
-}
-
-func (servinfo *serviceinfo) nameWithLocationType() string {
-	if servinfo.isRemote {
-		return servinfo.name.Remote()
-	}
-	return servinfo.name.Local()
-}
-
 type ServiceStatus byte
 
 const (
@@ -77,6 +52,7 @@ func (sn ServiceName) RemoteSub() string {
 
 type Addr []byte
 type IPv4withPort Addr
+type Port Addr
 type IPv4 Addr
 type Unix []byte // Unix[0]=len(unixAddress)
 
@@ -123,16 +99,27 @@ func (address IPv4) String() string {
 func (address IPv4withPort) String() string {
 	return Addr(address).String()
 }
+func (port Port) String() string {
+	return Addr(port).String()
+}
 
-// with or without port, else return empty string
 func (address Addr) String() string {
-	if len(address) < 6 {
-		if len(address) == 4 {
-			return net.IPv4(address[0], address[1], address[2], address[3]).String()
-		}
-		return ""
+	switch len(address) {
+	case 4:
+		return net.IPv4(address[0], address[1], address[2], address[3]).String()
+	case 2:
+		return strconv.Itoa(int(AddrByteOrder.Uint16(address)))
+	case 6:
+		suckutils.ConcatThree(net.IPv4(address[0], address[1], address[2], address[3]).String(), ":", strconv.Itoa(int(AddrByteOrder.Uint16(address[4:]))))
 	}
-	return suckutils.ConcatThree(net.IPv4(address[0], address[1], address[2], address[3]).String(), ":", strconv.Itoa(int(AddrByteOrder.Uint16(address[4:]))))
+	return ""
+}
+
+func (address IPv4withPort) Port() Port {
+	if len(address) < 6 {
+		return nil
+	}
+	return Port(address[4:])
 }
 
 func (address Addr) IsLocalhost() bool {
@@ -142,6 +129,16 @@ func (address Addr) IsLocalhost() bool {
 	return address[0] == 127 && address[1] == 0 && address[2] == 0 && address[3] == 1
 }
 
+func (port Port) NewHost(newhost IPv4) IPv4withPort {
+	if len(port) != 2 || len(newhost) < 4 {
+		return nil
+	}
+	addr := make([]byte, 6)
+	copy(addr[0:4], IPv4withPort(newhost[0:4]))
+	copy(addr[4:], port)
+	return addr
+}
+
 func (address IPv4withPort) WithStatus(status ServiceStatus) []byte {
 	if len(address) < 6 {
 		return nil
@@ -149,7 +146,7 @@ func (address IPv4withPort) WithStatus(status ServiceStatus) []byte {
 	return []byte{address[0], address[1], address[2], address[3], address[4], address[5], byte(status)}
 }
 
-func (address IPv4withPort) ConvertHost(newhost IPv4) IPv4withPort {
+func (address IPv4withPort) NewHost(newhost IPv4) IPv4withPort {
 	if len(address) < 4 || len(newhost) < 4 {
 		return nil
 	}
