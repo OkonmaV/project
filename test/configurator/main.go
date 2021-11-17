@@ -49,7 +49,7 @@ func main() {
 		time.Sleep(time.Second * 3) // TODO: ждун в логгере
 	}()
 
-	c, err := NewConfigurator(conf.Settings, conf.Memcached)
+	c, err := NewConfigurator(ctx, conf.Settings, time.Minute*5)
 	if err != nil {
 		l.Error("NewConfigurator", err)
 		return

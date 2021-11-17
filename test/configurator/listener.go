@@ -5,6 +5,7 @@ import (
 	"net"
 	"project/test/connector"
 	"sync"
+	"time"
 
 	"github.com/big-larry/suckutils"
 )
@@ -30,17 +31,17 @@ func (c *Configurator) NewListener(network, address string, isLocal bool) (*list
 		return nil, err
 	}
 	result := &listener{listener: ln, connections: &connections{connectors: make(map[ServiceName][]*connector.Connector)}}
-	go result.accept(&connectordata{configurator: c}, isLocal)
+	go result.accept(c, isLocal)
 	return result, nil
 }
 
-func (listener *listener) accept(data *connectordata, isLocal bool) {
+func (listener *listener) accept(configurator *Configurator, isLocal bool) {
 	conn, err := listener.listener.Accept()
 	if err != nil {
 		l.Error("accept", err)
 		return
 	}
-
+	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 	buf := make([]byte, 4)
 	_, err = conn.Read(buf)
 	if err != nil {
@@ -54,15 +55,14 @@ func (listener *listener) accept(data *connectordata, isLocal bool) {
 	}
 	name := ServiceName(buf[:n])
 	if isLocal {
-		data.configurator.localservices.rwmux.RLock()
-		if _, ok := data.configurator.localservices.serviceinfo[name]; !ok {
+		configurator.localservices.rwmux.RLock()
+		if _, ok := configurator.localservices.serviceinfo[name]; !ok {
 			conn.Close()
 			l.Warning("locallistener", suckutils.ConcatThree("unknown trying to connect from ", conn.RemoteAddr().String(), ", connection refused"))
-			data.configurator.localservices.rwmux.RUnlock()
+			configurator.localservices.rwmux.RUnlock()
 			return
 		}
-		data.configurator.localservices.rwmux.RUnlock()
-
+		configurator.localservices.rwmux.RUnlock()
 	} else {
 		if name != ConfServiceName {
 			conn.Close()
@@ -70,22 +70,19 @@ func (listener *listener) accept(data *connectordata, isLocal bool) {
 			return
 		}
 	}
-	data.servicename = name
-	if isLocal {
-		data.islocalhost = true
-	}
+	conninfo := &connectorinfo{servicename: name, islocalhost: isLocal}
 	var item []*connector.Connector
 	var ok bool
 	listener.connections.rwmux.Lock()
 	if item, ok = listener.connections.connectors[ServiceName(name)]; !ok {
 		item = make([]*connector.Connector, 1)
-		item[0], err = connector.NewConnector(conn, data.Handle, data.HandleDisconnect) // TODO!
+		item[0], err = connector.NewConnector(conn, conninfo.Handle, conninfo.HandleDisconnect) // TODO!
 		if err != nil {
 			l.Error("NewConnector", err)
 			listener.connections.rwmux.Unlock()
 			return
 		}
-	} else if v, err := connector.NewConnector(conn, data); err != nil {
+	} else if v, err := connector.NewConnector(conn, conninfo.Handle, conninfo.HandleDisconnect); err != nil {
 		l.Error("NewConnector", err)
 		listener.connections.rwmux.Unlock()
 		return

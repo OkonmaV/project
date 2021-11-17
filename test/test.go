@@ -23,6 +23,7 @@ import (
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
 	"github.com/gobwas/ws"
+	"github.com/mailru/easygo/netpoll"
 )
 
 type config struct {
@@ -233,7 +234,81 @@ func separatePayload(payload []byte) [][]byte {
 	return res
 }
 
+var mux sync.Mutex
+
+type testcon struct {
+	conn net.Conn
+}
+
+func (tc *testcon) handler(ev netpoll.Event) {
+
+	//time.Sleep(time.Second * 2)
+	buf := make([]byte, 2)
+	_, err := tc.conn.Read(buf)
+	if err != nil {
+		println("handled " + string(buf) + " kk: " + strconv.Itoa(int(buf[1])) + " err: " + err.Error())
+	} else {
+		println("handled con " + strconv.Itoa(int(buf[0])) + " kk: " + strconv.Itoa(int(buf[1])))
+	}
+
+}
+
 func main() {
+	poller, _ := netpoll.New(&netpoll.Config{})
+	ln, _ := net.Listen("tcp", "127.0.0.1:9050")
+
+	go func() {
+		for {
+			lncon, _ := ln.Accept()
+			desc, err := netpoll.HandleRead(lncon)
+			if err != nil {
+				println(err.Error())
+				return
+			}
+			tc := &testcon{conn: lncon}
+			poller.Start(desc, tc.handler)
+		}
+	}()
+	ch := make(chan int, 1)
+	go func() {
+		conn, _ := net.Dial("tcp", "127.0.0.1:9050")
+		<-ch
+		for i := 0; i < 200; i++ {
+			_, err := conn.Write([]byte{1, uint8(i)})
+			if err != nil {
+				//println("sended i: " + strconv.Itoa(i) + " err: " + err.Error())
+			} else {
+				//println("sended i: " + strconv.Itoa(i))
+			}
+
+		}
+	}()
+	// go func() {
+	// 	conn, _ := net.Dial("tcp", "127.0.0.1:9050")
+	// 	<-ch
+	// 	for i := 0; i < 200; i++ {
+	// 		_, err := conn.Write([]byte{2, uint8(i)})
+	// 		if err != nil {
+	// 			//println("sended i: " + strconv.Itoa(i) + " err: " + err.Error())
+	// 		} else {
+	// 			//println("sended i: " + strconv.Itoa(i))
+	// 		}
+	// 	}
+	// }()
+	time.Sleep(time.Second)
+	ch <- 1
+
+	time.Sleep(time.Second * 4)
+	//mux.Lock()
+	//kk++
+	// _, err = conn.Write([]byte{uint8(kk)})
+	// mux.Unlock()
+	// if err != nil {
+	// 	println("sended k: " + strconv.Itoa(kk) + " err: " + err.Error())
+	// } else {
+	// 	println("sended k: " + strconv.Itoa(kk))
+	// }
+	time.Sleep(time.Hour)
 	arr := []byte{0, 11, 12, 3, 4, 5, 6, 7, 8, 19, 10, 11, 12, 13, 14}
 	fmt.Println("aaaaaaaa:", arr[3:9], arr[9:15])
 	fmt.Println("bbbbbbbb: ", bytes.Compare([]byte{1}, []byte{2}))

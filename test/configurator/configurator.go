@@ -44,11 +44,11 @@ func NewConfigurator(ctx context.Context, settingspath string, settingsreadtickt
 }
 
 func (c *Configurator) Serve(ctx context.Context, localunixaddr, remoteipv4addr string) error {
-	localln, err := NewListener("unix", localunixaddr, c.handlews)
+	localln, err := c.NewListener("unix", localunixaddr, false)
 	if err != nil {
 		return err
 	}
-	remoteln, err := NewListener("tcp", remoteipv4addr, c.handlews)
+	remoteln, err := c.NewListener("tcp", remoteipv4addr, true)
 	if err != nil {
 		return err
 	}

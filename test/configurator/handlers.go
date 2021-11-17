@@ -4,25 +4,20 @@ import (
 	"errors"
 	"net"
 	"project/test/connector"
-	"project/test/defaultlogger"
 
 	"github.com/big-larry/suckutils"
 	"github.com/bradfitz/gomemcache/memcache"
 )
 
-type connectordata struct {
+type connectorinfo struct {
 	servicename  ServiceName
 	outsideaddr  Port
 	islocalhost  bool
 	configurator *Configurator
 }
 
-func (cd *connectordata) Getlogger() defaultlogger.DefaultLogger {
-	return l
-}
-
-func (cd *connectordata) HandleDisconnect(con *connector.Connector) {
-	l.Warning(string(cd.servicename), "disconnected")
+func (cd *connectorinfo) HandleDisconnect(con connector.ConnectorInformer, reason string) {
+	l.Warning(string(cd.servicename), suckutils.ConcatTwo("disconnected, reason: ", reason))
 	_, remaddr := con.GetRemoteAddr()
 	if cd.islocalhost {
 		cd.updateLocalServiceStatus(remaddr, StatusOff)
@@ -31,39 +26,43 @@ func (cd *connectordata) HandleDisconnect(con *connector.Connector) {
 	}
 }
 
-func (cd *connectordata) Handle(con *connector.Connector, opcode connector.OperationCode, payload []byte) error {
+func (cd *connectorinfo) Handle(con connector.ConnectorWriter, payload []byte) error {
+	var opcode OperationCode
+	if len(payload) > 0 {
+		opcode = OperationCode(payload[0])
+	} else {
+		return connector.ErrWeirdData
+	}
 	switch opcode {
-	case connector.OperationCodeSetMyStatusOn:
+	case OperationCodeSetMyStatusOn:
 		_, remaddr := con.GetRemoteAddr()
 		if cd.islocalhost {
 			cd.updateLocalServiceStatus(remaddr, StatusOn)
 		} else {
 			// TODO:
 		}
-	case connector.OperationCodeSetMyStatusSuspended:
+	case OperationCodeSetMyStatusSuspended:
 		_, remaddr := con.GetRemoteAddr()
 		if cd.islocalhost {
 			cd.updateLocalServiceStatus(remaddr, StatusSuspended)
 		} else {
 			// TODO:
 		}
-	case connector.OperationCodeSubscribeToServices:
+	case OperationCodeSubscribeToServices:
 		pubs := separatePayload(payload)
 		if len(pubs) == 0 {
 			l.Warning("OperationCodeSubscribeToServices", "err when separating payload")
-			con.Close()
-			return connector.ErrNotResume
+			return connector.ErrWeirdData
 		}
 		pubnames := make([]ServiceName, 0, len(pubs))
 		for _, pubname := range pubs {
 			pubnames = append(pubnames, ServiceName(pubname))
 		}
 		cd.configurator.subscribeToServices(cd.servicename, con, pubnames)
-	case connector.OperationCodeSetPubAddresses:
+	case OperationCodeSetPubAddresses:
 		if cd.servicename != ConfServiceName || !cd.islocalhost {
-			con.Close()
 			l.Warning("OperationCodeSetPubAddresses", "not remote conf")
-			return connector.ErrNotResume
+			return connector.ErrWeirdData
 		}
 		if len(payload) == 0 {
 			l.Warning("OperationCodeSetPubAddresses", "empty payload")
@@ -82,9 +81,8 @@ func (cd *connectordata) Handle(con *connector.Connector, opcode connector.Opera
 				}
 			}
 		}
-
 	}
-	l.Info("PAYLOAD", string(payload)) // TODO: DELETE THIS <----------------------------------
+	return nil
 }
 
 // TODO: логика первой отправки адресов пабов не написана
@@ -117,7 +115,7 @@ func (c *Configurator) subscribeToServices(subname ServiceName, subconnector *co
 	return nil
 }
 
-func (cd *connectordata) updateLocalServiceStatus(connremoteaddr string, newstatus ServiceStatus) error {
+func (cd *connectorinfo) updateLocalServiceStatus(connremoteaddr string, newstatus ServiceStatus) error {
 	if connremoteaddr == "" {
 		return errors.New("connremoteaddr is empty")
 	}

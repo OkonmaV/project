@@ -9,6 +9,19 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
+type OperationCode byte
+
+const (
+	OperationCodeSetMyStatusOff       OperationCode = 1
+	OperationCodeSetMyStatusSuspended OperationCode = 2
+	OperationCodeSetMyStatusOn        OperationCode = 3
+	OperationCodeSubscribeToServices  OperationCode = 4
+	OperationCodeSetPubAddresses      OperationCode = 5
+	OperationCodeUpdatePubStatus      OperationCode = 6 // opcode + one byte for new pub's status + subscription servicename + subscription service addr
+	OperationCodeError                OperationCode = 7 // must not be handled but printed at service-caller, for debugging errors in caller's code
+	OperationCodeGiveMeOotsideAddr    OperationCode = 8
+)
+
 type ServiceStatus byte
 
 const (

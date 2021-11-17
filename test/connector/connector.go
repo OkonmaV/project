@@ -5,40 +5,32 @@ import (
 	"errors"
 	"log"
 	"net"
-	"sync"
 	"time"
 
-	"github.com/big-larry/suckutils"
 	"github.com/mailru/easygo/netpoll"
 )
 
 type Connector struct {
 	conn net.Conn
 	desc *netpoll.Desc
-	data ConnectorData
-	mux  sync.Mutex
+	//mux               sync.Mutex
+	handler           ConnectorHandle
+	disconnecthandler ConnectorHandleDisconnect
 }
 
-type ConnectorWriter interface { //TODO!
+var ErrWeirdData error = errors.New("weird data")
+
+type ConnectorWriter interface {
 	Send([]byte) error
+	ConnectorInformer
+}
+
+type ConnectorInformer interface {
+	GetRemoteAddr() (string, string)
 }
 
 type ConnectorHandle func(ConnectorWriter, []byte) error
-type ConnectorHandleDisconnect func() error
-
-type OperationCode byte
-
-const (
-	OperationCodeSetMyStatusOff       OperationCode = 1
-	OperationCodeSetMyStatusSuspended OperationCode = 2
-	OperationCodeSetMyStatusOn        OperationCode = 3
-	OperationCodeSubscribeToServices  OperationCode = 4
-	OperationCodeSetPubAddresses      OperationCode = 5
-	OperationCodeUpdatePubStatus      OperationCode = 6 // opcode + one byte for new pub's status + subscription servicename + subscription service addr
-	OperationCodeError                OperationCode = 7 // must not be handled but printed at service-caller, for debugging errors in caller's code
-)
-
-var ErrNotResume error = errors.New("not resume")
+type ConnectorHandleDisconnect func(ConnectorInformer, string)
 
 var poller netpoll.Poller
 
@@ -49,7 +41,7 @@ func init() {
 	}
 }
 
-func NewConnector(conn net.Conn) (*Connector, error) {
+func NewConnector(conn net.Conn, handler ConnectorHandle, disconnecthandler ConnectorHandleDisconnect) (*Connector, error) {
 
 	desc, err := netpoll.HandleRead(conn)
 	if err != nil {
@@ -62,55 +54,52 @@ func NewConnector(conn net.Conn) (*Connector, error) {
 		}
 	}
 
-	connector := &Connector{conn: conn, desc: desc, data: data}
+	connector := &Connector{conn: conn, desc: desc, handler: handler, disconnecthandler: disconnecthandler}
 	poller.Start(desc, connector.handle)
 
 	return connector, nil
 }
 
+// см. тесты
+// у ивентов есть свой буфер?, при дудосе новыми ивентами, после заполнения какого-то лимита новые ивенты игнорируются
 func (connector *Connector) handle(e netpoll.Event) {
-	//connector.mux.Lock()
+	defer poller.Resume(connector.desc)
+
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
 		connector.Close()
-		connector.data.HandleDisconnect(connector)
-		//connector.mux.Unlock()
+		connector.disconnecthandler(connector, e.String())
 		return
 	}
 
-	if e != netpoll.EventRead {
-		connector.data.Getlogger().Debug("Handle connector", suckutils.ConcatTwo(e.String(), " instead of EventRead"))
-		poller.Resume(connector.desc)
-		//connector.mux.Unlock()
+	if e != netpoll.EventRead { // нужно эти ивенты логать как то
 		return
 	}
 
-	connector.conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	buf := make([]byte, 5)
+	connector.conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	buf := make([]byte, 4)
 	_, err := connector.conn.Read(buf)
 	if err != nil {
-		connector.data.Getlogger().Error("Read msg head", err)
-		poller.Resume(connector.desc)
-		//connector.mux.Unlock()
+		connector.Close()
+		connector.disconnecthandler(connector, err.Error())
 		return // от паники из-за binary.BigEndian.Uint32(buf)
 	}
 	message_length := binary.BigEndian.Uint32(buf)
 
 	buf = make([]byte, message_length)
 	_, err = connector.conn.Read(buf)
-	//connector.mux.Unlock()
 	if err != nil {
-		connector.data.Getlogger().Error("Read msg", err)
-	} else if err = connector.data.Handle(connector, OperationCode(buf[4]), buf); err != ErrNotResume {
-		poller.Resume(connector.desc)
+		connector.Close()
+		connector.disconnecthandler(connector, err.Error())
+		return
 	}
-	if err != nil {
-		connector.data.Getlogger().Error("Handle", err)
+	if err = connector.handler(connector, buf); errors.Is(err, ErrWeirdData) {
+		connector.Close()
+		connector.disconnecthandler(connector, err.Error())
 	}
 }
 
-func (connector *Connector) Send(opcode OperationCode, message []byte) error {
-	buf := make([]byte, 5)
-	buf[4] = byte(opcode)
+func (connector *Connector) Send(message []byte) error {
+	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, uint32(len(message)))
 	if _, err := connector.conn.Write(buf); err != nil {
 		return err
