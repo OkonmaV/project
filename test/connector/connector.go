@@ -3,19 +3,21 @@ package connector
 import (
 	"encoding/binary"
 	"errors"
-	"log"
 	"net"
+	"project/test/gopool"
+	"sync"
 	"time"
 
 	"github.com/mailru/easygo/netpoll"
 )
 
 type Connector struct {
-	conn net.Conn
-	desc *netpoll.Desc
-	//mux               sync.Mutex
-	handler           ConnectorHandle
-	disconnecthandler ConnectorHandleDisconnect
+	conn         net.Conn
+	desc         *netpoll.Desc
+	handler      ConnectorHandle
+	closehandler ConnectorHandleClose
+	mux          sync.Mutex
+	isclosed     bool
 }
 
 var ErrWeirdData error = errors.New("weird data")
@@ -29,19 +31,36 @@ type ConnectorInformer interface {
 	GetRemoteAddr() (string, string)
 }
 
-type ConnectorHandle func(ConnectorWriter, []byte) error
-type ConnectorHandleDisconnect func(ConnectorInformer, string)
+type ConnectorHandle func(ConnectorWriter, []byte) error // nonnil err calls connector.Close()
+type ConnectorHandleClose func(ConnectorInformer, string)
+type EpollErrorHandler func(error) // must start exiting the program
 
 var poller netpoll.Poller
+var pool *gopool.Pool
+var onwaiterr EpollErrorHandler
 
 func init() {
 	var err error
-	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: waiterr}); err != nil { // ?как onwait тут работает?
+	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: waiterr}); err != nil {
 		panic("cant create poller for package \"connector\", error: " + err.Error())
 	}
 }
 
-func NewConnector(conn net.Conn, handler ConnectorHandle, disconnecthandler ConnectorHandleDisconnect) (*Connector, error) {
+// епул однопоточен, т.е. пока не обслужит первый ивент, второй ивент будет ждать
+// user's handlers will be called in goroutines
+func SetupGopoolHandling(poolsize, queuesize, prespawned int) error {
+	if pool != nil {
+		return errors.New("pool is already setupped")
+	}
+	pool = gopool.NewPool(poolsize, queuesize, prespawned)
+	return nil
+}
+
+func SetupOnWaitErrorHandling(errhandler EpollErrorHandler) { // эта херь же будет работать?
+	onwaiterr = errhandler
+}
+
+func NewConnector(conn net.Conn, handler ConnectorHandle, closehandler ConnectorHandleClose) (*Connector, error) {
 
 	desc, err := netpoll.HandleRead(conn)
 	if err != nil {
@@ -54,20 +73,18 @@ func NewConnector(conn net.Conn, handler ConnectorHandle, disconnecthandler Conn
 		}
 	}
 
-	connector := &Connector{conn: conn, desc: desc, handler: handler, disconnecthandler: disconnecthandler}
+	connector := &Connector{conn: conn, desc: desc, handler: handler, closehandler: closehandler}
 	poller.Start(desc, connector.handle)
 
 	return connector, nil
 }
 
-// см. тесты
-// у ивентов есть свой буфер?, при дудосе новыми ивентами, после заполнения какого-то лимита новые ивенты игнорируются
 func (connector *Connector) handle(e netpoll.Event) {
 	defer poller.Resume(connector.desc)
 
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
 		connector.Close()
-		connector.disconnecthandler(connector, e.String())
+		connector.closehandler(connector, e.String())
 		return
 	}
 
@@ -80,22 +97,30 @@ func (connector *Connector) handle(e netpoll.Event) {
 	_, err := connector.conn.Read(buf)
 	if err != nil {
 		connector.Close()
-		connector.disconnecthandler(connector, err.Error())
+		connector.closehandler(connector, err.Error())
 		return // от паники из-за binary.BigEndian.Uint32(buf)
 	}
 	message_length := binary.BigEndian.Uint32(buf)
 
 	buf = make([]byte, message_length)
 	_, err = connector.conn.Read(buf)
-	if err != nil {
-		connector.Close()
-		connector.disconnecthandler(connector, err.Error())
-		return
+
+	if pool != nil {
+		pool.Schedule(func() {
+			connector.handleinpool(buf, err)
+		})
+	} else {
+		if err != nil {
+			connector.Close()
+			connector.closehandler(connector, err.Error())
+			return
+		}
+		if err = connector.handler(connector, buf); err != nil {
+			connector.Close()
+			connector.closehandler(connector, err.Error())
+		}
 	}
-	if err = connector.handler(connector, buf); errors.Is(err, ErrWeirdData) {
-		connector.Close()
-		connector.disconnecthandler(connector, err.Error())
-	}
+
 }
 
 func (connector *Connector) Send(message []byte) error {
@@ -109,6 +134,7 @@ func (connector *Connector) Send(message []byte) error {
 }
 
 func (connector *Connector) Close() error {
+	connector.isclosed = true
 	poller.Stop(connector.desc)
 	connector.desc.Close()
 	return connector.conn.Close()
@@ -120,6 +146,29 @@ func (connector *Connector) GetRemoteAddr() (string, string) {
 	return connector.conn.RemoteAddr().Network(), connector.conn.RemoteAddr().String()
 }
 
+func (connector *Connector) handleinpool(payload []byte, readerr error) {
+	connector.mux.Lock()
+	defer connector.mux.Unlock()
+
+	if connector.isclosed { // повторного вызова close НЕ должно быть!
+		return
+	}
+	if readerr != nil {
+		connector.Close()
+		connector.closehandler(connector, readerr.Error())
+		return
+	}
+
+	if err := connector.handler(connector, payload); err != nil {
+		connector.Close()
+		connector.closehandler(connector, err.Error())
+	}
+}
+
 func waiterr(err error) {
-	log.Panicln(err)
+	if onwaiterr != nil {
+		onwaiterr(err)
+	} else {
+		panic(err.Error())
+	}
 }
