@@ -255,7 +255,7 @@ func (tc *testcon) handler(ev netpoll.Event) {
 	} else {
 		println("handled con " + strconv.Itoa(int(buf[0])) + " kk: " + strconv.Itoa(int(buf[1])))
 	}
-
+	tc.poller.Resume(tc.desc)
 }
 
 func main() {
@@ -276,10 +276,13 @@ func main() {
 		conn, _ = net.Dial("tcp", "127.0.0.1:9050")
 		<-ch
 		for i := 0; i < 1024; i++ {
-			//time.Sleep(time.Millisecond * 10)
-			conn.Write([]byte{1, uint8(i)})
+			//			time.Sleep(time.Millisecond * 10)
+			if _, err := conn.Write([]byte{1, uint8(i)}); err != nil {
+				println(err.Error())
+			}
 
 		}
+		time.Sleep(time.Second)
 	}()
 	// go func() {
 	// 	conn, _ := net.Dial("tcp", "127.0.0.1:9050")
@@ -296,11 +299,11 @@ func main() {
 	time.Sleep(time.Second)
 	ch <- 1
 
-	time.Sleep(time.Second * 1)
+	time.Sleep(time.Second * 3)
 
 	//mux.Lock()
 	//kk++
-	// _, err = conn.Write([]byte{uint8(kk)})
+	conn.Write([]byte{uint8(123)})
 	// mux.Unlock()
 	// if err != nil {
 	// 	println("sended k: " + strconv.Itoa(kk) + " err: " + err.Error())

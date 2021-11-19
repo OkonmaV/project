@@ -66,12 +66,6 @@ func NewConnector(conn net.Conn, handler ConnectorHandle, closehandler Connector
 	if err != nil {
 		return nil, err
 	}
-	if poller == nil {
-		poller, err = netpoll.New(&netpoll.Config{OnWaitError: waiterr})
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	connector := &Connector{conn: conn, desc: desc, handler: handler, closehandler: closehandler}
 	poller.Start(desc, connector.handle)
@@ -80,9 +74,10 @@ func NewConnector(conn net.Conn, handler ConnectorHandle, closehandler Connector
 }
 
 func (connector *Connector) handle(e netpoll.Event) {
-	defer poller.Resume(connector.desc)
+	defer poller.Resume(connector.desc) // ???
 
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
+		connector.tryClose()
 		connector.Close()
 		connector.closehandler(connector, e.String())
 		return
@@ -131,6 +126,11 @@ func (connector *Connector) Send(message []byte) error {
 	}
 	_, err := connector.conn.Write(message)
 	return err
+}
+
+func (connector *Connector) tryClose(err error) {
+	if ...
+	connector.ConConnectorHandleClose
 }
 
 func (connector *Connector) Close() error {
