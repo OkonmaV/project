@@ -241,6 +241,9 @@ type testcon struct {
 	poller netpoll.Poller
 	desc   *netpoll.Desc
 }
+type tcc interface {
+	handler(ev netpoll.Event)
+}
 
 func (tc *testcon) handler(ev netpoll.Event) {
 
@@ -259,6 +262,33 @@ func (tc *testcon) handler(ev netpoll.Event) {
 }
 
 func main() {
+	j, jj, jjj := "1", "2", "3"
+	fmt.Println(j, jj, jjj)
+	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24}, 3: {31, 32, 33}, 4: {41, 42, 43}}
+	fmt.Println(m[2][:2], m[2][4:])
+	for i, s := range m {
+		if i == 2 {
+			for n := 0; n < len(s); n++ {
+				fmt.Println(n, s[n], s)
+				if s[n] == 22 {
+					s = append(s[:n], s[n+1:]...)
+					n--
+				}
+				//fmt.Println(n, s[n], s)
+			}
+		}
+	}
+
+	chh := make(chan int)
+	go func() {
+		time.Sleep(time.Second * 200)
+		close(chh)
+	}()
+	close(chh)
+	select {
+	case <-chh:
+		println("DONE CHAN", chh == nil, net.ErrClosed.Error())
+	}
 	poller, _ := netpoll.New(&netpoll.Config{})
 	ln, _ := net.Listen("tcp", "127.0.0.1:9050")
 	go func() {
@@ -297,7 +327,7 @@ func main() {
 	// 	}
 	// }()
 	time.Sleep(time.Second)
-	ch <- 1
+	//ch <- 1
 
 	time.Sleep(time.Second * 3)
 

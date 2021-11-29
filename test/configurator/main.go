@@ -29,6 +29,7 @@ func main() {
 	}
 	if (conf.ListenUNIX == "" && conf.ListenTCP == "") || conf.Settings == "" {
 		println("some fields in conf.toml are empty or not specified")
+		return
 	}
 
 	ctx, cancel := createContextWithInterruptSignal()
@@ -36,7 +37,7 @@ func main() {
 
 	l, _ = logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
 	consolelogger := &logs.ConsoleLogger{}
-	//l, err := logscontainer.NewLogsContainer(logsctx, flushers.NewConsoleFlusher("CNFG"), 1, time.Second, 1)
+
 	go func() {
 		for {
 			logspack := <-l.Flush()

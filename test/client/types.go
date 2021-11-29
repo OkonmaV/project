@@ -1,4 +1,4 @@
-package main
+package client
 
 import (
 	"encoding/binary"
@@ -29,6 +29,8 @@ const (
 	StatusSuspended ServiceStatus = 1
 	StatusOn        ServiceStatus = 2
 )
+
+type Network byte
 
 func (status ServiceStatus) String() string {
 	switch status {

@@ -16,11 +16,13 @@ type Connector struct {
 	desc         *netpoll.Desc
 	handler      ConnectorHandle
 	closehandler ConnectorHandleClose
-	mux          sync.Mutex
+	mux          sync.RWMutex
 	isclosed     bool
 }
 
 var ErrWeirdData error = errors.New("weird data")
+var ErrEmptyPayload error = errors.New("empty payload")
+var ErrClosedCon error = errors.New("closed connector")
 
 type ConnectorWriter interface {
 	Send([]byte) error
@@ -29,15 +31,21 @@ type ConnectorWriter interface {
 
 type ConnectorInformer interface {
 	GetRemoteAddr() (string, string)
+	IsClosed() bool
 }
 
-type ConnectorHandle func(ConnectorWriter, []byte) error // nonnil err calls connector.Close()
-type ConnectorHandleClose func(ConnectorInformer, string)
+type ConnectorHandle func([]byte) error // nonnil err calls connector.Close()
+type ConnectorHandleClose func(error)
 type EpollErrorHandler func(error) // must start exiting the program
 
-var poller netpoll.Poller
-var pool *gopool.Pool
-var onwaiterr EpollErrorHandler
+var (
+	poller    netpoll.Poller
+	onwaiterr EpollErrorHandler
+)
+var (
+	pool *gopool.Pool
+	//poolwg sync.WaitGroup
+)
 
 func init() {
 	var err error
@@ -68,31 +76,28 @@ func NewConnector(conn net.Conn, handler ConnectorHandle, closehandler Connector
 	}
 
 	connector := &Connector{conn: conn, desc: desc, handler: handler, closehandler: closehandler}
-	poller.Start(desc, connector.handle)
+	//poller.Start(desc, connector.handle)
 
 	return connector, nil
 }
 
+func (connector *Connector) StartServing() error {
+	return poller.Start(connector.desc, connector.handle)
+}
+
 func (connector *Connector) handle(e netpoll.Event) {
-	defer poller.Resume(connector.desc) // ???
+	defer poller.Resume(connector.desc)
 
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
-		connector.tryClose()
-		connector.Close()
-		connector.closehandler(connector, e.String())
+		connector.Close(errors.New(e.String()))
 		return
 	}
 
-	if e != netpoll.EventRead { // нужно эти ивенты логать как то
-		return
-	}
-
-	connector.conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 	buf := make([]byte, 4)
+	connector.conn.SetReadDeadline(time.Now().Add(time.Second))
 	_, err := connector.conn.Read(buf)
 	if err != nil {
-		connector.Close()
-		connector.closehandler(connector, err.Error())
+		connector.Close(err)
 		return // от паники из-за binary.BigEndian.Uint32(buf)
 	}
 	message_length := binary.BigEndian.Uint32(buf)
@@ -102,43 +107,86 @@ func (connector *Connector) handle(e netpoll.Event) {
 
 	if pool != nil {
 		pool.Schedule(func() {
+			//poolwg.Add(1)
+			//defer poolwg.Done()
 			connector.handleinpool(buf, err)
 		})
 	} else {
 		if err != nil {
-			connector.Close()
-			connector.closehandler(connector, err.Error())
+			connector.Close(err)
 			return
 		}
-		if err = connector.handler(connector, buf); err != nil {
-			connector.Close()
-			connector.closehandler(connector, err.Error())
+		if err = connector.handler(buf); err != nil {
+			connector.Close(err)
+			return
 		}
 	}
 
 }
+func (connector *Connector) handleinpool(payload []byte, readerr error) {
+	// connector.mux.Lock()
+	// defer connector.mux.Unlock()
 
-func (connector *Connector) Send(message []byte) error {
-	buf := make([]byte, 4)
-	binary.BigEndian.PutUint32(buf, uint32(len(message)))
-	if _, err := connector.conn.Write(buf); err != nil {
-		return err
+	connector.mux.RLock()
+	if connector.IsClosed() { // повторного вызова close НЕ должно быть!
+		return
 	}
-	_, err := connector.conn.Write(message)
+	connector.mux.RUnlock()
+
+	if readerr != nil {
+		connector.Close(readerr)
+		return
+	}
+
+	if err := connector.handler(payload); err != nil {
+		connector.Close(err)
+		return
+	}
+}
+func (connector *Connector) Send(payload []byte) error {
+	// buf := make([]byte, 4)
+	// binary.BigEndian.PutUint32(buf, uint32(len(message)))
+	// if _, err := connector.conn.Write(buf); err != nil {
+	// 	return err
+	// }
+	// _, err := connector.conn.Write(message)
+	// if len(payload) == 0 {
+	// 	return ErrEmptyPayload
+	// }
+	connector.mux.RLock()
+	if connector.IsClosed() {
+		return ErrClosedCon
+	}
+	connector.mux.RUnlock()
+
+	buf := make([]byte, 4, 4+len(payload))
+	binary.BigEndian.PutUint32(buf, uint32(len(payload)))
+	connector.conn.SetWriteDeadline(time.Now().Add(time.Second * 2))
+	_, err := connector.conn.Write(append(buf, payload...))
 	return err
+
 }
 
-func (connector *Connector) tryClose(err error) {
-	if ...
-	connector.ConConnectorHandleClose
+func (connector *Connector) Close(reason error) {
+	connector.mux.Lock()
+	defer connector.mux.Unlock()
+
+	if connector.IsClosed() {
+		return
+	}
+	connector.close()
+	connector.closehandler(reason)
 }
 
-func (connector *Connector) Close() error {
+func (connector *Connector) close() error {
 	connector.isclosed = true
 	poller.Stop(connector.desc)
 	connector.desc.Close()
 	return connector.conn.Close()
+}
 
+func (connector *Connector) IsClosed() bool {
+	return connector.isclosed
 }
 
 // network,address
@@ -146,24 +194,20 @@ func (connector *Connector) GetRemoteAddr() (string, string) {
 	return connector.conn.RemoteAddr().Network(), connector.conn.RemoteAddr().String()
 }
 
-func (connector *Connector) handleinpool(payload []byte, readerr error) {
-	connector.mux.Lock()
-	defer connector.mux.Unlock()
-
-	if connector.isclosed { // повторного вызова close НЕ должно быть!
-		return
-	}
-	if readerr != nil {
-		connector.Close()
-		connector.closehandler(connector, readerr.Error())
-		return
-	}
-
-	if err := connector.handler(connector, payload); err != nil {
-		connector.Close()
-		connector.closehandler(connector, err.Error())
-	}
-}
+// func StopPolling() error { // CANT RUN poller.Close() from epoll.go
+// 	err := poller.
+// 	wgdone := make(chan struct{})
+// 	go func() {
+// 		poolwg.Wait()
+// 		close(wgdone)
+// 	}()
+// 	select {
+// 	case <-wgdone:
+// 		return nil
+// 	case <-time.After(time.Second * 5):
+// 		return errors.New("")
+// 	}
+// }
 
 func waiterr(err error) {
 	if onwaiterr != nil {

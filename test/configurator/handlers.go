@@ -10,23 +10,27 @@ import (
 )
 
 type connectorinfo struct {
-	servicename  ServiceName
-	outsideaddr  Port
-	islocalhost  bool
-	configurator *Configurator
+	servicename   ServiceName
+	outsideaddr   Port
+	islocal       bool
+	configurator  *Configurator
+	getremoteaddr func() (string, string)
+	isclosedcon   func() bool
+	send          func([]byte) error
+	subscribe     func([]ServiceName) error
 }
 
-func (cd *connectorinfo) HandleDisconnect(con connector.ConnectorInformer, reason string) {
-	l.Warning(string(cd.servicename), suckutils.ConcatTwo("disconnected, reason: ", reason))
-	_, remaddr := con.GetRemoteAddr()
-	if cd.islocalhost {
-		cd.updateLocalServiceStatus(remaddr, StatusOff)
+func (ci *connectorinfo) HandleClose(reasonerr error) {
+	l.Warning(string(ci.servicename), suckutils.ConcatTwo("disconnected, reason err: ", reasonerr.Error()))
+	_, remaddr := ci.getremoteaddr()
+	if ci.islocal {
+		ci.updateLocalServiceStatus(remaddr, StatusOff)
 	} else {
 		//reconnect to remote.conf
 	}
 }
 
-func (cd *connectorinfo) Handle(con connector.ConnectorWriter, payload []byte) error {
+func (ci *connectorinfo) Handle(payload []byte) error {
 	var opcode OperationCode
 	if len(payload) > 0 {
 		opcode = OperationCode(payload[0])
@@ -35,16 +39,16 @@ func (cd *connectorinfo) Handle(con connector.ConnectorWriter, payload []byte) e
 	}
 	switch opcode {
 	case OperationCodeSetMyStatusOn:
-		_, remaddr := con.GetRemoteAddr()
-		if cd.islocalhost {
-			cd.updateLocalServiceStatus(remaddr, StatusOn)
+		_, remaddr := ci.getremoteaddr()
+		if ci.islocal {
+			ci.updateLocalServiceStatus(remaddr, StatusOn)
 		} else {
 			// TODO:
 		}
 	case OperationCodeSetMyStatusSuspended:
-		_, remaddr := con.GetRemoteAddr()
-		if cd.islocalhost {
-			cd.updateLocalServiceStatus(remaddr, StatusSuspended)
+		_, remaddr := ci.getremoteaddr()
+		if ci.islocal {
+			ci.updateLocalServiceStatus(remaddr, StatusSuspended)
 		} else {
 			// TODO:
 		}
@@ -58,86 +62,90 @@ func (cd *connectorinfo) Handle(con connector.ConnectorWriter, payload []byte) e
 		for _, pubname := range pubs {
 			pubnames = append(pubnames, ServiceName(pubname))
 		}
-		cd.configurator.subscribeToServices(cd.servicename, con, pubnames)
-	case OperationCodeSetPubAddresses:
-		if cd.servicename != ConfServiceName || !cd.islocalhost {
-			l.Warning("OperationCodeSetPubAddresses", "not remote conf")
+		if err := ci.subscribe(pubnames); err != nil {
+			l.Error("subscribe", err)
 			return connector.ErrWeirdData
 		}
-		if len(payload) == 0 {
-			l.Warning("OperationCodeSetPubAddresses", "empty payload")
-			return nil
-		}
-		servicenamelength := int(payload[0])
-		if servicenamelength < len(payload) {
-			servicename := ServiceName(payload[1 : servicenamelength+1])
-			serviceaddrs := make([]IPv4withPort, 0, (len(payload)-servicenamelength-1)/6)
-			for i := servicenamelength + 7; i < len(payload); i = +6 {
-				addr := ParseIPv4withPort(string(payload[i-6 : i]))
-				if addr != nil {
-					serviceaddrs = append(serviceaddrs, addr)
-				} else {
-					l.Warning("OperationCodeSetPubAddresses", "cant parse addr")
-				}
-			}
-		}
+		// case OperationCodeSetPubAddresses:
+		// 	if ci.servicename != ConfServiceName || !ci.islocal {
+		// 		l.Warning("OperationCodeSetPubAddresses", "not remote conf")
+		// 		return connector.ErrWeirdData
+		// 	}
+		// 	if len(payload) == 0 {
+		// 		l.Warning("OperationCodeSetPubAddresses", "empty payload")
+		// 		return nil
+		// 	}
+		// 	servicenamelength := int(payload[0])
+		// 	if servicenamelength < len(payload) {
+		// 		servicename := ServiceName(payload[1 : servicenamelength+1])
+		// 		serviceaddrs := make([]IPv4withPort, 0, (len(payload)-servicenamelength-1)/6)
+		// 		for i := servicenamelength + 7; i < len(payload); i = +6 {
+		// 			addr := ParseIPv4withPort(string(payload[i-6 : i]))
+		// 			if addr != nil {
+		// 				serviceaddrs = append(serviceaddrs, addr)
+		// 			} else {
+		// 				l.Warning("OperationCodeSetPubAddresses", "cant parse addr")
+		// 			}
+		// 		}
+		// 	}
 	}
 	return nil
 }
 
+// TODO: вынести логгирование из функции
 // TODO: логика первой отправки адресов пабов не написана
-func (c *Configurator) subscribeToServices(subname ServiceName, subconnector *connector.Connector, pubnames []ServiceName) error {
-	if subname == "" || len(pubnames) == 0 {
+func (ci *connectorinfo) subscribeToServices(subcon *connector.Connector, pubnames []ServiceName) error {
+	if len(pubnames) == 0 {
 		return errors.New("servicenames params must not be nil")
 	}
-	c.subscriptions.rwmux.RLock()
+	ci.configurator.subscriptions.rwmux.RLock()
 	for _, pubname := range pubnames {
-		if subs, ok := c.subscriptions.connectors[pubname]; ok {
+		if subs, ok := ci.configurator.subscriptions.connectors[pubname]; ok {
 			var subscribed bool
 			for i := 0; i < len(subs); i++ {
-				if subconnector == subs[i] {
-					l.Warning(string(subname), suckutils.ConcatThree("try to subscribe to ", string(pubname), " when already subscribed"))
+				if subcon == subs[i] {
+					l.Warning(string(ci.servicename), suckutils.ConcatThree("try to subscribe to ", string(pubname), " when already subscribed"))
 					subscribed = true
 					break
 				}
 			}
 			if !subscribed {
-				c.subscriptions.connectors[pubname] = append(c.subscriptions.connectors[pubname], subconnector)
-				l.Debug(string(subname), suckutils.ConcatTwo("subscribed to ", string(pubname)))
+				ci.configurator.subscriptions.connectors[pubname] = append(ci.configurator.subscriptions.connectors[pubname], subcon)
+				l.Debug(string(ci.servicename), suckutils.ConcatTwo("subscribed to ", string(pubname)))
 			}
 		} else {
-			c.subscriptions.connectors[pubname] = make([]*connector.Connector, 0, 1)
-			c.subscriptions.connectors[pubname] = append(c.subscriptions.connectors[pubname], subconnector)
-			l.Debug(string(subname), suckutils.ConcatTwo("subscribed to unknown ", string(pubname)))
+			ci.configurator.subscriptions.connectors[pubname] = make([]*connector.Connector, 0, 1)
+			ci.configurator.subscriptions.connectors[pubname] = append(ci.configurator.subscriptions.connectors[pubname], subcon)
+			l.Debug(string(ci.servicename), suckutils.ConcatTwo("subscribed to unknown ", string(pubname)))
 		}
 	}
-	c.subscriptions.rwmux.RUnlock()
+	ci.configurator.subscriptions.rwmux.RUnlock()
 	return nil
 }
 
-func (cd *connectorinfo) updateLocalServiceStatus(connremoteaddr string, newstatus ServiceStatus) error {
+func (ci *connectorinfo) updateLocalServiceStatus(connremoteaddr string, newstatus ServiceStatus) error {
 	if connremoteaddr == "" {
 		return errors.New("connremoteaddr is empty")
 	}
 	var payload []byte
-	if cd.outsideaddr != nil { // значит торчит наружу
-		cd.configurator.localservices.rwmux.Lock()
-		cd.configurator.localservices.serviceinfo[cd.servicename][cd.outsideaddr.String()] = newstatus
-		cd.configurator.localservices.rwmux.Unlock()
+	if ci.outsideaddr != nil { // значит торчит наружу
+		ci.configurator.localservices.rwmux.Lock()
+		ci.configurator.localservices.serviceinfo[ci.servicename][ci.outsideaddr.String()] = newstatus
+		ci.configurator.localservices.rwmux.Unlock()
 		payload = make(IPv4withPort, 6).WithStatus(newstatus)
 	} else {
-		payload = cd.outsideaddr.NewHost(IPv4{127, 0, 0, 1}).WithStatus(newstatus)
+		payload = ci.outsideaddr.NewHost(IPv4{127, 0, 0, 1}).WithStatus(newstatus)
 	}
-	cd.configurator.localservicesstatuses.rwmux.Lock()
-	cd.configurator.localservicesstatuses.serviceinfo[cd.servicename][connremoteaddr] = newstatus
-	cd.configurator.localservicesstatuses.rwmux.Unlock()
+	ci.configurator.localservicesstatuses.rwmux.Lock()
+	ci.configurator.localservicesstatuses.serviceinfo[ci.servicename][connremoteaddr] = newstatus
+	ci.configurator.localservicesstatuses.rwmux.Unlock()
 
-	cd.configurator.subscriptions.rwmux.RLock()
-	subs := cd.configurator.subscriptions.connectors[cd.servicename]
-	cd.configurator.subscriptions.rwmux.RUnlock()
+	ci.configurator.subscriptions.rwmux.RLock()
+	subs := ci.configurator.subscriptions.connectors[ci.servicename]
+	ci.configurator.subscriptions.rwmux.RUnlock()
 	for _, con := range subs {
-		if err := con.Send(connector.OperationCodeUpdatePubStatus, payload); err != nil {
-			l.Error(suckutils.ConcatTwo("Send to ", string(cd.servicename)), err)
+		if err := con.Send(payloadWithOpCode(OperationCodeSetPubAddresses, payload)); err != nil {
+			l.Error(suckutils.ConcatTwo("Send to ", string(ci.servicename)), err)
 		}
 	}
 	return nil
@@ -154,11 +162,16 @@ func (c *Configurator) updateRemoteServiceStatus(servicename ServiceName, servic
 	c.remoteservices.serviceinfo[servicename][serviceaddr.String()] = newstatus
 	c.remoteservices.rwmux.Unlock()
 	for _, con := range subs {
-		if err := con.Send(connector.OperationCodeUpdatePubStatus, serviceaddr.WithStatus(newstatus)); err != nil {
+		if err := con.Send(payloadWithOpCode(OperationCodeUpdatePubStatus, serviceaddr.WithStatus(newstatus))); err != nil {
 			l.Error(suckutils.ConcatTwo("Send to ", string(servicename)), err)
 		}
 	}
 	return nil
+}
+
+func payloadWithOpCode(opcode OperationCode, payload []byte) []byte {
+	newpayload := make([]byte, 0, len(payload)+1)
+	return append(append(newpayload, byte(OperationCodeUpdatePubStatus)), payload...)
 }
 
 func getAllServiceAddresses(memcConn *memcache.Client, servicename ServiceName) ([]byte, error) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"os"
 	"project/test/connector"
@@ -33,7 +34,13 @@ type servicesinfo struct {
 }
 
 func NewConfigurator(ctx context.Context, settingspath string, settingsreadticktime time.Duration) (*Configurator, error) {
-	c := &Configurator{subscriptions: &connections{connectors: make(map[ServiceName][]*connector.Connector)}}
+	c := &Configurator{
+		localservices:         &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
+		localservicesstatuses: &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
+		remoteservices:        &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
+		remoteconfs:           &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
+		subscriptions:         &connections{connectors: make(map[ServiceName][]*connector.Connector)},
+	}
 
 	if err := c.readsettings(ctx, settingspath); err != nil {
 		return nil, err
@@ -44,23 +51,49 @@ func NewConfigurator(ctx context.Context, settingspath string, settingsreadtickt
 }
 
 func (c *Configurator) Serve(ctx context.Context, localunixaddr, remoteipv4addr string) error {
-	localln, err := c.NewListener("unix", localunixaddr, false)
-	if err != nil {
-		return err
+	var err error
+	if len(remoteipv4addr) != 0 {
+		if CheckIPv4withPort(remoteipv4addr) {
+			c.remoteListener, err = c.NewListener("tcp", remoteipv4addr, false)
+			if err != nil {
+				return err
+			}
+		} else {
+			return errors.New("malformed remote listen address")
+		}
+	} else {
+		l.Info("NewListener", "no address to listen remote, skipped")
 	}
-	remoteln, err := c.NewListener("tcp", remoteipv4addr, true)
-	if err != nil {
-		return err
+	if len(localunixaddr) != 0 {
+		c.localListener, err = c.NewListener("unix", localunixaddr, true)
+		if err != nil {
+			if c.localListener != nil {
+				c.localListener.Close()
+			}
+			return err
+		}
+	} else {
+		l.Info("NewListener", "no address to listen local, skipped")
 	}
+	if c.localListener == nil && c.remoteListener == nil {
+		return errors.New("both local and remote listen addresses are nil or malformed, nothing to serve")
+	}
+
 	l.Info("Start service", suckutils.Concat("configurator start listening at ", localunixaddr, " for local, and at ", remoteipv4addr, " for remote"))
 	<-ctx.Done()
-	if err = localln.Close(); err != nil {
-		l.Error("Listener.Close", err)
-	}
-	if err = remoteln.Close(); err != nil {
-		l.Error("Listener.Close", err)
-	}
-	l.Info("Stop service", "configurator stopping")
+	// if c.localListener != nil {
+	// 	if err = c.localListener.Close(); err != nil {
+	// 		l.Error("localListener.Close", err)
+	// 	}
+	// 	l.Info("localListener", "closed")
+	// }
+	// if c.remoteListener != nil {
+	// 	if err = c.remoteListener.Close(); err != nil {
+	// 		l.Error("remoteListener.Close", err)
+	// 	}
+	// 	l.Info("remoteListener", "closed")
+	// }
+	l.Info("Serving", "stopped")
 	return nil
 }
 
@@ -117,8 +150,9 @@ func (c *Configurator) readsettings(ctx context.Context, settingspath string) er
 		s := strings.Split(strings.TrimSpace(line), " ")
 		if len(s) < 2 {
 			l.Debug("readsettings", suckutils.ConcatTwo("splitted line length <2, skip line ", strconv.Itoa(n)))
+			continue
 		}
-		if s[2] == "*" {
+		if s[1] == "*" {
 			if _, ok := c.localservices.serviceinfo[ServiceName(s[0])]; !ok {
 				c.localservices.rwmux.Lock()
 				c.localservices.serviceinfo[ServiceName(s[0])] = make(map[string]ServiceStatus, 2)
