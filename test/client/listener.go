@@ -18,7 +18,7 @@ type listener struct {
 	l        logger
 }
 
-func Listen(l logger, network, address string, handler ClientHandleSub) error {
+func (s *Service) Listen(l logger, network, address string, handler ClientHandleSub) error {
 	if network == "unix" {
 		if !strings.HasPrefix(address, "/tmp/") || !strings.HasSuffix(address, ".sock") {
 			return errors.New("unix address must be in form \"/tmp/[socketname].sock\"")
@@ -31,8 +31,8 @@ func Listen(l logger, network, address string, handler ClientHandleSub) error {
 	if err != nil {
 		return err
 	}
-	listener := &listener{listener: ln, handler: handler}
-	go listener.accept()
+	s.listener = &listener{listener: ln, handler: handler}
+	go s.listener.accept()
 	return nil
 }
 
