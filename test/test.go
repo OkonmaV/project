@@ -46,7 +46,6 @@ func InitNewService(l *logscontainer.LogsContainer, thisservicename, configurato
 	if conf.ConfiguratorAddr == "" {
 		return errors.New("some fields in config.toml are empty or not specified")
 	}
-
 	ctx, cancel := CreateContextWithInterruptSignal()
 	logsctx, logscancel := context.WithCancel(context.Background())
 	defer func() {
@@ -262,8 +261,7 @@ func (tc *testcon) handler(ev netpoll.Event) {
 }
 
 func main() {
-	j, jj, jjj := "1", "2", "3"
-	fmt.Println(j, jj, jjj)
+
 	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24}, 3: {31, 32, 33}, 4: {41, 42, 43}}
 	fmt.Println(m[2][:2], m[2][4:])
 	for i, s := range m {
