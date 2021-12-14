@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"project/test/connector"
+	"project/test/types"
 	"strconv"
 	"sync"
 	"time"
@@ -15,14 +16,31 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
+type Address struct{
+	addr string	// port or socket-path
+	netw string
+} 
+
 type Configurator struct {
-	localservices         *servicesinfo //only for ports info
-	localservicesstatuses *servicesinfo
-	remoteservices        *servicesinfo
-	remoteconfs           *servicesinfo
-	subscriptions         *connections
+	localservices map[types.ServiceName][]
 	localListener         *listener //unix
 	remoteListener        *listener //tcp
+}
+
+
+
+
+type service struct{
+	data *servicedata
+	
+}
+
+type servicedata struct {
+	servicename   ServiceName
+	outerAddr Address // адрес на котором сервис будет торчать наружу
+	status types.ServiceStatus
+	configurator  *Configurator
+	
 }
 
 type servicesinfo struct {

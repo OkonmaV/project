@@ -9,7 +9,7 @@ import (
 	"github.com/mailru/easygo/netpoll"
 )
 
-type EpoolConnector struct {
+type EpollConnector struct {
 	conn       net.Conn
 	desc       *netpoll.Desc
 	msghandler MessageHandler
@@ -42,7 +42,7 @@ func SetupEpool(errhandler EpollErrorHandler) error {
 	return nil
 }
 
-func NewEpoolConnector(conn net.Conn, messagehandler MessageHandler) (*EpoolConnector, error) {
+func NewEpollConnector(conn net.Conn, messagehandler MessageHandler) (*EpollConnector, error) {
 	if conn == nil {
 		return nil, ErrNilConn
 	}
@@ -52,16 +52,37 @@ func NewEpoolConnector(conn net.Conn, messagehandler MessageHandler) (*EpoolConn
 		return nil, err
 	}
 
-	connector := &EpoolConnector{conn: conn, desc: desc, msghandler: messagehandler}
+	connector := &EpollConnector{conn: conn, desc: desc, msghandler: messagehandler}
 
 	return connector, nil
 }
 
-func (connector *EpoolConnector) StartServing() error {
+// StartServing() must be recalled after this func - it closes conn and change it to newconn, HandleClose() wont be called
+func (connector *EpollConnector) ChangeConnection(newconn net.Conn) error {
+	if newconn == nil {
+		return ErrNilConn
+	}
+
+	connector.mux.Lock()
+	defer connector.mux.Unlock()
+
+	if !connector.isclosed {
+		connector.stopserving()
+	}
+	var err error
+	if connector.desc, err = netpoll.HandleRead(newconn); err != nil {
+		return err
+	}
+	connector.isclosed = false
+
+	return nil
+}
+
+func (connector *EpollConnector) StartServing() error {
 	return poller.Start(connector.desc, connector.handle)
 }
 
-func (connector *EpoolConnector) handle(e netpoll.Event) {
+func (connector *EpollConnector) handle(e netpoll.Event) {
 	defer poller.Resume(connector.desc)
 
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
@@ -91,7 +112,7 @@ func (connector *EpoolConnector) handle(e netpoll.Event) {
 	}
 }
 
-func (connector *EpoolConnector) Send(message []byte) error {
+func (connector *EpollConnector) Send(message []byte) error {
 
 	if connector.IsClosed() {
 		return ErrClosedConnector
@@ -101,8 +122,7 @@ func (connector *EpoolConnector) Send(message []byte) error {
 	return err
 }
 
-// will create new message - я хз как по красоте без newmessage() сделать
-func (connector *EpoolConnector) Close(reason error) {
+func (connector *EpollConnector) Close(reason error) {
 	connector.mux.Lock()
 	defer connector.mux.Unlock()
 
@@ -113,7 +133,7 @@ func (connector *EpoolConnector) Close(reason error) {
 	connector.msghandler.HandleClose(reason)
 }
 
-func (connector *EpoolConnector) stopserving() error {
+func (connector *EpollConnector) stopserving() error {
 	connector.isclosed = true
 	poller.Stop(connector.desc)
 	connector.desc.Close()
@@ -121,13 +141,12 @@ func (connector *EpoolConnector) stopserving() error {
 }
 
 // call in HandleClose() will cause deadlock
-func (connector *EpoolConnector) IsClosed() bool {
+func (connector *EpollConnector) IsClosed() bool {
 	connector.mux.RLock()
 	defer connector.mux.RUnlock()
 	return connector.isclosed
 }
 
-// network,address
-func (connector *EpoolConnector) GetRemoteAddr() (string, string) {
-	return connector.conn.RemoteAddr().Network(), connector.conn.RemoteAddr().String()
+func (connector *EpollConnector) RemoteAddr() net.Addr {
+	return connector.conn.RemoteAddr()
 }

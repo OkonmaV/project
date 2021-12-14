@@ -1,17 +1,18 @@
-package basicprotocol
+package connector
 
 import (
 	"encoding/binary"
 	"errors"
-	"project/test/connector"
 	"time"
 )
+
+const maxlength = 4096
 
 type BasicMessage struct {
 	payload []byte
 }
 
-func (msg *BasicMessage) Read(conn connector.ConnectorConnReader) error {
+func (msg *BasicMessage) Read(conn ConnReader) error {
 
 	buf := make([]byte, 4)
 	conn.SetReadDeadline(time.Now().Add(time.Second))
@@ -20,7 +21,7 @@ func (msg *BasicMessage) Read(conn connector.ConnectorConnReader) error {
 		return err
 	}
 	msglength := binary.BigEndian.Uint32(buf)
-	if msglength > 4096 { // TODO
+	if msglength > maxlength {
 		return errors.New("payload too long")
 	}
 	msg.payload = make([]byte, msglength)
@@ -31,7 +32,7 @@ func (msg *BasicMessage) Read(conn connector.ConnectorConnReader) error {
 }
 
 // payload not allocated
-func NewMessage() *BasicMessage {
+func NewBasicMessage() *BasicMessage {
 	return &BasicMessage{}
 }
 

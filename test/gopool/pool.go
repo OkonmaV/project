@@ -1,5 +1,3 @@
-// Package gopool contains tools for goroutine reuse.
-// It is implemented only for examples of github.com/gobwas/ws usage.
 package gopool
 
 import (

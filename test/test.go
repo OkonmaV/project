@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"time"
 
@@ -261,6 +262,24 @@ func (tc *testcon) handler(ev netpoll.Event) {
 }
 
 func main() {
+
+	ch1 := make(chan int, 1)
+	//ch2 := make(chan int, 1)
+	var j int32
+	go func() {
+		for {
+			select {
+			case ch1 <- int(atomic.AddInt32(&j, 1)):
+				println(<-ch1)
+				time.Sleep(time.Millisecond * 100)
+			}
+		}
+	}()
+	time.Sleep(time.Millisecond * 500)
+	close(ch1)
+	println("closed")
+
+	time.Sleep(time.Hour)
 
 	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24}, 3: {31, 32, 33}, 4: {41, 42, 43}}
 	fmt.Println(m[2][:2], m[2][4:])

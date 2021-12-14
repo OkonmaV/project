@@ -9,17 +9,6 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 )
 
-type connectorinfo struct {
-	servicename   ServiceName
-	outsideaddr   Port
-	islocal       bool
-	configurator  *Configurator
-	getremoteaddr func() (string, string)
-	isclosedcon   func() bool
-	send          func([]byte) error
-	subscribe     func([]ServiceName) error
-}
-
 func (ci *connectorinfo) HandleClose(reasonerr error) {
 	l.Warning(string(ci.servicename), suckutils.ConcatTwo("disconnected, reason err: ", reasonerr.Error()))
 	_, remaddr := ci.getremoteaddr()

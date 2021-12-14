@@ -1,6 +1,7 @@
 package connector
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"time"
@@ -36,6 +37,9 @@ func (connector *Connector) handle(keepAlive bool) {
 
 		err := message.Read(connector.conn)
 		if err != nil {
+			if keepAlive && errors.Is(err, ErrReadTimeout) {
+				continue
+			}
 			connector.Close(err)
 			return
 		}
@@ -77,7 +81,6 @@ func (connector *Connector) IsClosed() bool {
 	return connector.isclosed
 }
 
-// network,address
-func (connector *Connector) GetRemoteAddr() (string, string) {
-	return connector.conn.RemoteAddr().Network(), connector.conn.RemoteAddr().String()
+func (connector *Connector) RemoteAddr() net.Addr {
+	return connector.conn.RemoteAddr()
 }
