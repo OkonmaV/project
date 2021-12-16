@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 
 	"time"
 
@@ -261,41 +260,39 @@ func (tc *testcon) handler(ev netpoll.Event) {
 	tc.poller.Resume(tc.desc)
 }
 
+type j struct {
+	s string
+}
+
 func main() {
 
-	ch1 := make(chan int, 1)
-	//ch2 := make(chan int, 1)
-	var j int32
-	go func() {
-		for {
-			select {
-			case ch1 <- int(atomic.AddInt32(&j, 1)):
-				println(<-ch1)
-				time.Sleep(time.Millisecond * 100)
-			}
-		}
-	}()
-	time.Sleep(time.Millisecond * 500)
-	close(ch1)
-	println("closed")
+	jj := &j{s: "1"}
+	jjj := &j{s: "2"}
 
-	time.Sleep(time.Hour)
+	println(jj, jj.s, "|", jjj, jjj.s)
 
-	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24}, 3: {31, 32, 33}, 4: {41, 42, 43}}
+	*jj = *jjj
+
+	println(jj, jj.s, "|", jjj, jjj.s)
+
+	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24, 25, 26, 27}, 3: {31, 32, 33}, 4: {41, 42, 43}}
 	fmt.Println(m[2][:2], m[2][4:])
 	for i, s := range m {
 		if i == 2 {
 			for n := 0; n < len(s); n++ {
 				fmt.Println(n, s[n], s)
-				if s[n] == 22 {
+				if s[n] == 22 || s[n] == 25 {
 					s = append(s[:n], s[n+1:]...)
 					n--
 				}
 				//fmt.Println(n, s[n], s)
 			}
+			//fmt.Println(len(s), cap(s))
 		}
+
 	}
 
+	return
 	chh := make(chan int)
 	go func() {
 		time.Sleep(time.Second * 200)

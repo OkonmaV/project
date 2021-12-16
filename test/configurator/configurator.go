@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"os"
 	"project/test/connector"
+	"project/test/customlistener"
 	"project/test/types"
 	"strconv"
 	"sync"
@@ -16,48 +18,86 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
-type Address struct{
-	addr string	// port or socket-path
+type Address struct {
+	addr string // port or socket-path
 	netw string
-} 
+}
 
 type Configurator struct {
-	localservices map[types.ServiceName][]
-	localListener         *listener //unix
-	remoteListener        *listener //tcp
+	services         map[types.ServiceName][]*service
+	servicesmux      sync.RWMutex
+	subscriptions    map[types.ServiceName][]*connector.EpollConnector
+	subscriptionsmux sync.RWMutex
+	localListener    *customlistener.EpollListener //unix
+	remoteListener   *customlistener.EpollListener //tcp
+	reconnects       chan *service
 }
 
-
-
-
-type service struct{
-	data *servicedata
-	
+type service struct {
+	name         types.ServiceName
+	outerAddr    Address // адрес на котором сервис будет торчать наружу
+	status       types.ServiceStatus
+	connector    *connector.EpollConnector
+	configurator *Configurator
+	mux          sync.Mutex // TODO: подумать, может не нужен
+	l            types.Logger
 }
 
-type servicedata struct {
-	servicename   ServiceName
-	outerAddr Address // адрес на котором сервис будет торчать наружу
-	status types.ServiceStatus
-	configurator  *Configurator
-	
-}
+// можно в канал еще пихать протокол-адрес для реконнекта, если будут возможны случаи переезда сервиса
+func serveReconnects(ctx context.Context, req <-chan *service, ticktime time.Duration) { // TODO: test this
+	buf := make([]*service, 0, 2)
+	ticker := time.NewTicker(ticktime)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case s := <-req:
+			buf = append(buf, s)
+		case <-ticker.C:
+			for i := 0; i < len(buf); i++ {
+				buf[i].mux.Lock()
+				if buf[i].connector.IsClosed() {
+					conn, err := net.Dial(buf[i].connector.RemoteAddr().Network(), buf[i].connector.RemoteAddr().String())
+					if err != nil {
+						buf[i].l.Error("Reconnect/net.Dial", err)
+						buf[i].mux.Unlock()
+						continue
+					}
+					newcon, err := connector.NewEpollConnector(conn, buf[i])
+					if err != nil {
+						buf[i].l.Error("Reconnect/NewConnector", err)
+						buf[i].mux.Unlock()
+						continue
+					}
+					*buf[i].connector = *newcon // что? да
+					if err = buf[i].connector.StartServing(); err != nil {
+						buf[i].l.Error("Reconnect/StartServing", err)
+						buf[i].mux.Unlock()
+						continue
+					}
+					buf[i].l.Debug("Reconnect", "succesfully reconnected")
 
-type servicesinfo struct {
-	//local: порт
-	//remote: адрес
-	//remoteconf: адрес
-	serviceinfo map[ServiceName]map[string]ServiceStatus
-	rwmux       sync.RWMutex
+				} else {
+					buf[i].l.Warning("Reconnect", "connector not closed, but reconnect was called, skip") // TODO: подумать, мож принудительно реконнектить
+				}
+				buf = append(buf[:i], buf[i+1:]...) // трем из буфера
+				i--
+				buf[i].mux.Unlock()
+			}
+			if cap(buf) > 2 && len(buf) <= 2 { // при переполнении буфера снова его уменьшаем, если разберемся с реконнектами
+				newbuf := make([]*service, 0, 2)
+				copy(newbuf, buf)
+				buf = newbuf
+			}
+		}
+	}
 }
 
 func NewConfigurator(ctx context.Context, settingspath string, settingsreadticktime time.Duration) (*Configurator, error) {
 	c := &Configurator{
-		localservices:         &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
-		localservicesstatuses: &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
-		remoteservices:        &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
-		remoteconfs:           &servicesinfo{serviceinfo: make(map[ServiceName]map[string]ServiceStatus)},
-		subscriptions:         &connections{connectors: make(map[ServiceName][]*connector.Connector)},
+		services:      make(map[types.ServiceName][]*service),
+		subscriptions: make(map[types.ServiceName][]*connector.EpollConnector),
+		reconnects:    make(chan *service, 2),
 	}
 
 	if err := c.readsettings(ctx, settingspath); err != nil {

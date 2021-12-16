@@ -14,6 +14,7 @@ type HttpMessage struct {
 	Request *suckhttp.Request
 }
 
+// пргументом должен быть ConnReader, а не голый коннекшн, но suckhttp не разрешает, шоделатт?
 func (msg *HttpMessage) Read(conn net.Conn) (err error) {
 	msg.Request, err = suckhttp.ReadRequest(context.Background(), conn, time.Minute) // TODO: context
 	if err != nil {

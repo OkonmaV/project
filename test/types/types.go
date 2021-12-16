@@ -9,6 +9,13 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
+type Logger interface {
+	Debug(string, string)
+	Info(string, string)
+	Warning(string, string)
+	Error(string, error)
+}
+
 type OperationCode byte
 
 const (

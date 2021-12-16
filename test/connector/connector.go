@@ -44,6 +44,6 @@ type Informer interface {
 }
 
 // implemented by connector
-type ConnCloser interface {
+type Closer interface {
 	Close(error)
 }
