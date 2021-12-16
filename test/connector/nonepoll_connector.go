@@ -28,6 +28,7 @@ func NewConnector(conn net.Conn, messagehandler MessageHandler) (*Connector, err
 }
 
 func (connector *Connector) StartServing(sheduletimeout time.Duration, keepAlive bool) error {
+	//TODO: second serving???
 	return pool.ScheduleTimeout(sheduletimeout, func() { connector.handle(keepAlive) })
 }
 

@@ -7,7 +7,6 @@ import (
 	"net"
 	"os"
 	"project/test/connector"
-	"project/test/customlistener"
 	"project/test/types"
 	"strconv"
 	"sync"
@@ -26,7 +25,7 @@ type Address struct {
 type Configurator struct {
 	services         map[types.ServiceName][]*service
 	servicesmux      sync.RWMutex
-	subscriptions    map[types.ServiceName][]*connector.EpollConnector
+	subscriptions    map[types.ServiceName][]*connector.EpollConnector //TODO: unsubscribe
 	subscriptionsmux sync.RWMutex
 	localListener    *customlistener.EpollListener //unix
 	remoteListener   *customlistener.EpollListener //tcp

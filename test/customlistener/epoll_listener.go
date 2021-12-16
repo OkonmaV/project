@@ -1,4 +1,4 @@
-package customlistener
+package epolllistener
 
 import (
 	"errors"
@@ -74,34 +74,24 @@ func (listener *EpollListener) handle(e netpoll.Event) {
 
 	conn, err := listener.listener.Accept()
 	if err != nil {
-		listener.listenerhandler.HandleError(err)
+		listener.listenerhandler.AcceptError(err)
 		return
 	}
 
-	if err := listener.listenerhandler.AuthorizeConn(conn); err != nil {
-		conn.Close()
-		listener.listenerhandler.HandleError(err)
-		return
-	}
-	if err := listener.listenerhandler.HandleNewConn(conn); err != nil {
-		conn.Close()
-		listener.listenerhandler.HandleError(err)
-		return
-	}
+	listener.listenerhandler.HandleNewConn(conn)
 }
 
-func (listener *EpollListener) Close(reason error) {
+func (listener *EpollListener) Close() {
 	listener.mux.Lock()
+	defer listener.mux.Unlock()
 
+	if listener.isclosed {
+		return
+	}
 	listener.isclosed = true
 	poller.Stop(listener.desc)
 	listener.desc.Close()
-	if err := listener.listener.Close(); err != nil {
-		listener.mux.Unlock()
-		listener.listenerhandler.HandleError(err)
-		return
-	}
-	listener.mux.Unlock()
+	listener.listener.Close()
 }
 
 func (listener *EpollListener) IsClosed() bool {
