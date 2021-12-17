@@ -8,33 +8,47 @@ import (
 )
 
 type EpollReConnector struct {
-	connector    *EpollConnector
-	msgrehandler *msgrehandler
-	mux          sync.RWMutex
-	isstopped    bool
+	connector  *EpollConnector
+	msghandler MessageHandler
+	mux        sync.RWMutex
+	isstopped  bool
 }
 
 type msgrehandler struct {
 	msghandler MessageHandler
 }
 
+func (reconnector *EpollReConnector) NewMessage() MessageReader {
+	return reconnector.msghandler.NewMessage()
+}
+
+func (reconnector *EpollReConnector) Handle(msg MessageReader) error {
+	return reconnector.Handle(msg)
+}
+
+func (reconnector *EpollReConnector) HandleClose(reason error) {
+	reconnector.msghandler.HandleClose(reason)
+
+	if !reconnector.isstopped {
+		reconnectReq <- reconnector
+	}
+
+}
+
 var reconnectReq chan *EpollReConnector
-var targetbufsize = 2 // TODO
 
-func (m *msgrehandler) NewMessage() MessageReader {
-	return m.msghandler.NewMessage()
-}
-
-func (m *msgrehandler) Handle(msg MessageReader) error {
-	return m.Handle(msg)
-}
-
-func (m *msgrehandler) HandleClose(reason error) {
-
+func InitReconnector(ctx context.Context, ticktime time.Duration, targetbufsize int, queuesize int) {
+	if targetbufsize < 1 || queuesize < 0 {
+		panic("target buffer size / queue size must be > 0")
+	}
+	if reconnectReq == nil {
+		reconnectReq = make(chan *EpollReConnector, queuesize)
+	}
+	go serveReconnects(ctx, ticktime, targetbufsize)
 }
 
 // можно в канал еще пихать протокол-адрес для реконнекта, если будут возможны случаи переезда сервиса
-func serveReconnects(ctx context.Context, ticktime time.Duration) { // TODO: test this
+func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize int) { // TODO: test this
 	buf := make([]*EpollReConnector, 0, targetbufsize)
 	ticker := time.NewTicker(ticktime)
 	for {
@@ -53,7 +67,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration) { // TODO: tes
 							buf[i].mux.Unlock()
 							continue // не логается
 						}
-						newcon, err := NewEpollConnector(conn, buf[i].msgrehandler)
+						newcon, err := NewEpollConnector(conn, buf[i])
 						if err != nil {
 							buf[i].mux.Unlock()
 							continue // не логается
@@ -81,9 +95,12 @@ func serveReconnects(ctx context.Context, ticktime time.Duration) { // TODO: tes
 }
 
 func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler) (*EpollReConnector, error) {
-	recon := &EpollReConnector{msgrehandler: &msgrehandler{msghandler: messagehandler}}
+	if reconnectReq == nil {
+		panic("init reconnector first")
+	}
+	recon := &EpollReConnector{msghandler: messagehandler}
 	var err error
-	if recon.connector, err = NewEpollConnector(conn, recon.msgrehandler); err != nil {
+	if recon.connector, err = NewEpollConnector(conn, recon.msghandler); err != nil {
 		return nil, err
 	}
 
