@@ -34,7 +34,7 @@ func SetupGopoolHandling(poolsize, queuesize, prespawned int) error {
 	return nil
 }
 
-func SetupEpool(errhandler EpollErrorHandler) error {
+func SetupEpoll(errhandler EpollErrorHandler) error {
 	var err error
 	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: errhandler}); err != nil {
 		return err
