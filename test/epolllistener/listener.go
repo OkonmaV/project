@@ -11,8 +11,8 @@ var ErrAuthorizationDenied error = errors.New("authorization denied")
 
 // for user's implementation
 type ListenerHandler interface {
-	HandleNewConn(net.Conn) // called only for succesfully authorized conn
-	AcceptError(error)      // all errs during accept and so on, e.g. auth denied, accept errs
+	HandleNewConn(net.Conn)
+	AcceptError(error) // all errs during accept and so on, e.g. auth denied, accept errs
 }
 
 // implemented by listener

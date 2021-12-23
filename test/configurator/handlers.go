@@ -9,6 +9,18 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 )
 
+func (s *service) NewMessage() connector.MessageReader {
+	return connector.NewBasicMessage()
+}
+
+func (s *service) Handle(message connector.MessageReader) error {
+	return nil
+}
+
+func (s *service) HandleClose(reason error) {
+
+}
+
 func (ci *connectorinfo) HandleClose(reasonerr error) {
 	l.Warning(string(ci.servicename), suckutils.ConcatTwo("disconnected, reason err: ", reasonerr.Error()))
 	_, remaddr := ci.getremoteaddr()

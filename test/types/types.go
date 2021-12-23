@@ -16,6 +16,28 @@ type Logger interface {
 	Error(string, error)
 }
 
+type NetProtocol byte
+
+const (
+	NetProtocolUnix NetProtocol = 1
+	NetProtocolTcp  NetProtocol = 2
+)
+
+func (np NetProtocol) Check(addr string) bool {
+	switch np {
+	case NetProtocolTcp:
+		if net.ParseIP(addr) == nil {
+			return false
+		}
+		return true
+	case NetProtocolUnix:
+		if (addr)[:5] == "/tmp/" && (addr)[len(addr)-5:] == ".sock" {
+			return true
+		}
+	}
+	return false
+}
+
 type OperationCode byte
 
 const (

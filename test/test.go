@@ -24,6 +24,7 @@ import (
 	"github.com/big-larry/suckutils"
 	"github.com/gobwas/ws"
 	"github.com/mailru/easygo/netpoll"
+	"github.com/segmentio/fasthash/fnv1a"
 )
 
 type config struct {
@@ -261,19 +262,33 @@ func (tc *testcon) handler(ev netpoll.Event) {
 }
 
 type j struct {
-	s string
+	kk *k
+}
+type k struct {
+	s int
+}
+
+func jk() *j {
+	return &j{kk: &k{}}
 }
 
 func main() {
+	// line := "/tmp/abcd.sock"
+	// //sep_ind := strings.Index(line, ":")
+	// fmt.Println((line)[len(line)-5:])
+	jjk := jk()
+	fmt.Println(jjk.kk.s)
 
-	jj := &j{s: "1"}
-	jjj := &j{s: "2"}
-
-	println(jj, jj.s, "|", jjj, jjj.s)
-
-	*jj = *jjj
-
-	println(jj, jj.s, "|", jjj, jjj.s)
+	return
+	h1 := fnv1a.Init32
+	println(h1)
+	h1 = fnv1a.AddString32(h1, "a")
+	println(h1)
+	h1 = fnv1a.AddString32(h1, "b")
+	println(h1)
+	h1 = fnv1a.AddString32(h1, "c")
+	println(h1, "|", fnv1a.HashString32("abc"))
+	return
 
 	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24, 25, 26, 27}, 3: {31, 32, 33}, 4: {41, 42, 43}}
 	fmt.Println(m[2][:2], m[2][4:])

@@ -32,6 +32,13 @@ type MessageHandler interface {
 	HandleClose(error)
 }
 
+type Conn interface {
+	StartServing() error
+	MessageHandler
+	Informer
+	Closer
+}
+
 // implemented by connector
 type MessageSender interface {
 	Send([]byte) error

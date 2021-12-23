@@ -57,28 +57,7 @@ func NewEpollConnector(conn net.Conn, messagehandler MessageHandler) (*EpollConn
 	return connector, nil
 }
 
-// // StartServing() must be recalled after this func - it closes conn and change it to newconn, HandleClose() wont be called
-// func (connector *EpollConnector) ChangeConnection(newconn net.Conn) error {
-// 	if newconn == nil {
-// 		return ErrNilConn
-// 	}
-
-// 	connector.mux.Lock()
-// 	defer connector.mux.Unlock()
-
-// 	if !connector.isclosed {
-// 		connector.stopserving()
-// 	}
-// 	var err error
-// 	if connector.desc, err = netpoll.HandleRead(newconn); err != nil {
-// 		return err
-// 	}
-// 	connector.isclosed = false
-
-// 	return nil
-// }
-
-func (connector *EpollConnector) StartServing() error {
+func (connector *EpollConnector) StartServing() error { // TODO: если мы здесь ловим ошибку, то мы забиваем на созданный коннектор, а его нужно закрыть, чтоб память не засирать.(если закрывать не в либе, то ловим HandleClose) придумать ченить
 	return poller.Start(connector.desc, connector.handle)
 }
 
