@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"net"
 	"project/test/connector"
 
 	"github.com/big-larry/suckutils"
@@ -220,17 +219,4 @@ func separatePayload(payload []byte) [][]byte {
 		i = length + 1 + i
 	}
 	return items
-}
-
-func getfreeaddr() (IPv4withPort, error) {
-	addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, err
-	}
-	l, err := net.ListenTCP("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	l.Close()
-	return ParseIPv4withPort(addr.String()), nil
 }

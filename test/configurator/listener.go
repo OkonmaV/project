@@ -21,7 +21,7 @@ type listener_info struct {
 	l        types.Logger
 }
 
-func newlistener(network, address string, subs *subscriptions, services *services, l types.Logger) (*listener, error) {
+func newListener(network, address string, subs *subscriptions, services *services, l types.Logger) (*listener, error) {
 
 	lninfo := &listener_info{subs: subs, services: services, l: l}
 
@@ -36,6 +36,7 @@ func newlistener(network, address string, subs *subscriptions, services *service
 	return lstnr, nil
 }
 
+// for listener's interface
 func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
@@ -63,8 +64,21 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 		}
 	}
 
+	state := lninfo.services.getServiceState(name)
+	if state == nil {
+		l.Warning("HandleNewConn", suckutils.Concat("unknown service trying to connect: ", string(name)))
+		conn.Close()
+		return
+	}
+	if err := state.initNewConnection(conn); err != nil {
+		l.Error("HandleNewConn/initNewConnection", err)
+		conn.Close()
+		return
+	}
+
 }
 
+// for listener's interface
 func (lninfo *listener_info) AcceptError(err error) {
 	lninfo.l.Error("Accept", err)
 }

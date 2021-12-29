@@ -10,6 +10,10 @@ type subscriptions struct {
 	rwmux    sync.RWMutex
 }
 
+func newSubscriptions() *subscriptions {
+	return &subscriptions{services: make(map[ServiceName][]*service)}
+}
+
 const maxFreeSpace int = 3 // reslice subscriptions.services, when cap-len > maxFreeSpace
 
 // no err when already subscribed
@@ -32,7 +36,7 @@ func (subs *subscriptions) add(pubName ServiceName, sub *service) error {
 			}
 		}
 		if cap(subs.services[pubName]) == len(subs.services[pubName]) { // reslice
-			subs.services[pubName] = append(make([]*service, 0, len(subs.services[pubName])+maxFreeSpace), subs.services[pubName]...)
+			subs.services[pubName] = append(make([]*service, 0, len(subs.services[pubName])+maxFreeSpace+1), subs.services[pubName]...)
 		}
 
 		subs.services[pubName] = append(subs.services[pubName], sub)
@@ -69,7 +73,7 @@ func (subs *subscriptions) remove(pubName ServiceName, sub *service) error {
 	return nil
 }
 
-func (subs *subscriptions) get(pubName ServiceName) []*service {
+func (subs *subscriptions) getSubscribers(pubName ServiceName) []*service {
 	if len(pubName) == 0 {
 		return nil
 	}

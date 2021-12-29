@@ -1,3 +1,2 @@
 ListenUNIX = "/tmp/conftest.sock"
 Settings = "settings.conf"
-TrntlAddr = "127.0.0.1:3301"

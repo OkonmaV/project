@@ -37,8 +37,8 @@ func NewHttpMessage() *HttpMessage {
 
 // короч поля респонса в привате танцуют - нужно в suckhttp метод перегона в []byte (.Byte) добавить, ибо если насухую не со структурой suckhttp.Response
 // и suckhttp.Request в хэндлерах работать нужно будет, то это жопа
-func FormatResponce(responce suckhttp.Response) ([]byte, error) { // TODO: и удалить эти форматтеры отсюда
-	return suckhttp.CreateResponseMessage(responce.S)
+func FormatResponse(response suckhttp.Response) ([]byte, error) { // TODO: и удалить эти форматтеры отсюда
+	return suckhttp.CreateResponseMessage(response.S)
 }
 
 func FormatRequest(request suckhttp.Request) ([]byte, error) {

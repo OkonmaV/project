@@ -273,6 +273,22 @@ func jk() *j {
 }
 
 func main() {
+	var i int
+loop:
+	for {
+		i++
+		println(i)
+		if i < 6 {
+			continue loop
+		} else {
+			break loop
+		}
+
+	}
+
+	println(time.Now().UnixNano())
+	return
+
 	// line := "/tmp/abcd.sock"
 	// //sep_ind := strings.Index(line, ":")
 	// fmt.Println((line)[len(line)-5:])

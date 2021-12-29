@@ -34,13 +34,13 @@ type MessageHandler interface {
 
 type Conn interface {
 	StartServing() error
-	MessageHandler
 	Informer
 	Closer
+	Sender
 }
 
 // implemented by connector
-type MessageSender interface {
+type Sender interface {
 	Send([]byte) error
 }
 
