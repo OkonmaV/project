@@ -261,40 +261,21 @@ func (tc *testcon) handler(ev netpoll.Event) {
 	tc.poller.Resume(tc.desc)
 }
 
-type j struct {
-	kk *k
-}
-type k struct {
-	s int
+type str struct {
+	i bool
 }
 
-func jk() *j {
-	return &j{kk: &k{}}
+func (s *str) printt() {
+	println(s.i)
+}
+
+type intr interface {
+	printt()
 }
 
 func main() {
-	var i int
-loop:
-	for {
-		i++
-		println(i)
-		if i < 6 {
-			continue loop
-		} else {
-			break loop
-		}
 
-	}
-
-	println(time.Now().UnixNano())
-	return
-
-	// line := "/tmp/abcd.sock"
-	// //sep_ind := strings.Index(line, ":")
-	// fmt.Println((line)[len(line)-5:])
-	jjk := jk()
-	fmt.Println(jjk.kk.s)
-
+	fmt.Println("")
 	return
 	h1 := fnv1a.Init32
 	println(h1)

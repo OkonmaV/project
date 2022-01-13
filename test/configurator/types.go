@@ -11,10 +11,12 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
-const ReconnectEnabledFlag string = "-rec"
+const ReconnectEnabledFlag string = "-reconnect"
 
 type ServiceName string
 
+// TODO: при подрубе удаленных сервисов 100% будут проблемы, поэтому так пока нельзя делать
+// TODO: рассмотреть возможность дифференцировать адрес и порт, навскидку непонятно нужно ли
 type Address struct {
 	addr   string
 	netw   types.NetProtocol
@@ -48,18 +50,26 @@ func readAddress(rawline string) *Address {
 	return addr
 }
 
-func (a *Address) getListeningAddr() (types.NetProtocol, string) {
-	if a.random {
-		addr, err := getfreeaddr(a.netw)
-		if err != nil {
-			return 0, ""
-		}
-		return a.netw, addr
+func (a *Address) getListeningAddr() (types.NetProtocol, string, error) {
+	if a == nil {
+		return 0, "", errors.New("nil address struct")
 	}
-	return a.netw, a.addr
+	if a.random {
+		var err error
+		for i := 0; i < 3; i++ {
+			addr, err := getfreeaddr(a.netw)
+			if err != nil {
+				continue
+			}
+			return a.netw, addr, nil
+		}
+		return 0, "", err
+	}
+	return a.netw, a.addr, nil
 }
 
-func (addr1 *Address) equal(addr2 *Address) bool {
+// если адреса рандомны то всегда true (хз как назвать очевиднее)
+func (addr1 *Address) equalAsListenAddr(addr2 Address) bool {
 	if addr1.random == addr2.random {
 		if addr1.random {
 			return true
@@ -86,5 +96,19 @@ func getfreeaddr(netw types.NetProtocol) (string, error) {
 		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
 	}
 	return "", errors.New("unknown protocol")
+}
 
+// DOES NOT FORMAT THE MESSAGE
+func sendToMany(message []byte, recievers []*service) {
+	if len(recievers) == 0 {
+		return
+	}
+	for _, reciever := range recievers {
+		if reciever.connector.IsClosed() {
+			continue
+		}
+		if err := reciever.connector.Send(message); err != nil {
+			reciever.connector.Close(err)
+		}
+	}
 }

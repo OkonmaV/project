@@ -19,15 +19,25 @@ type EpollListener struct {
 }
 
 var poller netpoll.Poller
+var errhandler EpollErrorHandler
 
 type EpollErrorHandler func(error) // must start exiting the program
 
-func SetupEpool(errhandler EpollErrorHandler) error {
-	var err error
-	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: errhandler}); err != nil {
-		return err
+func defaulterrhandler(err error) {
+	if errhandler == nil {
+		panic(err.Error())
 	}
-	return nil
+}
+
+func init() {
+	var err error
+	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: defaulterrhandler}); err != nil {
+		panic(err.Error())
+	}
+}
+
+func SetupEpollErrorHandler(errorhandler EpollErrorHandler) {
+	errhandler = errorhandler
 }
 
 func EpollListen(network, address string, listenerhandler ListenerHandler) (*EpollListener, error) {

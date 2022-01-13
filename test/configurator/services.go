@@ -17,15 +17,23 @@ import (
 )
 
 type services struct {
-	list  map[ServiceName]*service_state
-	rwmux sync.RWMutex
+	list      map[ServiceName]*service_state
+	subs      subscriptionsier
+	ownStatus suspendier
+	rwmux     sync.RWMutex
 }
 
-func newServices() *services {
-	return &services{list: make(map[ServiceName]*service_state)}
+type servicesier interface {
+	getServiceState(ServiceName) service_stateier
 }
 
-func (s *services) getServiceState(name ServiceName) *service_state { // я хз как назвать нормально
+func newServices(ctx context.Context, l types.Logger, settingspath string, ownStatus suspendier, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
+	servs := &services{list: make(map[ServiceName]*service_state), subs: subs, ownStatus: ownStatus}
+	go servs.serveSettings(ctx, l, settingspath, settingsCheckTicktime)
+	return servs
+}
+
+func (s *services) getServiceState(name ServiceName) service_stateier {
 	s.rwmux.RLock()
 	defer s.rwmux.RUnlock()
 	return s.list[name]
@@ -35,6 +43,9 @@ func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspa
 	filestat, err := os.Stat(settingspath)
 	if err != nil {
 		panic("[os.stat] error: " + err.Error())
+	}
+	if err := s.readSettings(l, settingspath); err != nil {
+		panic(suckutils.ConcatTwo("readsettings: ", err.Error()))
 	}
 	lastmodified := filestat.ModTime().Unix()
 	ticker := time.NewTicker(ticktime)
@@ -84,7 +95,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 			if rawconf_addrs = strings.Split((line)[ind+1:], " "); len(rawconf_addrs) == 0 {
 				continue
 			}
-			state = &service_state{connections: make([]*service, 0, len(rawconf_addrs))}
+			state = newServiceState(len(rawconf_addrs))
 			s.rwmux.Lock()
 			s.list[conf_name] = state
 			s.rwmux.Unlock()
@@ -101,15 +112,15 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 		// TODO: оптимизировать эту всю херь ниже, если возможно
 
 		var conf_enableReconnect bool
-		conf_addrs := make([]*Address, 0, len(rawconf_addrs))
-		for _, a := range rawconf_addrs { // читаем адреса из settings.conf = проверяем их на ошибки
-			if a == ReconnectEnabledFlag { // строка включающая реконнект идет сразу после названия // обсуждаемо
+		conf_addrs := make([]*Address, 0, len(rawconf_addrs)) // слайс для сверки адресов
+		for _, a := range rawconf_addrs {                     // читаем адреса из settings.conf = проверяем их на ошибки
+			if a == ReconnectEnabledFlag {
 				conf_enableReconnect = true
 			}
 			if addr := readAddress(a); addr != nil {
 				conf_addrs = append(conf_addrs, addr)
 			} else {
-				l.Warning("readAddress", suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n), ": ", a))
+				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n), ": ", a))
 			}
 		}
 
@@ -120,7 +131,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 				reconnectVerified = true
 			}
 			for k := 0; k < len(conf_addrs); k++ {
-				if state.connections[i].outerAddr.equal(conf_addrs[k]) {
+				if state.connections[i].outerAddr.equalAsListenAddr(*conf_addrs[k]) {
 					addrVerified = true
 					conf_addrs = append(conf_addrs[:k], conf_addrs[k+1:]...) // удаляем сошедшийся адрес
 					break
@@ -141,7 +152,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 
 		for i := 0; i < len(conf_addrs); i++ { // если остались адреса, еще не присутствующие в системе, мы их добавляем
 			state.rwmux.Lock()
-			state.connections = append(state.connections, newService(conf_name, conf_addrs[i], conf_enableReconnect, l))
+			state.connections = append(state.connections, newService(conf_name, *conf_addrs[i], conf_enableReconnect, s.ownStatus, l, s.subs))
 			state.rwmux.Unlock()
 		}
 
@@ -151,10 +162,46 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 
 }
 
-type service_state struct { // TODO: куды подпищеков впихнем?
+type service_state struct {
 	connections []*service
 	rwmux       sync.RWMutex
-	conf_hash   uint32
+	conf_hash   uint32 // хэш строки из файла настроек
+}
+
+type service_stateier interface {
+	getAllOutsideAddrsWithStatus(types.ServiceStatus) []*Address
+	getAllServices() []*service
+	initNewConnection(net.Conn) error
+}
+
+func newServiceState(conns_cap int) *service_state {
+	return &service_state{connections: make([]*service, 0, conns_cap)}
+}
+
+func (state *service_state) getAllOutsideAddrsWithStatus(status types.ServiceStatus) []*Address {
+	if state == nil {
+		return nil
+	}
+	addrs := make([]*Address, len(state.connections))
+	state.rwmux.RLock()
+	defer state.rwmux.RUnlock()
+	for i := 0; i < len(state.connections); i++ {
+		if state.connections[i].isStatus(status) {
+			addrs = append(addrs, &state.connections[i].outerAddr)
+		}
+	}
+	return addrs
+}
+
+func (state *service_state) getAllServices() []*service {
+	if state == nil {
+		return nil
+	}
+	state.rwmux.RLock()
+	defer state.rwmux.RUnlock()
+	res := make([]*service, len(state.connections))
+	copy(res, state.connections)
+	return res
 }
 
 func (state *service_state) initNewConnection(conn net.Conn) error {
@@ -201,21 +248,28 @@ func (state *service_state) initNewConnection(conn net.Conn) error {
 
 type service struct {
 	name      ServiceName
-	outerAddr *Address // адрес на котором сервис будет торчать наружу
+	outerAddr Address // адрес на котором сервис будет торчать наружу
 	status    types.ServiceStatus
 	statusmux sync.RWMutex
 	connector connector.Conn
 	reconnect bool
 	l         types.Logger
 
-	subs *subscriptions
+	ownStatus suspend_checkier
+	subs      subscriptionsier // иначе никак не использовать подписки в хендлере
 }
 
-func newService(name ServiceName, outerAddr *Address, reconnect bool, l types.Logger) *service {
-	return &service{name: name, outerAddr: outerAddr, l: l}
+func (s *service) isStatus(status types.ServiceStatus) bool {
+	s.statusmux.RLock()
+	defer s.statusmux.RUnlock()
+	return s.status == status
 }
 
-func (s *service) changeStatus(newStatus types.ServiceStatus, subs []*service) {
+func newService(name ServiceName, outerAddr Address, reconnect bool, ownStatus suspend_checkier, l types.Logger, subs subscriptionsier) *service {
+	return &service{name: name, outerAddr: outerAddr, l: l, subs: subs, ownStatus: ownStatus}
+}
+
+func (s *service) changeStatus(newStatus types.ServiceStatus) {
 	s.statusmux.Lock()
 	defer s.statusmux.Unlock()
 
@@ -224,20 +278,9 @@ func (s *service) changeStatus(newStatus types.ServiceStatus, subs []*service) {
 		return
 	}
 
-	if s.status == types.StatusOn || newStatus == types.StatusOn { // уведомлять о смене сорта нерабочести (eg суспенд) не нужно
-		addr_byte := types.FormatAddress(s.outerAddr.netw, s.outerAddr.addr)
-		message := make([]byte, 0, len(addr_byte)+2)
-		message[0] = byte(types.OperationCodeUpdatePubStatus)
-		message[1] = byte(newStatus)
-		message = append(message, addr_byte...)
-
-		for i := 0; i < len(subs); i++ {
-			if !subs[i].connector.IsClosed() {
-				if err := subs[i].connector.Send(message); err != nil {
-					subs[i].connector.Close(err)
-				}
-			}
-		}
+	if s.status == types.StatusOn || newStatus == types.StatusOn { // иначе уведомлять о смене сорта нерабочести не нужно(eg: с выкл на суспенд)
+		s.subs.updatePub([]byte(s.name), types.FormatAddress(s.outerAddr.netw, s.outerAddr.addr), newStatus, true)
 	}
 	s.status = newStatus
+	s.l.Debug("status", suckutils.ConcatThree("updated to \"", newStatus.String(), "\""))
 }

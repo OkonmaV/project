@@ -1,2 +1,2 @@
-ListenUNIX = "/tmp/conftest.sock"
+ListenLocal = "unix:/tmp/conftest.sock"
 Settings = "settings.conf"

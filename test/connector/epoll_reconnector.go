@@ -38,7 +38,7 @@ func (reconnector *EpollReConnector) HandleClose(reason error) {
 var reconnectReq chan *EpollReConnector
 
 func InitReconnector(ctx context.Context, ticktime time.Duration, targetbufsize int, queuesize int) {
-	if targetbufsize < 1 || queuesize < 0 {
+	if targetbufsize == 0 || queuesize == 0 {
 		panic("target buffer size / queue size must be > 0")
 	}
 	if reconnectReq == nil {
@@ -85,8 +85,8 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 				buf = append(buf[:i], buf[i+1:]...) // трем из буфера
 				i--
 			}
-			if cap(buf) > 2 && len(buf) <= 2 { // при переполнении буфера снова его уменьшаем, если к этому моменту разберемся с реконнектами // защиту от переполнения буфера ставить нельзя, иначе куда оверфловнутые реконнекты пихать
-				newbuf := make([]*EpollReConnector, 0, targetbufsize)
+			if cap(buf) > targetbufsize && len(buf) <= targetbufsize { // при переполнении буфера снова его уменьшаем, если к этому моменту разберемся с реконнектами // защиту от переполнения буфера ставить нельзя, иначе куда оверфловнутые реконнекты пихать
+				newbuf := make([]*EpollReConnector, targetbufsize)
 				copy(newbuf, buf)
 				buf = newbuf
 			}

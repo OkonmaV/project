@@ -9,10 +9,10 @@ import (
 const maxlength = 4096
 
 type BasicMessage struct {
-	payload []byte
+	Payload []byte
 }
 
-func (msg *BasicMessage) Read(conn ConnReader) error {
+func (msg BasicMessage) Read(conn ConnReader) error {
 
 	buf := make([]byte, 4)
 	conn.SetReadDeadline(time.Now().Add(time.Second))
@@ -24,7 +24,7 @@ func (msg *BasicMessage) Read(conn ConnReader) error {
 	if msglength > maxlength {
 		return errors.New("payload too long")
 	}
-	msg.payload = make([]byte, msglength)
+	msg.Payload = make([]byte, msglength)
 	//conn.SetReadDeadline(time.Now().Add((time.Millisecond * 700) * (time.Duration((msglength / 1024) + 1))))
 	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 	_, err = conn.Read(buf)
@@ -32,11 +32,11 @@ func (msg *BasicMessage) Read(conn ConnReader) error {
 }
 
 // payload not allocated
-func NewBasicMessage() *BasicMessage {
-	return &BasicMessage{}
+func NewBasicMessage() BasicMessage {
+	return BasicMessage{}
 }
 
-func FormatMessage(message []byte) []byte {
+func FormatBasicMessage(message []byte) []byte {
 	formattedmsg := make([]byte, 4, 4+len(message))
 	if len(message) > 0 {
 		binary.BigEndian.PutUint32(formattedmsg, uint32(len(message)))
