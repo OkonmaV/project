@@ -74,7 +74,7 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 			return
 		}
 	}
-
+	//TODO: local & external listeners!!!
 	state := lninfo.services.getServiceState(name)
 	if state == nil {
 		lninfo.l.Warning("HandleNewConn", suckutils.Concat("unknown service trying to connect: ", string(name)))

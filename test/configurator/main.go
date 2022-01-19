@@ -9,6 +9,7 @@ import (
 	"project/test/connector"
 	"project/test/epolllistener"
 	"project/test/logs"
+	"project/test/suspender"
 
 	"time"
 
@@ -51,7 +52,7 @@ func main() {
 			consolelogger.WriteMany(logspack)
 		}
 	}()
-	suspender := newSuspendier()
+	suspender := suspender.NewSuspendier()
 	subs := newSubscriptions(ctx, l, 5, nil)
 	servs := newServices(ctx, l, conf.Settings, suspender, settingsCheckTicktime, subs)
 	subs.services = servs
