@@ -14,9 +14,9 @@ func (s *service) NewMessage() connector.MessageReader {
 }
 
 func (s *service) Handle(message connector.MessageReader) error {
-	if !s.ownStatus.onAir() {
-		s.l.Debug("onAir", "suspended, dont read the message")
-		return nil
+	if !s.ownStatus.OnAir() {
+		s.l.Debug("onAir", "suspended, dont handle the message")
+		return s.connector.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeImSupended)}))
 	}
 
 	payload := message.(connector.BasicMessage).Payload
@@ -24,6 +24,9 @@ func (s *service) Handle(message connector.MessageReader) error {
 		return connector.ErrEmptyPayload
 	}
 	switch types.OperationCode(payload[0]) {
+	//case types.OperationCodeImSupended: // TODO
+	case types.OperationCodePing:
+		return nil
 	case types.OperationCodeGiveMeOuterAddr:
 		if netw, addr, err := s.outerAddr.getListeningAddr(); err != nil {
 			return errors.New(suckutils.ConcatTwo("getlisteningaddr err: ", err.Error()))
@@ -91,6 +94,6 @@ func (s *service) Handle(message connector.MessageReader) error {
 }
 
 func (s *service) HandleClose(reason error) {
-	s.l.Debug("Conn", suckutils.ConcatTwo("closed, reason err: ", reason.Error()))
+	s.l.Warning("Conn", suckutils.ConcatTwo("closed, reason err: ", reason.Error()))
 	s.changeStatus(types.StatusOff)
 }

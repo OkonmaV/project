@@ -10,20 +10,20 @@ import (
 type EpollReConnector struct {
 	connector  *EpollConnector
 	msghandler MessageHandler
-	mux        sync.RWMutex
+	mux        sync.Mutex
 	isstopped  bool
 }
 
-type msgrehandler struct {
-	msghandler MessageHandler
-}
+// type msgrehandler struct {
+// 	msghandler MessageHandler
+// }
 
 func (reconnector *EpollReConnector) NewMessage() MessageReader {
 	return reconnector.msghandler.NewMessage()
 }
 
 func (reconnector *EpollReConnector) Handle(msg MessageReader) error {
-	return reconnector.Handle(msg)
+	return reconnector.msghandler.Handle(msg)
 }
 
 func (reconnector *EpollReConnector) HandleClose(reason error) {
@@ -37,7 +37,7 @@ func (reconnector *EpollReConnector) HandleClose(reason error) {
 
 var reconnectReq chan *EpollReConnector
 
-func InitReconnector(ctx context.Context, ticktime time.Duration, targetbufsize int, queuesize int) {
+func InitReconnection(ctx context.Context, ticktime time.Duration, targetbufsize int, queuesize int) {
 	if targetbufsize == 0 || queuesize == 0 {
 		panic("target buffer size / queue size must be > 0")
 	}
@@ -47,7 +47,7 @@ func InitReconnector(ctx context.Context, ticktime time.Duration, targetbufsize 
 	go serveReconnects(ctx, ticktime, targetbufsize)
 }
 
-// можно в канал еще пихать протокол-адрес для реконнекта, если будут возможны случаи переезда сервиса
+// можно в канал еще пихать протокол-адрес для реконнекта, если будут возможны случаи переезда сервиса, или не мы инициировали подключение
 func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize int) { // TODO: test this
 	buf := make([]*EpollReConnector, 0, targetbufsize)
 	ticker := time.NewTicker(ticktime)
@@ -60,7 +60,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 		case <-ticker.C:
 			for i := 0; i < len(buf); i++ {
 				buf[i].mux.Lock()
-				if !buf[i].IsReconnectStopped() {
+				if !buf[i].isstopped {
 					if buf[i].connector.IsClosed() {
 						conn, err := net.Dial(buf[i].connector.RemoteAddr().Network(), buf[i].connector.RemoteAddr().String()) // TODO: адрес переподключения в реконнектор пихнуть???
 						if err != nil {
@@ -100,7 +100,7 @@ func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler) (*EpollRe
 	}
 	recon := &EpollReConnector{msghandler: messagehandler}
 	var err error
-	if recon.connector, err = NewEpollConnector(conn, recon.msghandler); err != nil {
+	if recon.connector, err = NewEpollConnector(conn, recon); err != nil {
 		return nil, err
 	}
 
@@ -112,7 +112,7 @@ func (reconnector *EpollReConnector) StartServing() error {
 }
 
 func (reconnector *EpollReConnector) Send(message []byte) error {
-	return reconnector.Send(message)
+	return reconnector.connector.Send(message)
 }
 
 func (reconnector *EpollReConnector) Close(reason error) {
@@ -121,14 +121,14 @@ func (reconnector *EpollReConnector) Close(reason error) {
 
 	reconnector.isstopped = true
 
-	if !reconnector.connector.isclosed {
+	if !reconnector.connector.IsClosed() {
 		reconnector.connector.Close(reason)
 	}
 }
 
 // call in HandleClose() will cause deadlock
 func (reconnector *EpollReConnector) IsClosed() bool {
-	return reconnector.connector.isclosed
+	return reconnector.connector.IsClosed()
 }
 
 func (reconnector *EpollReConnector) RemoteAddr() net.Addr {
@@ -137,12 +137,13 @@ func (reconnector *EpollReConnector) RemoteAddr() net.Addr {
 
 // далее фичи для тех, кто знает что это реконнектор
 
-func (reconnector *EpollReConnector) IsReconnectStopped() bool { // только извне! иначе потенциальная блокировка
-	reconnector.mux.RLock()
-	defer reconnector.mux.RUnlock()
+func (reconnector *EpollReConnector) IsReconnectStopped() bool { // только не в самой этой либе! иначе потенциальная блокировка
+	reconnector.mux.Lock()
+	defer reconnector.mux.Unlock()
 	return reconnector.isstopped
 }
 
+// WILL NOT CLOSE CONN
 func (reconnector *EpollReConnector) CancelReconnect() { // только извне! иначе потенциальная блокировка
 	reconnector.mux.Lock()
 	defer reconnector.mux.Unlock()

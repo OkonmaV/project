@@ -65,6 +65,8 @@ const (
 	// []byte{opcode, statuscode}
 	OperationCodeMyStatusChanged OperationCode = 1
 	// []byte{opcode, len(pubname), pubname, len(pubname), pubname, ...}
+	OperationCodeUnsubscribeFromServices OperationCode = 3
+	// []byte{opcode, len(pubname), pubname, len(pubname), pubname, ...}
 	OperationCodeSubscribeToServices OperationCode = 4
 	// pubinfo := []byte{statuscode, len(addr), addr, pubname},
 	// message := []byte{opcode, len(pubinfo), pubinfo, len(pubinfo), pubinfo, ...}
@@ -73,6 +75,12 @@ const (
 	OperationCodeGiveMeOuterAddr OperationCode = 8
 	// []byte{opcode, len(addr), addr}
 	OperationCodeSetOutsideAddr OperationCode = 9
+	// []byte{opcode}
+	OperationCodeImSupended OperationCode = 5
+	// []byte{opcode}
+	OperationCodePing OperationCode = 7
+	// []byte{opcode}
+	OperationCodeOK OperationCode = 2
 )
 
 // no total length and opcode in return slice

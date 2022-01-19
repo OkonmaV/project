@@ -28,7 +28,7 @@ type EpollErrorHandler func(error) // must start exiting the program
 // user's handlers will be called in goroutines
 func SetupGopoolHandling(poolsize, queuesize, prespawned int) error {
 	if pool != nil {
-		return errors.New("pool is already setupped")
+		return errors.New("pool is already setup")
 	}
 	pool = gopool.NewPool(poolsize, queuesize, prespawned)
 	return nil
@@ -36,6 +36,9 @@ func SetupGopoolHandling(poolsize, queuesize, prespawned int) error {
 
 func SetupEpoll(errhandler EpollErrorHandler) error {
 	var err error
+	if poller != nil {
+		return errors.New("epoll is already setup")
+	}
 	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: errhandler}); err != nil {
 		return err
 	}

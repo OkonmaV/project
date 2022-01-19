@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"project/test/connector"
+	"project/test/suspender"
 	"project/test/types"
 	"strconv"
 	"strings"
@@ -19,7 +20,7 @@ import (
 type services struct {
 	list      map[ServiceName]*service_state
 	subs      subscriptionsier
-	ownStatus suspendier
+	ownStatus suspender.Suspendier
 	rwmux     sync.RWMutex
 }
 
@@ -27,7 +28,7 @@ type servicesier interface {
 	getServiceState(ServiceName) service_stateier
 }
 
-func newServices(ctx context.Context, l types.Logger, settingspath string, ownStatus suspendier, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
+func newServices(ctx context.Context, l types.Logger, settingspath string, ownStatus suspender.Suspendier, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
 	servs := &services{list: make(map[ServiceName]*service_state), subs: subs, ownStatus: ownStatus}
 	go servs.serveSettings(ctx, l, settingspath, settingsCheckTicktime)
 	return servs
@@ -218,7 +219,7 @@ func (state *service_state) initNewConnection(conn net.Conn) error {
 		if state.connections[i].status == types.StatusOff {
 
 			if state.connections[i].reconnect {
-				if con, err = connector.NewEpollReConnector(conn, state.connections[i]); err != nil { // TODO: где-то InitReconnector сделать
+				if con, err = connector.NewEpollReConnector(conn, state.connections[i]); err != nil { // InitReconnector сделать не забывать
 					goto failure
 				}
 				goto success
@@ -241,6 +242,11 @@ func (state *service_state) initNewConnection(conn net.Conn) error {
 		state.connections[i].connector = con
 		state.connections[i].status = types.StatusSuspended // status update to suspend
 		state.connections[i].statusmux.Unlock()
+		// без этого сенда сервису геморно узнавать что его приняли в наши ряды
+		if err := con.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeOK)})); err != nil {
+			state.connections[i].connector.Close(err)
+			return err
+		}
 		return nil
 	}
 	return errors.New("no free conns for this service available") // TODO: где-то имя сервиса в логи вписать
@@ -255,7 +261,7 @@ type service struct {
 	reconnect bool
 	l         types.Logger
 
-	ownStatus suspend_checkier
+	ownStatus suspender.Suspend_checkier
 	subs      subscriptionsier // иначе никак не использовать подписки в хендлере
 }
 
@@ -265,7 +271,7 @@ func (s *service) isStatus(status types.ServiceStatus) bool {
 	return s.status == status
 }
 
-func newService(name ServiceName, outerAddr Address, reconnect bool, ownStatus suspend_checkier, l types.Logger, subs subscriptionsier) *service {
+func newService(name ServiceName, outerAddr Address, reconnect bool, ownStatus suspender.Suspend_checkier, l types.Logger, subs subscriptionsier) *service {
 	return &service{name: name, outerAddr: outerAddr, l: l, subs: subs, ownStatus: ownStatus}
 }
 

@@ -16,7 +16,9 @@ type subscriptions struct {
 	rwmux       sync.RWMutex
 	services    servicesier
 	pubsUpdates chan pubStatusUpdate
-	ownStatus   subscriptionsier
+
+	l types.Logger
+	//ownStatus   subscriptionsier
 }
 
 type subscriptionsier interface {
@@ -26,14 +28,28 @@ type subscriptionsier interface {
 	getSubscribers(ServiceName) []*service
 }
 
-func newSubscriptions(ctx context.Context, l types.Logger, pubsUpdatesQueue int, ownStatus suspendier, services servicesier) *subscriptions {
+func newSubscriptions(ctx context.Context, l types.Logger, pubsUpdatesQueue int /*, ownStatus suspender.Suspendier*/, services servicesier, ownSubscriptions ...ServiceName) *subscriptions {
 	if pubsUpdatesQueue == 0 {
 		panic("pubsUpdatesQueue must be > 0")
 	}
-	subs := &subscriptions{subs_list: make(map[ServiceName][]*service), services: services, pubsUpdates: make(chan pubStatusUpdate, pubsUpdatesQueue)}
-	go subs.pubsUpdatesSendingWorker(ctx, l)
+	subs := &subscriptions{subs_list: make(map[ServiceName][]*service), services: services, pubsUpdates: make(chan pubStatusUpdate, pubsUpdatesQueue), l: l}
+	go subs.pubsUpdatesSendingWorker(ctx)
 	return subs
 }
+
+// TODO:
+// func (subs *subscriptions) ownSubsChecker(ctx context.Context, ownStatus suspendier, checkTicktime time.Duration) {
+// 	ticker := time.NewTicker(checkTicktime)
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			subs.l.Debug("ownSubsChecker", "context done, exiting")
+// 			return
+// 		case <-ticker.C:
+
+// 		}
+// 	}
+// }
 
 type pubStatusUpdate struct {
 	servicename []byte
@@ -42,19 +58,19 @@ type pubStatusUpdate struct {
 	sendToConfs bool
 }
 
-func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context, l types.Logger) {
+func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 	if subs.pubsUpdates == nil {
 		panic("subs.pubUpdates chan is nil")
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			l.Debug("pubStatusUpdater", suckutils.ConcatTwo("context done, exiting. unhandled updates: ", strconv.Itoa(len(subs.pubsUpdates))))
+			subs.l.Debug("pubStatusUpdater", suckutils.ConcatTwo("context done, exiting. unhandled updates: ", strconv.Itoa(len(subs.pubsUpdates))))
 			// можно вычистить один раз канал апдейтов для разблокировки хэндлеров, но зачем
 			return
 		case update := <-subs.pubsUpdates:
 			if len(update.servicename) == 0 || len(update.address) == 0 {
-				l.Error("pubStatusUpdater", errors.New("unformatted update, skipped"))
+				subs.l.Error("pubStatusUpdater", errors.New("unformatted update, skipped"))
 				continue
 			}
 			if subscriptors := subs.getSubscribers(ServiceName(update.servicename)); len(subscriptors) != 0 {

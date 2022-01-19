@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"project/test/connector"
 	"project/test/epolllistener"
 	"project/test/logs"
 
@@ -20,9 +21,14 @@ type config struct {
 	Settings       string
 }
 
+const connectors_gopool_size int = 5
+const settingsCheckTicktime time.Duration = time.Minute * 5
+const reconnectsCheckTicktime time.Duration = time.Second * 10
+const reconnectsTargetBufSize int = 4
+
 // TODO: при подрубе удаленных сервисов 100% будут проблемы, поэтому так пока нельзя делать (см структуру Address)
 // TODO: "пингпонг" по таймеру между конфигураторами??? / при подключении нового конфигуратора автоматом слать ему подписку / апдейт статуса самого конфигуратора
-
+// TODO: реконнектор здесь есть, но работать будет через жопу (т.е. не будет работать)
 func main() {
 	conf := &config{}
 	_, err := toml.DecodeFile("config.toml", conf)
@@ -46,16 +52,25 @@ func main() {
 		}
 	}()
 	suspender := newSuspendier()
-	subs := newSubscriptions(ctx, l, 5, suspender, nil)
-	servs := newServices(ctx, l, conf.Settings, suspender, time.Minute*5, subs)
+	subs := newSubscriptions(ctx, l, 5, nil)
+	servs := newServices(ctx, l, conf.Settings, suspender, settingsCheckTicktime, subs)
 	subs.services = servs
 
-	var local_ln, external_ln listenier
+	connector.SetupEpoll(func(e error) {
+		l.Error("Epoll", e)
+		cancel()
+	})
+	connector.SetupGopoolHandling(connectors_gopool_size, 1, connectors_gopool_size/2)
+	connector.InitReconnector(ctx, reconnectsCheckTicktime, reconnectsTargetBufSize, reconnectsTargetBufSize/2)
+
 	epolllistener.SetupEpollErrorHandler(func(e error) {
 		l.Error("Epoll", e)
 		cancel()
 	})
 
+	suspender.unsuspend()
+
+	var local_ln, external_ln listenier
 	if local_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], subs, servs, l); err != nil {
 		panic("newListener err: " + err.Error())
 	}

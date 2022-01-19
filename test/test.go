@@ -274,8 +274,19 @@ type intr interface {
 }
 
 func main() {
+	mp := make(map[int][]int)
+	mp[1] = []int{0, 1, 2, 3}
+	pub_addrs := mp[1]
+	fmt.Printf("%p %p\n", mp[1], pub_addrs)
+	for i := 0; i < len(pub_addrs); i++ {
+		if i == 1 {
+			mp[1] = append(pub_addrs, pub_addrs[2:]...)
+		}
+	}
+	fmt.Printf("%p %p\n", mp[1], pub_addrs)
+	//mp[1] = pub_addrs
+	fmt.Println(mp, len(mp[1]), cap(mp[1]), pub_addrs)
 
-	fmt.Println("")
 	return
 	h1 := fnv1a.Init32
 	println(h1)

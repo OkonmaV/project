@@ -1,4 +1,4 @@
-package client
+package httpservice
 
 import (
 	"encoding/binary"

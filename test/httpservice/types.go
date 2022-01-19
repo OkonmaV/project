@@ -1,4 +1,4 @@
-package client
+package httpservice
 
 import (
 	"encoding/binary"
@@ -48,22 +48,6 @@ func (status ServiceStatus) String() string {
 type ServiceName string // only raw - without "local." or "remote."
 
 const ConfServiceName ServiceName = "conf"
-
-func (sn ServiceName) Local() string {
-	return suckutils.ConcatTwo("local.", string(sn))
-}
-
-func (sn ServiceName) LocalSub() string {
-	return suckutils.ConcatTwo("local.sub.", string(sn))
-}
-
-func (sn ServiceName) Remote() string {
-	return suckutils.ConcatTwo("remote.", string(sn))
-}
-
-func (sn ServiceName) RemoteSub() string {
-	return suckutils.ConcatTwo("remote.sub", string(sn))
-}
 
 type Addr []byte
 type IPv4withPort Addr

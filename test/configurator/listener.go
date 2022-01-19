@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"net"
 	"project/test/epolllistener"
+	"project/test/suspender"
 	"project/test/types"
 	"strings"
 	"time"
@@ -18,7 +19,7 @@ type listener struct {
 type listener_info struct {
 	subs      subscriptionsier
 	services  servicesier
-	ownStatus suspend_checkier
+	ownStatus suspender.Suspend_checkier
 	l         types.Logger
 }
 
@@ -43,8 +44,8 @@ func newListener(network, address string, subs subscriptionsier, services servic
 
 // for listener's interface
 func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
-	if !lninfo.ownStatus.onAir() {
-		lninfo.l.Debug("onAir", suckutils.ConcatTwo("suspended, discard conn from ", conn.RemoteAddr().String()))
+	if !lninfo.ownStatus.OnAir() {
+		lninfo.l.Debug("HandleNewConn", suckutils.ConcatTwo("suspended, discard conn from ", conn.RemoteAddr().String()))
 		conn.Close()
 		return
 	}
