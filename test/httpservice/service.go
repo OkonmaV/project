@@ -2,19 +2,119 @@ package httpservice
 
 import (
 	"context"
+	"net"
+	"os"
+	"os/signal"
+	"project/test/logs"
+	"project/test/suspender"
 	"project/test/types"
+	"syscall"
+	"time"
 
+	"github.com/BurntSushi/toml"
 	"github.com/big-larry/suckhttp"
 )
 
-type Configier interface {
-	GetConfiguratorAddress() string
-}
+type ServiceName string
 
 type Servicier interface {
-	InitServiceData(ctx context.Context) ([]string, error) // хер знает как это говно назвать
-	Handle(request *suckhttp.Request, logger *types.Logger) (*suckhttp.Response, error)
+	CreateHandler(ctx context.Context, pubs_getter Publishers_getter) (HTTPService, error)
 }
 
-func InitNewService(servicename ServiceName, keepConnAlive bool, maxConnections int, publishers ...ServiceName) {
+type config_toml struct {
+	ConfiguratorAddr string
 }
+
+type HTTPService interface {
+	// nil responce = 500
+	Handle(request *suckhttp.Request, logger types.Logger) (*suckhttp.Response, error)
+}
+
+// TODO: КТО БУДЕТ АНСУСПЕНД ДЕЛАТЬ?
+// TODO: исправить жопу с логами
+func InitNewService(servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
+	conf := &config_toml{}
+	if _, err := toml.DecodeFile("config.toml", conf); err != nil {
+		panic("read toml err: " + err.Error())
+	}
+	if conf.ConfiguratorAddr == "" {
+		panic("ConfiguratorAddr in config.toml not specified")
+	}
+	if _, err := toml.DecodeFile("config.toml", config); err != nil { // эта ебала отдает мапу, но она в привате
+		panic("read toml err: " + err.Error())
+	}
+
+	ctx, _ := createContextWithInterruptSignal()
+	logsctx, logscancel := context.WithCancel(context.Background())
+
+	l, _ := logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
+	consolelogger := &logs.ConsoleLogger{}
+	go func() {
+		for {
+			logspack := <-l.Flush()
+			consolelogger.WriteMany(logspack)
+		}
+	}()
+
+	ownStatus := suspender.NewSuspendier(nil, nil)
+
+	var pubs *publishers
+	if len(publishers_names) != 0 {
+		pubs = newPublishers(ctx, l, ownStatus, nil)
+	}
+	handler, err := config.CreateHandler(ctx, pubs)
+	if err != nil {
+		panic(err)
+	}
+
+	ln := newListener(ctx, l, ownStatus, threads, keepConnAlive, func(conn net.Conn) error {
+		request, err := suckhttp.ReadRequest(ctx, conn, time.Minute)
+		if err != nil {
+			return err
+		}
+		response, err := handler.Handle(request, l)
+		if response == nil {
+			response = suckhttp.NewResponse(500, "Internal Server Error")
+		}
+		if err != nil {
+			if writeErr := response.Write(conn, time.Minute); writeErr != nil {
+				l.Error("Write response", writeErr)
+			}
+			return err
+		}
+		return response.Write(conn, time.Minute)
+	})
+
+	configurator := newConfigurator(ctx, l, pubs, ln, conf.ConfiguratorAddr, servicename, time.Second*5)
+	if pubs != nil {
+		pubs.configurator = configurator
+	}
+	ownStatus.SetFunctions(configurator.onSuspend, configurator.onUnSuspend)
+	ownStatus.UnSuspend() // TODO: КТО БУДЕТ АНСУСПЕНД ДЕЛАТЬ?
+
+	select {
+	case <-ctx.Done():
+		l.Info("Shutdown", "reason: context done")
+		break
+	case <-configurator.terminationByConfigurator:
+		l.Info("Shutdown", "reason: termination by configurator")
+		break
+	}
+	ln.close()
+	logscancel()
+
+}
+
+func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-stop
+		cancel()
+	}()
+	return ctx, cancel
+}
+
+func handler(ctx context.Context, conn net.Conn) error

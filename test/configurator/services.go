@@ -219,7 +219,7 @@ func (state *service_state) initNewConnection(conn net.Conn) error {
 		if state.connections[i].status == types.StatusOff {
 
 			if state.connections[i].reconnect {
-				if con, err = connector.NewEpollReConnector(conn, state.connections[i]); err != nil { // InitReconnector сделать не забывать
+				if con, err = connector.NewEpollReConnector(conn, state.connections[i], nil, nil, "", ""); err != nil {
 					goto failure
 				}
 				goto success

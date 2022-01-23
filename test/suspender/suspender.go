@@ -16,6 +16,7 @@ type Suspendier interface {
 	Suspend_checkier
 	Suspend(reason string)
 	UnSuspend()
+	SetFunctions(doAfterSuspend func(reason string), doAfterUnSuspend func())
 }
 
 type Suspend_checkier interface {
@@ -24,6 +25,14 @@ type Suspend_checkier interface {
 
 func NewSuspendier(doAfterSuspend func(reason string), doAfterUnSuspend func()) Suspendier {
 	return &suspend{onSuspend: doAfterSuspend, onUnSuspend: doAfterUnSuspend}
+}
+
+// TODO: rename
+func (s *suspend) SetFunctions(doAfterSuspend func(reason string), doAfterUnSuspend func()) {
+	s.rwmux.Lock()
+	defer s.rwmux.Unlock()
+	s.onSuspend = doAfterSuspend
+	s.onUnSuspend = doAfterUnSuspend
 }
 
 func (s *suspend) OnAir() bool {

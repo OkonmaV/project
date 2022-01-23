@@ -80,7 +80,8 @@ const (
 	// []byte{opcode}
 	OperationCodePing OperationCode = 7
 	// []byte{opcode}
-	OperationCodeOK OperationCode = 2
+	OperationCodeOK    OperationCode = 2
+	OperationCodeNOTOK OperationCode = 10
 )
 
 // no total length and opcode in return slice

@@ -76,6 +76,16 @@ func (listener *EpollListener) StartServing() error {
 	return poller.Start(listener.desc, listener.handle)
 }
 
+func (listener *EpollListener) ClearFromCache() {
+	listener.mux.Lock()
+	defer listener.mux.Unlock()
+
+	listener.isclosed = true
+	poller.Stop(listener.desc)
+	listener.desc.Close()
+	listener.listener.Close()
+}
+
 func (listener *EpollListener) handle(e netpoll.Event) {
 	defer poller.Resume(listener.desc)
 

@@ -262,31 +262,25 @@ func (tc *testcon) handler(ev netpoll.Event) {
 }
 
 type str struct {
-	i bool
+	Test1 string
+	hg
+}
+type str2 struct {
+	Test2 string
 }
 
-func (s *str) printt() {
-	println(s.i)
-}
-
-type intr interface {
-	printt()
+type hg interface {
 }
 
 func main() {
-	mp := make(map[int][]int)
-	mp[1] = []int{0, 1, 2, 3}
-	pub_addrs := mp[1]
-	fmt.Printf("%p %p\n", mp[1], pub_addrs)
-	for i := 0; i < len(pub_addrs); i++ {
-		if i == 1 {
-			mp[1] = append(pub_addrs, pub_addrs[2:]...)
-		}
+	sdff := &str2{}
+	sdf := &str{hg: sdff}
+	_, err := toml.DecodeFile("config.toml", sdf)
+	if err != nil {
+		panic("read toml err: " + err.Error())
 	}
-	fmt.Printf("%p %p\n", mp[1], pub_addrs)
-	//mp[1] = pub_addrs
-	fmt.Println(mp, len(mp[1]), cap(mp[1]), pub_addrs)
 
+	fmt.Println(sdf, sdf.hg)
 	return
 	h1 := fnv1a.Init32
 	println(h1)

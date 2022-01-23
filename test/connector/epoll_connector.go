@@ -60,8 +60,17 @@ func NewEpollConnector(conn net.Conn, messagehandler MessageHandler) (*EpollConn
 	return connector, nil
 }
 
-func (connector *EpollConnector) StartServing() error { // TODO: если мы здесь ловим ошибку, то мы забиваем на созданный коннектор, а его нужно закрыть, чтоб память не засирать.(если закрывать не в либе, то ловим HandleClose) придумать ченить
+func (connector *EpollConnector) StartServing() error {
 	return poller.Start(connector.desc, connector.handle)
+}
+
+// MUST be called after StartServing() failure to prevent memory leak!
+// (если мы  ловим ошибку в StartServing(), то мы забиваем на созданный коннектор, а его нужно закрыть, чтоб память не засирать)
+func (connector *EpollConnector) ClearFromCache() {
+	connector.mux.Lock()
+	defer connector.mux.Unlock()
+
+	connector.stopserving()
 }
 
 func (connector *EpollConnector) handle(e netpoll.Event) {

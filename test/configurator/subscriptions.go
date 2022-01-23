@@ -208,3 +208,16 @@ func (subs *subscriptions) getSubscribers(pubName ServiceName) []*service {
 	}
 	return nil
 }
+
+func (subs *subscriptions) updateItself(newstatus types.ServiceStatus) {
+
+	subs.rwmux.RLock()
+	defer subs.rwmux.RUnlock()
+
+	if mysubs, ok := subs.subs_list[ServiceName(types.ConfServiceName)]; ok {
+		if len(mysubs) != 0 {
+			message := connector.FormatBasicMessage(append(make([]byte, 0, 2), byte(types.OperationCodeMyStatusChanged), byte(newstatus)))
+			sendToMany(message, mysubs)
+		}
+	}
+}
