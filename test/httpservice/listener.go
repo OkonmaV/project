@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net"
 	"os"
-	"project/test/suspender"
 	"project/test/types"
 	"strings"
 	"sync"
@@ -17,120 +16,204 @@ import (
 type listener struct {
 	listener      net.Listener
 	connsToHandle chan net.Conn
+	activeWorkers chan struct{}
+	handler       handlefunc
+	keepAlive     bool
 
-	ownStatus suspender.Suspendier
-	l         types.Logger
+	servStatus *serviceStatus
+	l          types.Logger
 
-	wg  sync.WaitGroup
 	ctx context.Context
 
 	cancelAccept bool
+	sync.RWMutex
 }
 
 type handlefunc func(conn net.Conn) error
 
 const handlerCallTimeout time.Duration = time.Second * 10
 
-func newListener(ctx context.Context, l types.Logger, ownStatus suspender.Suspendier, threads int, keepAlive bool, handler handlefunc) *listener {
-	ln := &listener{ctx: ctx, ownStatus: ownStatus, connsToHandle: make(chan net.Conn, 1), l: l}
+func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus, threads int, keepAlive bool, handler handlefunc) *listener {
+	if threads < 1 {
+		panic("threads num cant be less than 1")
+	}
+	ln := &listener{ctx: ctx,
+		connsToHandle: make(chan net.Conn, 1),
+		activeWorkers: make(chan struct{}, threads),
+		handler:       handler,
+		keepAlive:     keepAlive,
+		servStatus:    servStatus,
+		l:             l}
 	for i := 0; i < threads; i++ {
-		go ln.handlingWorker(handler, keepAlive)
+
 	}
 	return ln
 }
 
 func (listener *listener) listen(network, address string) error {
-	if listener != nil {
+	if listener == nil {
+		panic("listener.listen() called on nil listener")
+	}
+
+	if listener.onAir() {
 		if listener.listener.Addr().String() == address {
 			return nil
 		}
-		listener.cancelAccept = true
-		listener.close()
+		listener.stop()
 	}
+
+	listener.Lock()
+	defer listener.Unlock()
+
+loop:
+	for {
+		select {
+		case listener.activeWorkers <- struct{}{}:
+			go listener.handlingWorker()
+			continue loop
+		default:
+			break loop
+		}
+	}
+
+	var err error
 	if network == "unix" {
 		if !strings.HasPrefix(address, "/tmp/") || !strings.HasSuffix(address, ".sock") {
-			return errors.New("unix address must be in form \"/tmp/[socketname].sock\"")
+			err = errors.New("unix address must be in form \"/tmp/[socketname].sock\"")
+			goto failure
 		}
-		if err := os.RemoveAll(address); err != nil {
-			return err
+		if err = os.RemoveAll(address); err != nil {
+			goto failure
 		}
 	}
-	ln, err := net.Listen(network, address)
+	listener.listener, err = net.Listen(network, address)
 	if err != nil {
-		return err
+		goto failure
 	}
 
-	listener.listener = ln
 	listener.cancelAccept = false
 	go listener.acceptWorker()
-
+	listener.servStatus.setListenerStatus(true)
 	listener.l.Info("listen", suckutils.ConcatFour("start listening at ", network, ":", address))
 	return nil
+failure:
+	listener.servStatus.setListenerStatus(false)
+	return err
 }
 
 func (listener *listener) acceptWorker() {
+	listener.RLock()
+	defer listener.RUnlock()
+
+	timer := time.NewTimer(handlerCallTimeout)
 	for {
 		conn, err := listener.listener.Accept()
 		if err != nil {
 			if listener.cancelAccept {
 				listener.l.Debug("acceptWorker", "cancelAccept recieved, stop accept loop")
+				timer.Stop()
 				return
 			}
 			listener.l.Error("acceptWorker/Accept", err)
 			continue
 		}
+		if !listener.servStatus.onAir() {
+			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("suspended, discard handling conn from ", conn.RemoteAddr().String()))
+			conn.Close()
+			continue
+		}
+	loop:
 		for {
+			timer.Reset(handlerCallTimeout)
 			select {
 			case <-time.After(handlerCallTimeout):
-				listener.l.Warning("acceptWorker/Accept", suckutils.ConcatTwo("exceeded timeout, no free handlingWorker available for ", handlerCallTimeout.String()))
+				listener.l.Warning("acceptWorker", suckutils.ConcatTwo("exceeded timeout, no free handlingWorker available for ", handlerCallTimeout.String()))
 			case listener.connsToHandle <- conn:
-				break
+				break loop
 			}
 		}
 	}
 }
 
-func (listener *listener) handlingWorker(handler handlefunc, keepAlive bool) {
-	for {
-		select {
-		case <-listener.ctx.Done():
-			return
-		case conn := <-listener.connsToHandle:
-			listener.wg.Add(1)
-			if !listener.ownStatus.OnAir() { // TODO: куда пихнуть проверку на суспенд?
-				listener.l.Warning("handlingWorker", suckutils.ConcatTwo("suspended, discard handling conn from ", conn.RemoteAddr().String()))
-				conn.Close()
-				continue
-			}
+func (listener *listener) handlingWorker() {
+	for conn := range listener.connsToHandle {
+		if err := listener.handler(conn); err != nil { // гарантированный первый хэндл, иначе если сразу в loop-у лезть, то при завершении контекста мы хер че отхэндлим
+			listener.l.Error("handlingWorker/handle", errors.New(suckutils.ConcatThree(conn.RemoteAddr().String(), ", err: ", err.Error())))
+		}
+		if listener.keepAlive {
 		loop:
 			for {
 				select {
 				case <-listener.ctx.Done():
 					break loop
 				default:
-					if err := handler(conn); err != nil {
+					if err := listener.handler(conn); err != nil {
 						listener.l.Error("handlingWorker/handle", errors.New(suckutils.ConcatThree(conn.RemoteAddr().String(), ", err: ", err.Error())))
-						break loop
-					}
-					if !keepAlive { // TODO: кипалайв точно так должен выглядеть(спиздил у вас)? чет ебано. получается что сколько горутин, столько и подключений возможно
 						break loop
 					}
 				}
 			}
-			conn.Close()
-			listener.wg.Done()
 		}
+		conn.Close()
 	}
+	<-listener.activeWorkers
 }
 
-func (listener *listener) close() {
-	if listener.listener == nil {
+// calling stop() we can call listen() in future.
+// и мы не ждем пока все отхэндлится
+func (listener *listener) stop() {
+	if listener == nil {
+		panic("listener.stop() called on nil listener")
+	}
+	if !listener.onAir() {
 		return
 	}
 	listener.cancelAccept = true
 	if err := listener.listener.Close(); err != nil {
-		listener.l.Error("listener.Close", err)
+		listener.l.Error("listener.stop()/listener.Close()", err)
 	}
+	listener.Lock()
 	listener.listener = nil
+	listener.Unlock()
+	listener.servStatus.setListenerStatus(false)
+	listener.l.Debug("listener", "stopped")
 	//listener.wg.Wait()
+}
+
+// calling close() we r closing listener for further listen() calls and waiting for all reqests to be handled
+// потенциальная дыра: вызов listener.close() при keepAlive=true и НЕ завершенном контексте (см. handlingWorker())
+func (listener *listener) close() {
+	if listener == nil {
+		panic("listener.close() called on nil listener")
+	}
+	listener.stop()
+	listener.Lock() // если параллельно будет вызван listen(), то хуй мы воркеров красиво завершим (ибо они спавниться будут до таймаута)
+	close(listener.connsToHandle)
+
+	timeout := time.NewTimer(time.Second * 10).C
+loop:
+	for i := 0; i < cap(listener.activeWorkers); i++ {
+		select {
+		case listener.activeWorkers <- struct{}{}:
+			continue loop
+		case <-timeout:
+			listener.l.Debug("listener", "closed on timeout 10s")
+		}
+	}
+	listener.l.Debug("listener", "succesfully closed")
+}
+
+func (listener *listener) onAir() bool {
+	listener.RLock()
+	defer listener.RUnlock()
+	return listener.listener != nil
+}
+
+func (listener *listener) Addr() (string, string) {
+	listener.RLock()
+	defer listener.RUnlock()
+	if listener.listener == nil {
+		return "", ""
+	}
+	return listener.listener.Addr().Network(), listener.listener.Addr().String()
 }

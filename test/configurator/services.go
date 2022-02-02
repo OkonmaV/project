@@ -6,7 +6,6 @@ import (
 	"net"
 	"os"
 	"project/test/connector"
-	"project/test/suspender"
 	"project/test/types"
 	"strconv"
 	"strings"
@@ -18,18 +17,17 @@ import (
 )
 
 type services struct {
-	list      map[ServiceName]*service_state
-	subs      subscriptionsier
-	ownStatus suspender.Suspendier
-	rwmux     sync.RWMutex
+	list  map[ServiceName]*service_state
+	subs  subscriptionsier
+	rwmux sync.RWMutex
 }
 
 type servicesier interface {
 	getServiceState(ServiceName) service_stateier
 }
 
-func newServices(ctx context.Context, l types.Logger, settingspath string, ownStatus suspender.Suspendier, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
-	servs := &services{list: make(map[ServiceName]*service_state), subs: subs, ownStatus: ownStatus}
+func newServices(ctx context.Context, l types.Logger, settingspath string, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
+	servs := &services{list: make(map[ServiceName]*service_state), subs: subs}
 	go servs.serveSettings(ctx, l, settingspath, settingsCheckTicktime)
 	return servs
 }
@@ -115,9 +113,6 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 		var conf_enableReconnect bool
 		conf_addrs := make([]*Address, 0, len(rawconf_addrs)) // слайс для сверки адресов
 		for _, a := range rawconf_addrs {                     // читаем адреса из settings.conf = проверяем их на ошибки
-			if a == ReconnectEnabledFlag {
-				conf_enableReconnect = true
-			}
 			if addr := readAddress(a); addr != nil {
 				conf_addrs = append(conf_addrs, addr)
 			} else {
@@ -125,14 +120,11 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 			}
 		}
 
-		for i := 0; i < len(state.connections); i++ { // к нам приехал ревизор outer-портов и реконнекта
-			var addrVerified, reconnectVerified bool
+		for i := 0; i < len(state.connections); i++ { // к нам приехал ревизор outer-портов
+			var addrVerified bool
 
-			if state.connections[i].reconnect == conf_enableReconnect {
-				reconnectVerified = true
-			}
 			for k := 0; k < len(conf_addrs); k++ {
-				if state.connections[i].outerAddr.equalAsListenAddr(*conf_addrs[k]) {
+				if state.connections[i].outerAddr.equalAsListeningAddr(*conf_addrs[k]) {
 					addrVerified = true
 					conf_addrs = append(conf_addrs[:k], conf_addrs[k+1:]...) // удаляем сошедшийся адрес
 					break
@@ -145,15 +137,11 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 				state.rwmux.Unlock()
 				i--
 			}
-			if !reconnectVerified { // настройка реконнекта не сошлась
-				state.connections[i].reconnect = conf_enableReconnect
-				state.connections[i].connector.Close(errors.New("settings.conf configuration changed")) // сервис к нам сам переподрубится, и мы подрубим его с новым коннектором
-			}
 		}
 
 		for i := 0; i < len(conf_addrs); i++ { // если остались адреса, еще не присутствующие в системе, мы их добавляем
 			state.rwmux.Lock()
-			state.connections = append(state.connections, newService(conf_name, *conf_addrs[i], conf_enableReconnect, s.ownStatus, l, s.subs))
+			state.connections = append(state.connections, newService(conf_name, *conf_addrs[i], conf_enableReconnect, l, s.subs))
 			state.rwmux.Unlock()
 		}
 
@@ -172,7 +160,7 @@ type service_state struct {
 type service_stateier interface {
 	getAllOutsideAddrsWithStatus(types.ServiceStatus) []*Address
 	getAllServices() []*service
-	initNewConnection(net.Conn) error
+	initNewConnection(conn net.Conn, isLocalhosted bool) error
 }
 
 func newServiceState(conns_cap int) *service_state {
@@ -205,24 +193,29 @@ func (state *service_state) getAllServices() []*service {
 	return res
 }
 
-func (state *service_state) initNewConnection(conn net.Conn) error {
+// TODO: че делать с подключением конфигураторов? потому что, в случае временного разрыва соединения между двумя конфигураторами, с огромной вероятностью будет около-дедлок - оба реконнектора с двух сторон делают dial, затем лочат свой статусмьютекс (в структуре service) в хэндшейке,
+// в котором ждут OpCodeOK друг от друга, затем по дедлайну отваливаются (ибо функции ниже, вызываемой на новый коннекшн, тоже нужен этот же мьютекс) и все по новой
+func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool) error {
 	if state == nil {
-		return errors.New("unknown service") // да, неочевидна
+		return errors.New("unknown service") // да, неочевидно
 	}
 	state.rwmux.RLock()
 	defer state.rwmux.RUnlock()
+	var conn_host string
+	if !isLocalhosted {
+		conn_host = (conn.RemoteAddr().String())[:strings.Index(conn.RemoteAddr().String(), ":")]
+	}
 
 	for i := 0; i < len(state.connections); i++ {
 		state.connections[i].statusmux.Lock()
 		var con connector.Conn
 		var err error
-		if state.connections[i].status == types.StatusOff {
 
-			if state.connections[i].reconnect {
-				if con, err = connector.NewEpollReConnector(conn, state.connections[i], nil, nil, "", ""); err != nil {
+		if state.connections[i].status == types.StatusOff {
+			if !isLocalhosted {
+				if state.connections[i].outerAddr.remotehost != conn_host {
 					goto failure
 				}
-				goto success
 			}
 			if con, err = connector.NewEpollConnector(conn, state.connections[i]); err != nil {
 				goto failure
@@ -237,12 +230,12 @@ func (state *service_state) initNewConnection(conn net.Conn) error {
 		continue
 	success:
 		if err = con.StartServing(); err != nil {
+			con.ClearFromCache()
 			goto failure
 		}
 		state.connections[i].connector = con
 		state.connections[i].status = types.StatusSuspended // status update to suspend
 		state.connections[i].statusmux.Unlock()
-		// без этого сенда сервису геморно узнавать что его приняли в наши ряды
 		if err := con.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeOK)})); err != nil {
 			state.connections[i].connector.Close(err)
 			return err
@@ -258,11 +251,9 @@ type service struct {
 	status    types.ServiceStatus
 	statusmux sync.RWMutex
 	connector connector.Conn
-	reconnect bool
 	l         types.Logger
 
-	ownStatus suspender.Suspend_checkier
-	subs      subscriptionsier // иначе никак не использовать подписки в хендлере
+	subs subscriptionsier
 }
 
 func (s *service) isStatus(status types.ServiceStatus) bool {
@@ -271,8 +262,8 @@ func (s *service) isStatus(status types.ServiceStatus) bool {
 	return s.status == status
 }
 
-func newService(name ServiceName, outerAddr Address, reconnect bool, ownStatus suspender.Suspend_checkier, l types.Logger, subs subscriptionsier) *service {
-	return &service{name: name, outerAddr: outerAddr, l: l, subs: subs, ownStatus: ownStatus}
+func newService(name ServiceName, outerAddr Address, reconnect bool, l types.Logger, subs subscriptionsier) *service {
+	return &service{name: name, outerAddr: outerAddr, l: l, subs: subs}
 }
 
 func (s *service) changeStatus(newStatus types.ServiceStatus) {
@@ -280,12 +271,18 @@ func (s *service) changeStatus(newStatus types.ServiceStatus) {
 	defer s.statusmux.Unlock()
 
 	if s.status == newStatus {
-		s.l.Warning("changeStatus", "trying to change already changed status")
+		//s.l.Warning("changeStatus", "trying to change already changed status")
 		return
 	}
 
 	if s.status == types.StatusOn || newStatus == types.StatusOn { // иначе уведомлять о смене сорта нерабочести не нужно(eg: с выкл на суспенд)
-		s.subs.updatePub([]byte(s.name), types.FormatAddress(s.outerAddr.netw, s.outerAddr.addr), newStatus, true)
+		var addr string
+		if len(s.outerAddr.remotehost) == 0 {
+			addr = suckutils.ConcatTwo("127.0.0.1:", s.outerAddr.port)
+		} else {
+			addr = suckutils.ConcatThree(s.outerAddr.remotehost, ":", s.outerAddr.port)
+		}
+		s.subs.updatePub([]byte(s.name), types.FormatAddress(s.outerAddr.netw, addr), newStatus, true)
 	}
 	s.status = newStatus
 	s.l.Debug("status", suckutils.ConcatThree("updated to \"", newStatus.String(), "\""))

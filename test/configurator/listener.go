@@ -3,8 +3,8 @@ package main
 import (
 	"encoding/binary"
 	"net"
+	"project/test/connector"
 	"project/test/epolllistener"
-	"project/test/suspender"
 	"project/test/types"
 	"strings"
 	"time"
@@ -17,19 +17,20 @@ type listener struct {
 }
 
 type listener_info struct {
-	subs      subscriptionsier
-	services  servicesier
-	ownStatus suspender.Suspend_checkier
-	l         types.Logger
+	allowRemote bool
+
+	subs     subscriptionsier
+	services servicesier
+	l        types.Logger
 }
 
 type listenier interface {
 	close()
 }
 
-func newListener(network, address string, subs subscriptionsier, services servicesier, l types.Logger) (listenier, error) {
+func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l types.Logger) (listenier, error) {
 
-	lninfo := &listener_info{subs: subs, services: services, l: l}
+	lninfo := &listener_info{allowRemote: allowRemote, subs: subs, services: services, l: l}
 	ln, err := epolllistener.EpollListen(network, address, lninfo)
 	if err != nil {
 		return nil, err
@@ -44,8 +45,9 @@ func newListener(network, address string, subs subscriptionsier, services servic
 
 // for listener's interface
 func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
-	if !lninfo.ownStatus.OnAir() {
-		lninfo.l.Debug("HandleNewConn", suckutils.ConcatTwo("suspended, discard conn from ", conn.RemoteAddr().String()))
+	var connLocalhosted bool
+	if connLocalhosted = isConnLocalhost(conn); !connLocalhosted && !lninfo.allowRemote {
+		lninfo.l.Warning("HandleNewConn", suckutils.Concat("new remote conn to local-only listener from: ", conn.RemoteAddr().String(), ", conn denied"))
 		conn.Close()
 		return
 	}
@@ -59,7 +61,7 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 		return
 	}
 
-	buf = make([]byte, binary.BigEndian.Uint32(buf))
+	buf = make([]byte, binary.LittleEndian.Uint32(buf))
 	n, err := conn.Read(buf)
 	if err != nil {
 		lninfo.l.Error("HandleNewConn/Read", err)
@@ -68,21 +70,24 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 	}
 	name := ServiceName(buf[:n])
 	if name == ServiceName(types.ConfServiceName) {
-		if isConnLocalhost(conn) {
+		if connLocalhosted {
 			lninfo.l.Warning("HandleNewConn", suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
 			conn.Close()
 			return
 		}
 	}
-	//TODO: local & external listeners!!!
+
 	state := lninfo.services.getServiceState(name)
 	if state == nil {
 		lninfo.l.Warning("HandleNewConn", suckutils.Concat("unknown service trying to connect: ", string(name)))
 		conn.Close()
 		return
 	}
-	if err := state.initNewConnection(conn); err != nil {
+	if err := state.initNewConnection(conn, connLocalhosted); err != nil {
 		lninfo.l.Error("HandleNewConn/initNewConnection", err)
+		if _, err := conn.Write(connector.FormatBasicMessage([]byte{byte(types.OperationCodeNOTOK)})); err != nil {
+			lninfo.l.Error("HandleNewConn/Send", err)
+		}
 		conn.Close()
 		return
 	}

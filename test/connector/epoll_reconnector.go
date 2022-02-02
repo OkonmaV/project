@@ -21,10 +21,6 @@ type EpollReConnector struct {
 	doAfterReconnect func() error         // after StartServing() call
 }
 
-// type msgrehandler struct {
-// 	msghandler MessageHandler
-// }
-
 func (reconnector *EpollReConnector) NewMessage() MessageReader {
 	return reconnector.msghandler.NewMessage()
 }
@@ -39,7 +35,6 @@ func (reconnector *EpollReConnector) HandleClose(reason error) {
 	if !reconnector.isstopped {
 		reconnectReq <- reconnector
 	}
-
 }
 
 var reconnectReq chan *EpollReConnector
@@ -58,6 +53,7 @@ func InitReconnection(ctx context.Context, ticktime time.Duration, targetbufsize
 func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize int) { // TODO: test this
 	buf := make([]*EpollReConnector, 0, targetbufsize)
 	ticker := time.NewTicker(ticktime)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -90,6 +86,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 						}
 
 						if err = newcon.StartServing(); err != nil {
+							newcon.ClearFromCache()
 							buf[i].mux.Unlock()
 							continue // не логается
 						}
@@ -181,13 +178,15 @@ func (reconnector *EpollReConnector) RemoteAddr() net.Addr {
 
 // далее фичи для тех, кто знает что это реконнектор
 
+var ErrAlreadyReconnected error = errors.New("already reconnected")
+
 func (reconnector *EpollReConnector) IsReconnectStopped() bool { // только не в самой этой либе! иначе потенциальная блокировка
 	reconnector.mux.Lock()
 	defer reconnector.mux.Unlock()
 	return reconnector.isstopped
 }
 
-// WILL NOT CLOSE CONN
+// DOES NOT CLOSE CONN
 func (reconnector *EpollReConnector) CancelReconnect() { // только извне! иначе потенциальная блокировка
 	reconnector.mux.Lock()
 	defer reconnector.mux.Unlock()

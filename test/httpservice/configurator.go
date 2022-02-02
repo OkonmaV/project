@@ -3,9 +3,9 @@ package httpservice
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"project/test/connector"
-	"project/test/suspender"
 	"project/test/types"
 	"strings"
 	"time"
@@ -19,15 +19,20 @@ type configurator struct {
 
 	publishers *publishers
 	listener   *listener
-	ownStatus  suspender.Suspendier
+	servStatus *serviceStatus
 
 	terminationByConfigurator chan struct{}
 	l                         types.Logger
 }
 
-func newConfigurator(ctx context.Context, l types.Logger, pubs *publishers, listener *listener, configuratoraddr string, thisServiceName ServiceName, reconnectTimeout time.Duration) *configurator {
+func newConfigurator(ctx context.Context, l types.Logger, servStatus *serviceStatus, pubs *publishers, listener *listener, configuratoraddr string, thisServiceName ServiceName, reconnectTimeout time.Duration) *configurator {
 
-	c := &configurator{thisServiceName: thisServiceName, l: l, publishers: pubs, terminationByConfigurator: make(chan struct{}, 1)}
+	c := &configurator{
+		thisServiceName: thisServiceName,
+		l:               l, servStatus: servStatus,
+		publishers:                pubs,
+		terminationByConfigurator: make(chan struct{}, 1)}
+
 	connector.InitReconnection(ctx, reconnectTimeout, 1, 1)
 
 	go func() {
@@ -47,7 +52,6 @@ func newConfigurator(ctx context.Context, l types.Logger, pubs *publishers, list
 				l.Error("NewEpollReConnector", err)
 				goto timeout
 			}
-
 			if err = c.conn.StartServing(); err != nil {
 				c.conn.ClearFromCache()
 				l.Error("StartServing", err)
@@ -69,6 +73,7 @@ func newConfigurator(ctx context.Context, l types.Logger, pubs *publishers, list
 }
 
 func (c *configurator) handshake(conn net.Conn) error {
+	println("message: ", string(connector.FormatBasicMessage([]byte(c.thisServiceName))))
 	if _, err := conn.Write(connector.FormatBasicMessage([]byte(c.thisServiceName))); err != nil {
 		return err
 	}
@@ -79,28 +84,27 @@ func (c *configurator) handshake(conn net.Conn) error {
 	if err != nil {
 		return errors.New(suckutils.ConcatTwo("err reading configurator's approving, err: ", err.Error()))
 	}
-	if n != 5 || buf[4] != byte(types.OperationCodeOK) {
-		if n != 5 || buf[4] == byte(types.OperationCodeNOTOK) {
+	if n == 5 {
+		if buf[4] == byte(types.OperationCodeOK) {
+			return nil
+		} else if buf[4] == byte(types.OperationCodeNOTOK) {
+			go c.conn.CancelReconnect() // горутина пушто этот хэндшейк под залоченным мьютексом выполняется
 			c.terminationByConfigurator <- struct{}{}
-			go c.conn.CancelReconnect() // горутина пушто там мьютекс
 			return errors.New("configurator do not approve this service")
 		}
-		return errors.New("configurator's approving format not supported or weird")
 	}
-	return nil
+	return errors.New("configurator's approving format not supported or weird")
 }
 
 func (c *configurator) afterConnProc() error {
-
-	if c.ownStatus.OnAir() {
-		if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusOn)})); err != nil {
-			return err
-		}
-	} else {
-		if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusSuspended)})); err != nil {
-			return err
-		}
+	myStatus := byte(types.StatusSuspended)
+	if c.servStatus.onAir() {
+		myStatus = byte(types.StatusOn)
 	}
+	if err := c.conn.Send(connector.FormatBasicMessage([]byte{myStatus})); err != nil {
+		return err
+	}
+
 	if c.publishers != nil {
 		pubnames := c.publishers.GetAllPubNames()
 		if len(pubnames) != 0 {
@@ -122,12 +126,16 @@ func (c *configurator) afterConnProc() error {
 }
 
 func (c *configurator) send(message []byte) error {
+	if c == nil {
+		return errors.New("nil configurator")
+	}
 	if c.conn == nil {
 		return connector.ErrNilConn
 	}
 	if c.conn.IsClosed() {
 		return connector.ErrClosedConnector
 	}
+	fmt.Println("send", message, "|||", string(message))
 	return c.conn.Send(message)
 }
 
@@ -143,7 +151,7 @@ func (c *configurator) onSuspend(reason string) {
 func (c *configurator) onUnSuspend() {
 	c.l.Warning("OwnStatus", "unsuspended")
 	if c.conn != nil && !c.conn.IsClosed() {
-		if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusSuspended)})); err != nil {
+		if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusOn)})); err != nil {
 			c.l.Error("Send", err)
 		}
 	}
@@ -175,14 +183,23 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 		if netw, addr, err := types.UnformatAddress(payload[2 : 3+int(payload[1])]); err != nil {
 			return err
 		} else {
-			go func() { // если конфигуратор дудоснет нас этим опкодом с разными адресами для прослушки, я хз че будет
-				for {
-					if err := c.listener.listen(netw.String(), addr); err != nil {
-						c.listener.l.Error("listen", err)
-					}
-					return
+			if netw == types.NetProtocolNil {
+				c.listener.stop()
+				c.servStatus.setListenerStatus(true)
+			}
+			if cur_netw, cur_addr := c.listener.Addr(); cur_addr == addr && cur_netw == netw.String() {
+				return nil
+			}
+			var err error
+			for i := 0; i < 3; i++ {
+				if err = c.listener.listen(netw.String(), addr); err != nil {
+					c.listener.l.Error("listen", err)
+					time.Sleep(time.Second)
+				} else {
+					return nil
 				}
-			}()
+			}
+			return err
 		}
 	case types.OperationCodeUpdatePubs:
 		updates := types.SeparatePayload(payload[1:])

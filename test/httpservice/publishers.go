@@ -5,10 +5,11 @@ import (
 	"errors"
 	"net"
 	"project/test/connector"
-	"project/test/suspender"
 	"project/test/types"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
@@ -33,15 +34,19 @@ type publishers struct {
 type Publisher struct {
 	conn        net.Conn
 	servicename ServiceName
-	addresses   []address // TODO: подумать как сделать смещение (только если не через жопу)(например первый адрес мертв, и при реконнекте мы сразу со второго стартуем)
-
-	mux sync.Mutex
-	ctx context.Context
-	l   types.Logger
+	addresses   []address
+	current_ind int
+	mux         sync.Mutex
+	ctx         context.Context
+	l           types.Logger
 }
 
 type Publishers_getter interface {
 	Get(name ServiceName) *Publisher
+}
+
+type Publisher_Sender interface {
+	SendHTTP(request *suckhttp.Request) (response *suckhttp.Response, err error)
 }
 
 type pubupdate struct {
@@ -51,10 +56,15 @@ type pubupdate struct {
 }
 
 // call before configurator created
-func newPublishers(ctx context.Context, l types.Logger, ownStatus suspender.Suspendier, configurator *configurator) *publishers {
-	p := &publishers{configurator: configurator, l: l, list: make(map[ServiceName]*Publisher), pubupdates: make(chan pubupdate, 1)}
-	go p.publishersWorker(ctx, ownStatus)
-	return p
+func newPublishers(ctx context.Context, l types.Logger, servStatus *serviceStatus, configurator *configurator, pubscheckTicktime time.Duration, pubNames []ServiceName) (*publishers, error) {
+	p := &publishers{configurator: configurator, l: l, list: make(map[ServiceName]*Publisher, len(pubNames)), pubupdates: make(chan pubupdate, 1)}
+	for _, pubname := range pubNames {
+		if _, err := p.newPublisher(pubname); err != nil {
+			return nil, err
+		}
+	}
+	go p.publishersWorker(ctx, servStatus, pubscheckTicktime)
+	return p, nil
 
 }
 
@@ -62,11 +72,8 @@ func (pubs *publishers) update(pubname ServiceName, netw, addr string, status ty
 	pubs.pubupdates <- pubupdate{name: pubname, addr: address{netw: netw, addr: addr}, status: status}
 }
 
-// TODO: без тикера возникает проблема - по хорошему, мы по тику должны долбить конфигуратора подпиской, чтобы он прислал нам адреса пустых пабов(??)
-// TODO: если есть вероятность того, что апдейты прилетят криво по времени (паб отрубился-подрубился и сначала прилетел апдейт на подруб, а за ним на отруб паба), или в этом времени затеряются - возвращаем тикер
-func (pubs *publishers) publishersWorker(ctx context.Context, ownStatus suspender.Suspendier) {
-	// ticker := time.NewTicker(checkTicktime)
-	// если вернемся к тикеру-проверщику, то можно в кейсе апдейта пихать пустого паба в массив, по которому по тику будем пробегать и отправлять подписку
+func (pubs *publishers) publishersWorker(ctx context.Context, servStatus *serviceStatus, pubscheckTicktime time.Duration) {
+	ticker := time.NewTicker(pubscheckTicktime)
 loop:
 	for {
 		select {
@@ -94,16 +101,9 @@ loop:
 									pubs.l.Debug("publishersWorker", suckutils.ConcatFour("due to update closed conn to \"", string(update.name), "\" from ", update.addr.addr))
 								}
 							}
-							// проверяем наличие адресов
-							if len(pub.addresses) == 0 {
-								// уходим в суспенд
-								if ownStatus.OnAir() {
-									ownStatus.Suspend(suckutils.ConcatThree("no available pubs \"", string(pub.servicename), "\""))
-								}
-								// // шлем подписку если адресов нет (=конфигуратор пришлет нам адреса пабов, если они у него есть)
-								// if err := pubs.configurator.Send(connector.FormatBasicMessage(append(append(make([]byte, 0, 2+len(pub.servicename)), byte(types.OperationCodeSubscribeToServices), byte(len(pub.servicename))), []byte(pub.servicename)...))); err != nil {
-								// 	pubs.l.Error("Publishers", errors.New(suckutils.ConcatTwo("sending subscription to configurator error: ", err.Error())))
-								// }
+
+							if pub.current_ind > i {
+								pub.current_ind--
 							}
 
 							pub.mux.Unlock()
@@ -149,31 +149,34 @@ loop:
 					pubs.l.Error("publishersWorker/configurator.Send", err)
 				}
 			}
-			// case <-ticker.C:
-			// 	empty_pubs := make([]string, 0, 1)
-			// 	empty_pubs_len := 0
-			// 	//pubs.rwmux.RLock()
-			// 	pubs.mux.Lock()
-			// 	for pub_name, pub := range pubs.list {
-			// 		if len(pub.addresses) == 0 {
-			// 			empty_pubs = append(empty_pubs, string(pub_name))
-			// 			empty_pubs_len += len(pub_name)
-			// 		}
-			// 	}
-			// 	pubs.mux.Unlock()
-			// 	//pubs.rwmux.RUnlock()
-			// 	if len(empty_pubs) != 0 {
-			// 		ownStatus.Suspend(suckutils.ConcatTwo("no publishers with names: ", strings.Join(empty_pubs, ", ")))
-			// 		message := make([]byte, 1, 1+empty_pubs_len+len(empty_pubs))
-			// 		message[0] = byte(types.OperationCodeSubscribeToServices)
-			// 		for _, pubname := range empty_pubs {
-			// 			message = append(message, byte(len(pubname)))
-			// 			message = append(message, []byte(pubname)...)
-			// 		}
-			// 		if err := pubs.configurator.Send(connector.FormatBasicMessage(message)); err != nil {
-			// 			pubs.l.Error("Publishers", errors.New(suckutils.ConcatTwo("sending subscription to configurator error: ", err.Error())))
-			// 		}
-			// 	}
+		case <-ticker.C:
+			empty_pubs := make([]string, 0, 1)
+			empty_pubs_len := 0
+			//pubs.rwmux.RLock()
+			pubs.mux.Lock()
+			for pub_name, pub := range pubs.list {
+				if len(pub.addresses) == 0 {
+					empty_pubs = append(empty_pubs, string(pub_name))
+					empty_pubs_len += len(pub_name)
+				}
+			}
+			pubs.mux.Unlock()
+			//pubs.rwmux.RUnlock()
+			if len(empty_pubs) != 0 {
+				servStatus.setPubsStatus(false)
+				pubs.l.Warning("publishersWorker", suckutils.ConcatTwo("no publishers with names: ", strings.Join(empty_pubs, ", ")))
+
+				message := make([]byte, 1, 1+empty_pubs_len+len(empty_pubs))
+				message[0] = byte(types.OperationCodeSubscribeToServices)
+				for _, pubname := range empty_pubs {
+					message = append(append(message, byte(len(pubname))), []byte(pubname)...)
+				}
+				if err := pubs.configurator.send(connector.FormatBasicMessage(message)); err != nil {
+					pubs.l.Error("Publishers", errors.New(suckutils.ConcatTwo("sending subscription to configurator error: ", err.Error())))
+				}
+			} else {
+				servStatus.setPubsStatus(true)
+			}
 
 		}
 	}
@@ -195,9 +198,13 @@ func (pubs *publishers) Get(servicename ServiceName) *Publisher {
 	return pubs.list[servicename]
 }
 
-func (pubs *publishers) NewPublisher(name ServiceName) (*Publisher, error) {
+func (pubs *publishers) newPublisher(name ServiceName) (*Publisher, error) {
 	pubs.mux.Lock()
 	defer pubs.mux.Unlock()
+
+	if len(name) == 0 {
+		return nil, errors.New("empty pubname")
+	}
 
 	if _, ok := pubs.list[name]; !ok {
 		p := &Publisher{servicename: name, addresses: make([]address, 0, 1)}
@@ -250,21 +257,27 @@ func (pub *Publisher) SendHTTP(request *suckhttp.Request) (response *suckhttp.Re
 	}
 	return response, nil
 }
-func (pub *Publisher) connect() error {
+
+// no mutex inside, it must be outside
+func (pub *Publisher) connect() (err error) {
 	if pub.conn != nil {
 		pub.conn.Close()
 		pub.conn = nil
 	}
-	for _, addr := range pub.addresses {
-		if conn, err := net.Dial(addr.netw, addr.addr); err != nil {
-			pub.l.Error("Dial", err)
+
+	for i := 0; i < len(pub.addresses); i++ {
+		if pub.current_ind == len(pub.addresses) {
+			pub.current_ind = 0
+		}
+		if pub.conn, err = net.Dial(pub.addresses[pub.current_ind].netw, pub.addresses[pub.current_ind].addr); err != nil {
+			pub.l.Error("connect/Dial", err)
+			pub.current_ind++
 		} else {
-			pub.conn = conn
+			goto success
 		}
 	}
-	if pub.conn == nil {
-		return errors.New("no available addresses")
-	}
+	return errors.New("no available addresses")
+success:
 	pub.l.Info("Conn", suckutils.ConcatTwo("Connected to ", pub.conn.RemoteAddr().String()))
 	return nil
 }

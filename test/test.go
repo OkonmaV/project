@@ -262,25 +262,38 @@ func (tc *testcon) handler(ev netpoll.Event) {
 }
 
 type str struct {
-	Test1 string
-	hg
+	strrer strer
 }
 type str2 struct {
 	Test2 string
 }
 
-type hg interface {
+type hger interface {
+	hg()
+}
+
+type strer interface {
+	strr()
+}
+
+func (s *str) strr() {
+	println("strer")
+}
+
+func (s *str2) strr() {
+	println("strer")
+}
+
+func (s *str2) hg() {
+	println("hger")
 }
 
 func main() {
-	sdff := &str2{}
-	sdf := &str{hg: sdff}
-	_, err := toml.DecodeFile("config.toml", sdf)
-	if err != nil {
-		panic("read toml err: " + err.Error())
-	}
+	message := []byte("service2")
+	formattedmsg := make([]byte, 4, 4+len(message))
+	binary.BigEndian.PutUint32(formattedmsg, uint32(len(message)))
+	fmt.Println(append(formattedmsg, message...), binary.BigEndian.Uint32([]byte{8, 115, 101, 114}))
 
-	fmt.Println(sdf, sdf.hg)
 	return
 	h1 := fnv1a.Init32
 	println(h1)
@@ -290,6 +303,7 @@ func main() {
 	println(h1)
 	h1 = fnv1a.AddString32(h1, "c")
 	println(h1, "|", fnv1a.HashString32("abc"))
+
 	return
 
 	m := map[int][]int{1: {11, 12, 13}, 2: {21, 22, 23, 24, 25, 26, 27}, 3: {31, 32, 33}, 4: {41, 42, 43}}

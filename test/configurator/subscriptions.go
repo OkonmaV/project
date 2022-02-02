@@ -152,11 +152,18 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 			if len(addrs) != 0 {
 
 				for _, addr := range addrs {
-					formatted_updateinfos = append(formatted_updateinfos, types.FormatOpcodeUpdatePubMessage(pubname_byte, types.FormatAddress(addr.netw, addr.addr), types.StatusOn))
+					var concatted_address string
+					if len(addr.remotehost) == 0 {
+						concatted_address = suckutils.ConcatTwo("127.0.0.1:", addr.port)
+					} else {
+						concatted_address = suckutils.ConcatThree(addr.remotehost, ":", addr.port)
+					}
+					formatted_updateinfos = append(formatted_updateinfos, types.FormatOpcodeUpdatePubMessage(pubname_byte, types.FormatAddress(addr.netw, concatted_address), types.StatusOn))
 				}
 
+			} else {
+				sub.l.Warning("subs", suckutils.ConcatThree("no alive local services with name \"", string(pubname), "\""))
 			}
-			sub.l.Debug("subs", suckutils.ConcatThree("no alive local services with name \"", string(pubname), "\""))
 		}
 	}
 	if len(formatted_updateinfos) != 0 {

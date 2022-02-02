@@ -10,13 +10,10 @@ import (
 	"project/test/connector"
 	"project/test/epolllistener"
 	"project/test/logs"
-	"project/test/suspender"
-	"project/test/types"
 
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/big-larry/suckutils"
 )
 
 type config struct {
@@ -30,6 +27,7 @@ const settingsCheckTicktime time.Duration = time.Minute * 5
 const reconnectsCheckTicktime time.Duration = time.Second * 10
 const reconnectsTargetBufSize int = 4
 
+// TODO: рассылка обновлений по подпискам для своих удаленных сервисов будет работать будет через жопу (т.е. не будет работать)
 // TODO: при подрубе удаленных сервисов 100% будут проблемы, поэтому так пока нельзя делать (см структуру Address)
 // TODO: "пингпонг" по таймеру между конфигураторами??? / при подключении нового конфигуратора автоматом слать ему подписку / апдейт статуса самого конфигуратора
 // TODO: реконнектор здесь есть, но работать будет через жопу (т.е. не будет работать)
@@ -57,16 +55,8 @@ func main() {
 	}()
 
 	subs := newSubscriptions(ctx, l, 5, nil)
-	suspender := suspender.NewSuspendier(
-		func(reason string) {
-			l.Warning("ownStatus", suckutils.ConcatTwo("suspended, reason: ", reason))
-			subs.updateItself(types.StatusSuspended)
-		}, func() {
-			l.Warning("ownStatus", "unsuspended")
-			subs.updateItself(types.StatusOn)
-		})
 
-	servs := newServices(ctx, l, conf.Settings, suspender, settingsCheckTicktime, subs)
+	servs := newServices(ctx, l, conf.Settings, settingsCheckTicktime, subs)
 	subs.services = servs
 
 	connector.SetupEpoll(func(e error) {
@@ -82,15 +72,23 @@ func main() {
 	})
 
 	var local_ln, external_ln listenier
-	if local_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], subs, servs, l); err != nil {
-		panic("newListener err: " + err.Error())
-	}
-	if conf.ListenExternal != "" && conf.ListenExternal != conf.ListenLocal {
-		if external_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], subs, servs, l); err != nil {
-			panic("newListener err: " + err.Error())
+	var allow_remote_on_local_ln bool
+
+	if conf.ListenExternal != "" {
+		if conf.ListenExternal != conf.ListenLocal {
+			if external_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], true, subs, servs, l); err != nil {
+				l.Error("newListener remote", err)
+				cancel()
+			}
+		} else {
+			allow_remote_on_local_ln = true
 		}
 	}
-	suspender.UnSuspend() // TODO: КТО АНСУСПЕНД ДЕЛАТЬ БУДЕТ??
+
+	if local_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], allow_remote_on_local_ln, subs, servs, l); err != nil {
+		l.Error("newListener local", err)
+		cancel()
+	}
 
 	<-ctx.Done()
 	l.Debug("Context", "done, exiting")

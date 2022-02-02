@@ -1,2 +1,2 @@
-ListenLocal = "unix:/tmp/conftest.sock"
+ListenLocal = "tcp:127.0.0.1:8093"
 Settings = "settings.conf"

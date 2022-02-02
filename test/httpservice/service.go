@@ -5,8 +5,8 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"project/test/connector"
 	"project/test/logs"
-	"project/test/suspender"
 	"project/test/types"
 	"syscall"
 	"time"
@@ -21,6 +21,10 @@ type Servicier interface {
 	CreateHandler(ctx context.Context, pubs_getter Publishers_getter) (HTTPService, error)
 }
 
+type handlecloser interface {
+	Close()
+}
+
 type config_toml struct {
 	ConfiguratorAddr string
 }
@@ -30,8 +34,12 @@ type HTTPService interface {
 	Handle(request *suckhttp.Request, logger types.Logger) (*suckhttp.Response, error)
 }
 
+const pubscheckTicktime time.Duration = time.Second * 2
+
 // TODO: КТО БУДЕТ АНСУСПЕНД ДЕЛАТЬ?
 // TODO: исправить жопу с логами
+// TODO: придумать шото для неторчащих наружу сервисов
+// TODO: написать самому замену томлу сраному
 func InitNewService(servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
 	conf := &config_toml{}
 	if _, err := toml.DecodeFile("config.toml", conf); err != nil {
@@ -44,7 +52,7 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		panic("read toml err: " + err.Error())
 	}
 
-	ctx, _ := createContextWithInterruptSignal()
+	ctx, cancel := createContextWithInterruptSignal()
 	logsctx, logscancel := context.WithCancel(context.Background())
 
 	l, _ := logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
@@ -56,18 +64,27 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		}
 	}()
 
-	ownStatus := suspender.NewSuspendier(nil, nil)
+	servStatus := newServiceStatus()
+
+	connector.SetupEpoll(func(e error) {
+		l.Error("epoll OnWaitError", e)
+		cancel()
+	})
 
 	var pubs *publishers
+	var err error
 	if len(publishers_names) != 0 {
-		pubs = newPublishers(ctx, l, ownStatus, nil)
+		if pubs, err = newPublishers(ctx, l, servStatus, nil, pubscheckTicktime, publishers_names); err != nil {
+			panic(err)
+		}
+
 	}
 	handler, err := config.CreateHandler(ctx, pubs)
 	if err != nil {
 		panic(err)
 	}
 
-	ln := newListener(ctx, l, ownStatus, threads, keepConnAlive, func(conn net.Conn) error {
+	ln := newListener(ctx, l, servStatus, threads, keepConnAlive, func(conn net.Conn) error {
 		request, err := suckhttp.ReadRequest(ctx, conn, time.Minute)
 		if err != nil {
 			return err
@@ -84,13 +101,12 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		}
 		return response.Write(conn, time.Minute)
 	})
-
-	configurator := newConfigurator(ctx, l, pubs, ln, conf.ConfiguratorAddr, servicename, time.Second*5)
+	configurator := newConfigurator(ctx, l, servStatus, pubs, ln, conf.ConfiguratorAddr, servicename, time.Second*5)
 	if pubs != nil {
 		pubs.configurator = configurator
 	}
-	ownStatus.SetFunctions(configurator.onSuspend, configurator.onUnSuspend)
-	ownStatus.UnSuspend() // TODO: КТО БУДЕТ АНСУСПЕНД ДЕЛАТЬ?
+	servStatus.setOnSuspendFunc(configurator.onSuspend)
+	servStatus.setOnUnSuspendFunc(configurator.onUnSuspend)
 
 	select {
 	case <-ctx.Done():
@@ -100,9 +116,13 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
-	ln.close()
+	if ln != nil {
+		ln.close()
+	}
+	if handle_closer, ok := handler.(handlecloser); ok {
+		handle_closer.Close()
+	}
 	logscancel()
-
 }
 
 func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {
@@ -117,4 +137,4 @@ func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
-func handler(ctx context.Context, conn net.Conn) error
+//func handler(ctx context.Context, conn net.Conn) error

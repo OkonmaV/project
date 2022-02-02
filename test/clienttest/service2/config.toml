@@ -1,0 +1,2 @@
+ConfiguratorAddr = "tcp:127.0.0.1:8093"
+SayHello = "service 2 says hello"

@@ -14,10 +14,6 @@ func (s *service) NewMessage() connector.MessageReader {
 }
 
 func (s *service) Handle(message connector.MessageReader) error {
-	if !s.ownStatus.OnAir() {
-		s.l.Debug("onAir", "suspended, dont handle the message")
-		return s.connector.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeImSupended)}))
-	}
 
 	payload := message.(connector.BasicMessage).Payload
 	if len(payload) == 0 {
@@ -28,6 +24,7 @@ func (s *service) Handle(message connector.MessageReader) error {
 	case types.OperationCodePing:
 		return nil
 	case types.OperationCodeGiveMeOuterAddr:
+		println("opcode givemeouteraddr")
 		if netw, addr, err := s.outerAddr.getListeningAddr(); err != nil {
 			return errors.New(suckutils.ConcatTwo("getlisteningaddr err: ", err.Error()))
 		} else {
@@ -38,6 +35,7 @@ func (s *service) Handle(message connector.MessageReader) error {
 			return nil
 		}
 	case types.OperationCodeSubscribeToServices:
+		println("opcode subscription")
 		raw_pubnames := types.SeparatePayload(payload[1:])
 		if raw_pubnames == nil {
 			return connector.ErrWeirdData

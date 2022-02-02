@@ -11,16 +11,18 @@ import (
 	"github.com/big-larry/suckutils"
 )
 
-const ReconnectEnabledFlag string = "-reconnect"
+// format: "-remote:(host addr)", e.g. "-remote:195.21.65.87"
+const RemoteEnabledFlag string = "-remote:"
 
 type ServiceName string
 
 // TODO: при подрубе удаленных сервисов 100% будут проблемы, поэтому так пока нельзя делать
 // TODO: рассмотреть возможность дифференцировать адрес и порт, навскидку непонятно нужно ли
 type Address struct {
-	addr   string
-	netw   types.NetProtocol
-	random bool
+	netw       types.NetProtocol
+	remotehost string
+	port       string
+	random     bool
 }
 
 func readAddress(rawline string) *Address {
@@ -28,25 +30,31 @@ func readAddress(rawline string) *Address {
 	if sep_ind == -1 {
 		return nil
 	}
-	addr := &Address{addr: (rawline)[sep_ind+1:]}
+	addr := &Address{port: (rawline)[sep_ind+1:]}
+	if addr.port == "*" {
+		addr.random = true
+	}
 
 	switch (rawline)[:sep_ind] {
 	case "tcp":
 		addr.netw = types.NetProtocolTcp
+		if _, err := strconv.ParseUint(addr.port, 10, 16); err != nil {
+			return nil
+		}
 	case "unix":
 		addr.netw = types.NetProtocolUnix
+		if !addr.netw.Verify(addr.port) {
+			return nil
+		}
 	case "nil":
 		addr.netw = types.NetProtocolNil
+		if !addr.netw.Verify(addr.port) {
+			return nil
+		}
 	default:
 		return nil
 	}
-	if addr.addr == "*" {
-		addr.random = true
-		return addr
-	}
-	if !addr.netw.Verify(addr.addr) {
-		return nil
-	}
+
 	return addr
 }
 
@@ -55,45 +63,60 @@ func (a *Address) getListeningAddr() (types.NetProtocol, string, error) {
 		return 0, "", errors.New("nil address struct")
 	}
 	if a.random {
+		if len(a.remotehost) != 0 {
+			return 0, "", errors.New("cant get random tcp-listening-addr for remote host")
+		}
+
+		if a.port != "*" {
+			var addr string
+			if a.netw == types.NetProtocolTcp {
+				addr = suckutils.ConcatTwo("127.0.0.1:", a.port)
+			} else {
+				addr = a.port
+			}
+			if l, err := net.Listen(a.netw.String(), addr); err == nil {
+				l.Close()
+				return a.netw, addr, nil
+			}
+		}
+
 		var err error
 		for i := 0; i < 3; i++ {
-			addr, err := getfreeaddr(a.netw)
+			a.port, err = getFreePort(a.netw)
 			if err != nil {
 				continue
 			}
-			return a.netw, addr, nil
+			return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
 		}
 		return 0, "", err
 	}
-	return a.netw, a.addr, nil
+	return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
 }
 
-// если адреса рандомны то всегда true (хз как назвать очевиднее)
-func (addr1 *Address) equalAsListenAddr(addr2 Address) bool {
+// если адреса рандомны то всегда true
+func (addr1 *Address) equalAsListeningAddr(addr2 Address) bool {
 	if addr1.random == addr2.random {
 		if addr1.random {
 			return true
 		}
-		return addr1.netw == addr2.netw && addr1.addr == addr2.addr
+		return addr1.netw == addr2.netw && addr1.remotehost == addr2.remotehost && addr1.port == addr2.port
 	}
 	return false
 }
 
-func getfreeaddr(netw types.NetProtocol) (string, error) {
+func getFreePort(netw types.NetProtocol) (string, error) {
 	switch netw {
 	case types.NetProtocolTcp:
 		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
 		if err != nil {
 			return "", err
 		}
-		l, err := net.ListenTCP("tcp", addr)
-		if err != nil {
-			return "", err
-		}
-		l.Close()
-		return addr.String(), nil
+
+		return strconv.Itoa(addr.Port), nil
 	case types.NetProtocolUnix:
 		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
+	case types.NetProtocolNil:
+		return "", nil
 	}
 	return "", errors.New("unknown protocol")
 }

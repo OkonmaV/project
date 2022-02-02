@@ -3,7 +3,6 @@ package connector
 import (
 	"errors"
 	"net"
-	"time"
 )
 
 var ErrWeirdData error = errors.New("weird data")
@@ -13,16 +12,9 @@ var ErrNilConn error = errors.New("conn is nil")
 var ErrNilGopool error = errors.New("gopool is nil, setup gopool first")
 var ErrReadTimeout error = errors.New("read timeout")
 
-// for passing net.Conn
-type ConnReader interface {
-	Read([]byte) (int, error)
-	SetReadDeadline(time.Time) error
-	RemoteAddr() net.Addr
-}
-
 // for user's implementation
 type MessageReader interface {
-	Read(ConnReader) error
+	Read(net.Conn) error
 }
 
 // for user's implementation
@@ -34,9 +26,17 @@ type MessageHandler interface {
 
 type Conn interface {
 	StartServing() error
+	ClearFromCache()
 	Informer
 	Closer
 	Sender
+}
+
+type ReConn interface {
+	Conn
+	ReconnectedItself(net.Conn) error
+	IsReconnectStopped() bool
+	CancelReconnect()
 }
 
 // implemented by connector

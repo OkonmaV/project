@@ -2,6 +2,7 @@ package connector
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"project/test/gopool"
 	"sync"
@@ -109,7 +110,8 @@ func (connector *EpollConnector) Send(message []byte) error {
 		return ErrClosedConnector
 	}
 	//connector.conn.SetWriteDeadline(time.Now().Add(time.Second))
-	_, err := connector.conn.Write(message)
+	n, err := connector.conn.Write(message)
+	fmt.Println("writed bytes: ", n, ", message: ", message, "|||", string(message))
 	return err
 }
 
