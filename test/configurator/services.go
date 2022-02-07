@@ -110,7 +110,6 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 
 		// TODO: оптимизировать эту всю херь ниже, если возможно
 
-		var conf_enableReconnect bool
 		conf_addrs := make([]*Address, 0, len(rawconf_addrs)) // слайс для сверки адресов
 		for _, a := range rawconf_addrs {                     // читаем адреса из settings.conf = проверяем их на ошибки
 			if addr := readAddress(a); addr != nil {
@@ -141,7 +140,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 
 		for i := 0; i < len(conf_addrs); i++ { // если остались адреса, еще не присутствующие в системе, мы их добавляем
 			state.rwmux.Lock()
-			state.connections = append(state.connections, newService(conf_name, *conf_addrs[i], conf_enableReconnect, l, s.subs))
+			state.connections = append(state.connections, newService(conf_name, *conf_addrs[i], l, s.subs))
 			state.rwmux.Unlock()
 		}
 
@@ -160,7 +159,7 @@ type service_state struct {
 type service_stateier interface {
 	getAllOutsideAddrsWithStatus(types.ServiceStatus) []*Address
 	getAllServices() []*service
-	initNewConnection(conn net.Conn, isLocalhosted bool) error
+	initNewConnection(conn net.Conn, isLocalhosted bool, isConf bool) error
 }
 
 func newServiceState(conns_cap int) *service_state {
@@ -193,14 +192,18 @@ func (state *service_state) getAllServices() []*service {
 	return res
 }
 
-// TODO: че делать с подключением конфигураторов? потому что, в случае временного разрыва соединения между двумя конфигураторами, с огромной вероятностью будет около-дедлок - оба реконнектора с двух сторон делают dial, затем лочат свой статусмьютекс (в структуре service) в хэндшейке,
-// в котором ждут OpCodeOK друг от друга, затем по дедлайну отваливаются (ибо функции ниже, вызываемой на новый коннекшн, тоже нужен этот же мьютекс) и все по новой
-func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool) error {
+func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool, isConf bool) error {
 	if state == nil {
 		return errors.New("unknown service") // да, неочевидно
 	}
-	state.rwmux.RLock()
-	defer state.rwmux.RUnlock()
+
+	if isConf && isLocalhosted {
+		return errors.New(suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
+	}
+
+	state.rwmux.Lock()
+	defer state.rwmux.Unlock()
+
 	var conn_host string
 	if !isLocalhosted {
 		conn_host = (conn.RemoteAddr().String())[:strings.Index(conn.RemoteAddr().String(), ":")]
@@ -234,14 +237,31 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool)
 			goto failure
 		}
 		state.connections[i].connector = con
-		state.connections[i].status = types.StatusSuspended // status update to suspend
+		if isConf {
+			state.connections[i].status = types.StatusOn
+		} else {
+			state.connections[i].status = types.StatusSuspended
+		}
 		state.connections[i].statusmux.Unlock()
 		if err := con.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeOK)})); err != nil {
 			state.connections[i].connector.Close(err)
 			return err
 		}
+		if isConf {
+			time.Sleep(time.Second * 2)
+			sendUpdateToOuterConf(state.connections[i])
+		}
 		return nil
 	}
+	// TODO: !!!!!!!!!!!!!!!! если не нашли конфигуратор в стейте, то добавляем его туда. Проблема: откуда взять логгер и подписки
+	// if isConf {
+	// 	state.connections = append(state.connections, newService(
+	// 		ServiceName(types.ConfServiceName),
+	// 		Address{netw: types.NetProtocolTcp, remotehost: conn_host},
+	// 		*loggs,
+	// 	))
+	// }
+	conn.Write(connector.FormatBasicMessage([]byte{byte(types.OperationCodeNOTOK)}))
 	return errors.New("no free conns for this service available") // TODO: где-то имя сервиса в логи вписать
 }
 
@@ -262,7 +282,7 @@ func (s *service) isStatus(status types.ServiceStatus) bool {
 	return s.status == status
 }
 
-func newService(name ServiceName, outerAddr Address, reconnect bool, l types.Logger, subs subscriptionsier) *service {
+func newService(name ServiceName, outerAddr Address, l types.Logger, subs subscriptionsier) *service {
 	return &service{name: name, outerAddr: outerAddr, l: l, subs: subs}
 }
 
@@ -286,4 +306,19 @@ func (s *service) changeStatus(newStatus types.ServiceStatus) {
 	}
 	s.status = newStatus
 	s.l.Debug("status", suckutils.ConcatThree("updated to \"", newStatus.String(), "\""))
+}
+
+func sendUpdateToOuterConf(serv *service) error {
+	message := append(make([]byte, 0, 15), byte(types.OperationCodeSubscribeToServices))
+	if pubnames := serv.subs.getAllPubNames(); len(pubnames) != 0 { // шлем подписку на тошо у нас в пабах есть
+		for _, pub_name := range pubnames {
+			pub_name_byte := []byte(pub_name)
+			message = append(append(message, byte(len(pub_name_byte))), pub_name_byte...)
+		}
+	}
+	message = append(append(message, byte(len(types.ConfServiceName))), []byte(types.ConfServiceName)...)
+	if err := serv.connector.Send(connector.FormatBasicMessage(message)); err != nil {
+		return err
+	}
+	return serv.connector.Send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(thisConfOuterPort)+2), byte(types.OperationCodeMyOuterPort), byte(len(thisConfOuterPort))), thisConfOuterPort...)))
 }

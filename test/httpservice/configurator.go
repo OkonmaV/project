@@ -73,13 +73,11 @@ func newConfigurator(ctx context.Context, l types.Logger, servStatus *serviceSta
 }
 
 func (c *configurator) handshake(conn net.Conn) error {
-	println("message: ", string(connector.FormatBasicMessage([]byte(c.thisServiceName))))
 	if _, err := conn.Write(connector.FormatBasicMessage([]byte(c.thisServiceName))); err != nil {
 		return err
 	}
-	time.Sleep(time.Second)
 	buf := make([]byte, 5)
-	conn.SetReadDeadline(time.Now().Add(time.Second))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 	n, err := conn.Read(buf)
 	if err != nil {
 		return errors.New(suckutils.ConcatTwo("err reading configurator's approving, err: ", err.Error()))
@@ -162,7 +160,7 @@ func (c *configurator) NewMessage() connector.MessageReader {
 }
 
 func (c *configurator) Handle(message connector.MessageReader) error {
-	payload := message.(connector.BasicMessage).Payload
+	payload := message.(*connector.BasicMessage).Payload
 	if len(payload) == 0 {
 		return connector.ErrEmptyPayload
 	}

@@ -2,7 +2,6 @@ package connector
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"project/test/gopool"
 	"sync"
@@ -39,6 +38,9 @@ func SetupEpoll(errhandler EpollErrorHandler) error {
 	var err error
 	if poller != nil {
 		return errors.New("epoll is already setup")
+	}
+	if errhandler == nil {
+		errhandler = func(e error) { panic(e) }
 	}
 	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: errhandler}); err != nil {
 		return err
@@ -87,10 +89,14 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 	}
 	var err error
 	message := connector.msghandler.NewMessage()
+	connector.mux.Lock() //
 	if err = message.Read(connector.conn); err != nil {
+		connector.mux.Unlock() //
 		connector.Close(err)
 		return
 	}
+	connector.mux.Unlock() //
+
 	if pool != nil {
 		pool.Schedule(func() {
 			if err := connector.msghandler.Handle(message); err != nil {
@@ -110,8 +116,9 @@ func (connector *EpollConnector) Send(message []byte) error {
 		return ErrClosedConnector
 	}
 	//connector.conn.SetWriteDeadline(time.Now().Add(time.Second))
-	n, err := connector.conn.Write(message)
-	fmt.Println("writed bytes: ", n, ", message: ", message, "|||", string(message))
+	connector.mux.Lock()
+	defer connector.mux.Unlock()
+	_, err := connector.conn.Write(message)
 	return err
 }
 

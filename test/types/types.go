@@ -80,8 +80,11 @@ const (
 	// []byte{opcode}
 	OperationCodePing OperationCode = 7
 	// []byte{opcode}
-	OperationCodeOK    OperationCode = 2
+	OperationCodeOK OperationCode = 2
+	// []byte{opcode}
 	OperationCodeNOTOK OperationCode = 10
+	// []byte{opcode, len(addr), addr}
+	OperationCodeMyOuterPort OperationCode = 11
 )
 
 // no total length and opcode in return slice

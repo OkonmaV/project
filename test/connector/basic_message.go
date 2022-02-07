@@ -13,29 +13,38 @@ type BasicMessage struct {
 	Payload []byte
 }
 
-func (msg BasicMessage) Read(conn net.Conn) error {
+var errReadedLess error = errors.New("readed less bytes than expected")
+
+func (msg *BasicMessage) Read(conn net.Conn) error {
 
 	buf := make([]byte, 4)
-	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	_, err := conn.Read(buf)
+	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	n, err := conn.Read(buf)
 	if err != nil {
 		return err
 	}
+	if uint32(n) != 4 {
+		return errReadedLess
+	}
 	msglength := binary.LittleEndian.Uint32(buf)
-	println("message length: ", msglength) ////////////////////
 	if msglength > maxlength {
 		return errors.New("payload too long")
 	}
 	msg.Payload = make([]byte, msglength)
 	//conn.SetReadDeadline(time.Now().Add((time.Millisecond * 700) * (time.Duration((msglength / 1024) + 1))))
-	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
-	_, err = conn.Read(buf)
-	return err
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
+	if n, err = conn.Read(msg.Payload); err != nil {
+		return err
+	}
+	if uint32(n) != msglength {
+		return errReadedLess
+	}
+	return nil
 }
 
 // payload not allocated
-func NewBasicMessage() BasicMessage {
-	return BasicMessage{}
+func NewBasicMessage() *BasicMessage {
+	return &BasicMessage{}
 }
 
 func FormatBasicMessage(message []byte) []byte {

@@ -12,8 +12,8 @@ import (
 )
 
 type subscriptions struct {
-	subs_list   map[ServiceName][]*service
-	rwmux       sync.RWMutex
+	subs_list map[ServiceName][]*service
+	sync.RWMutex
 	services    servicesier
 	pubsUpdates chan pubStatusUpdate
 
@@ -26,6 +26,7 @@ type subscriptionsier interface {
 	subscribe(*service, ...ServiceName) error
 	unsubscribe(ServiceName, *service) error
 	getSubscribers(ServiceName) []*service
+	getAllPubNames() []ServiceName
 }
 
 func newSubscriptions(ctx context.Context, l types.Logger, pubsUpdatesQueue int /*, ownStatus suspender.Suspendier*/, services servicesier, ownSubscriptions ...ServiceName) *subscriptions {
@@ -110,17 +111,18 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 	}
 
 	if len(pubnames) == 0 {
-		return errors.New("empty pubname")
+		return errors.New("empty pubnames")
 	}
 
-	subs.rwmux.Lock()
-	defer subs.rwmux.Unlock()
+	subs.Lock()
 
-	formatted_updateinfos := make([][]byte, 0, len(pubnames)+2)
+	formatted_updateinfos := make([][]byte, 0, len(pubnames)+2)                                              // alive local pubs
+	confs_message := append(make([]byte, 0, len(pubnames)*15), byte(types.OperationCodeSubscribeToServices)) // subscription to send to other confs
 
 	for _, pubname := range pubnames {
 		if sub.name == pubname && sub.name != ServiceName(types.ConfServiceName) { // avoiding self-subscription
-			return errors.New("service cant subscribe to itself")
+			subs.Unlock()
+			return errors.New("service trying subscribe to itself")
 		}
 		if _, ok := subs.subs_list[pubname]; ok {
 			for _, alreadysubbed := range subs.subs_list[pubname] {
@@ -138,14 +140,11 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 			subs.subs_list[pubname] = append(make([]*service, 1), sub)
 		}
 
+		subs.Unlock()
+
 		pubname_byte := []byte(pubname)
-		if confs_state := subs.services.getServiceState(ServiceName(types.ConfServiceName)); confs_state != nil { // sending subscription to other confs
-			confs := confs_state.getAllServices()
-			if len(confs) != 0 {
-				message := connector.FormatBasicMessage(append(append(make([]byte, 0, len(pubname_byte)+2), byte(types.OperationCodeSubscribeToServices), byte(len(pubname_byte))), pubname_byte...))
-				sendToMany(message, confs)
-			}
-		}
+
+		confs_message = append(append(confs_message, byte(len(pubname_byte))), pubname_byte...)
 
 		if state := subs.services.getServiceState(pubname); state != nil { // getting alive local pubs
 			addrs := state.getAllOutsideAddrsWithStatus(types.StatusOn)
@@ -166,6 +165,14 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 			}
 		}
 	}
+
+	if confs_state := subs.services.getServiceState(ServiceName(types.ConfServiceName)); confs_state != nil { // sending subscription to other confs
+		confs := confs_state.getAllServices()
+		if len(confs) != 0 {
+			sendToMany(connector.FormatBasicMessage(confs_message), confs)
+		}
+	}
+
 	if len(formatted_updateinfos) != 0 {
 		updateinfos := types.ConcatPayload(formatted_updateinfos...)
 		message := append(make([]byte, 1, len(updateinfos)+1), updateinfos...)
@@ -185,8 +192,8 @@ func (subs *subscriptions) unsubscribe(pubName ServiceName, sub *service) error 
 		return errors.New("empty pubname")
 	}
 
-	subs.rwmux.Lock()
-	defer subs.rwmux.Unlock()
+	subs.Lock()
+	defer subs.Unlock()
 
 	if _, ok := subs.subs_list[pubName]; ok {
 		for i := 0; i < len(subs.subs_list[pubName]); i++ {
@@ -196,7 +203,9 @@ func (subs *subscriptions) unsubscribe(pubName ServiceName, sub *service) error 
 			}
 		}
 	}
-	if cap(subs.subs_list[pubName])-len(subs.subs_list[pubName]) > maxFreeSpace { // reslice after overflow
+	if len(subs.subs_list[pubName]) == 0 { // delete pub from map if no subs here
+		delete(subs.subs_list, pubName)
+	} else if cap(subs.subs_list[pubName])-len(subs.subs_list[pubName]) > maxFreeSpace { // reslice after overflow
 		subs.subs_list[pubName] = append(make([]*service, 0, len(subs.subs_list[pubName])+maxFreeSpace), subs.subs_list[pubName]...)
 	}
 	return nil
@@ -207,8 +216,8 @@ func (subs *subscriptions) getSubscribers(pubName ServiceName) []*service {
 		return nil
 	}
 
-	subs.rwmux.RLock()
-	defer subs.rwmux.RUnlock()
+	subs.RLock()
+	defer subs.RUnlock()
 
 	if _, ok := subs.subs_list[pubName]; ok {
 		return append(make([]*service, len(subs.subs_list[pubName])), subs.subs_list[pubName]...)
@@ -216,15 +225,13 @@ func (subs *subscriptions) getSubscribers(pubName ServiceName) []*service {
 	return nil
 }
 
-func (subs *subscriptions) updateItself(newstatus types.ServiceStatus) {
+func (subs *subscriptions) getAllPubNames() []ServiceName {
+	subs.RLock()
+	defer subs.RUnlock()
 
-	subs.rwmux.RLock()
-	defer subs.rwmux.RUnlock()
-
-	if mysubs, ok := subs.subs_list[ServiceName(types.ConfServiceName)]; ok {
-		if len(mysubs) != 0 {
-			message := connector.FormatBasicMessage(append(make([]byte, 0, 2), byte(types.OperationCodeMyStatusChanged), byte(newstatus)))
-			sendToMany(message, mysubs)
-		}
+	pubnames := make([]ServiceName, 0, len(subs.subs_list))
+	for pubname, _ := range subs.subs_list {
+		pubnames = append(pubnames, pubname)
 	}
+	return pubnames
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"project/test/connector"
 	"project/test/types"
+	"strconv"
 	"strings"
 
 	"github.com/big-larry/suckutils"
@@ -15,16 +16,14 @@ func (s *service) NewMessage() connector.MessageReader {
 
 func (s *service) Handle(message connector.MessageReader) error {
 
-	payload := message.(connector.BasicMessage).Payload
+	payload := message.(*connector.BasicMessage).Payload
 	if len(payload) == 0 {
 		return connector.ErrEmptyPayload
 	}
 	switch types.OperationCode(payload[0]) {
-	//case types.OperationCodeImSupended: // TODO
 	case types.OperationCodePing:
 		return nil
 	case types.OperationCodeGiveMeOuterAddr:
-		println("opcode givemeouteraddr")
 		if netw, addr, err := s.outerAddr.getListeningAddr(); err != nil {
 			return errors.New(suckutils.ConcatTwo("getlisteningaddr err: ", err.Error()))
 		} else {
@@ -35,7 +34,6 @@ func (s *service) Handle(message connector.MessageReader) error {
 			return nil
 		}
 	case types.OperationCodeSubscribeToServices:
-		println("opcode subscription")
 		raw_pubnames := types.SeparatePayload(payload[1:])
 		if raw_pubnames == nil {
 			return connector.ErrWeirdData
@@ -85,6 +83,21 @@ func (s *service) Handle(message connector.MessageReader) error {
 			return connector.ErrWeirdData
 		}
 		s.changeStatus(types.ServiceStatus(payload[1]))
+	case types.OperationCodeMyOuterPort:
+		if s.name == ServiceName(types.ConfServiceName) {
+			if len(payload) == 0 {
+				return connector.ErrWeirdData
+			}
+			if p, err := strconv.Atoi(string(payload)); err != nil || p == 0 {
+				return connector.ErrWeirdData
+			} else {
+				s.statusmux.Lock()
+				s.outerAddr.port = string(payload)
+			}
+
+		} else {
+			return errors.New("not configurator, but sent OperationCodeMyOuterPort")
+		}
 	default:
 		return connector.ErrWeirdData
 	}

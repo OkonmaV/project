@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/binary"
 	"net"
-	"project/test/connector"
 	"project/test/epolllistener"
 	"project/test/types"
 	"strings"
@@ -62,20 +61,12 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 	}
 
 	buf = make([]byte, binary.LittleEndian.Uint32(buf))
-	n, err := conn.Read(buf)
-	if err != nil {
+	if _, err = conn.Read(buf); err != nil {
 		lninfo.l.Error("HandleNewConn/Read", err)
 		conn.Close()
 		return
 	}
-	name := ServiceName(buf[:n])
-	if name == ServiceName(types.ConfServiceName) {
-		if connLocalhosted {
-			lninfo.l.Warning("HandleNewConn", suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
-			conn.Close()
-			return
-		}
-	}
+	name := ServiceName(buf)
 
 	state := lninfo.services.getServiceState(name)
 	if state == nil {
@@ -83,15 +74,11 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	if err := state.initNewConnection(conn, connLocalhosted); err != nil {
+	if err := state.initNewConnection(conn, connLocalhosted, name == ServiceName(types.ConfServiceName)); err != nil {
 		lninfo.l.Error("HandleNewConn/initNewConnection", err)
-		if _, err := conn.Write(connector.FormatBasicMessage([]byte{byte(types.OperationCodeNOTOK)})); err != nil {
-			lninfo.l.Error("HandleNewConn/Send", err)
-		}
 		conn.Close()
 		return
 	}
-
 }
 
 // for listener's interface
