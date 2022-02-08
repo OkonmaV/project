@@ -36,7 +36,6 @@ type HTTPService interface {
 
 const pubscheckTicktime time.Duration = time.Second * 2
 
-// TODO: КТО БУДЕТ АНСУСПЕНД ДЕЛАТЬ?
 // TODO: исправить жопу с логами
 // TODO: придумать шото для неторчащих наружу сервисов
 // TODO: написать самому замену томлу сраному
@@ -77,7 +76,8 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		if pubs, err = newPublishers(ctx, l, servStatus, nil, pubscheckTicktime, publishers_names); err != nil {
 			panic(err)
 		}
-
+	} else {
+		servStatus.setPubsStatus(true)
 	}
 	handler, err := config.CreateHandler(ctx, pubs)
 	if err != nil {

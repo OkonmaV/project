@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"project/test/connector"
 	"project/test/epolllistener"
@@ -89,6 +90,10 @@ func (c *conf) afterConnProc() error {
 }
 
 func main() {
+	p, err := strconv.Atoi(string([]byte{4, 56, 48, 57, 57}))
+	fmt.Println(p, err, string([]byte{4, 56, 48, 57, 57}))
+	return
+
 	connector.InitReconnection(context.Background(), time.Second*3, 1, 1)
 	connector.SetupEpoll(nil)
 	c := &conf{}

@@ -28,8 +28,6 @@ type listenier interface {
 	close()
 }
 
-// суть разделения на внешний и локальный листенер - юникс по локалке. а так - конфигуратору сейчас до пизды, если к внешнему листнеру подрубается локальный сервис (и я не особо вижу смысл вешать ограничение)
-
 func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l types.Logger) (listenier, error) {
 
 	lninfo := &listener_info{allowRemote: allowRemote, subs: subs, services: services, l: l}

@@ -3,6 +3,8 @@ package types
 import (
 	"errors"
 	"net"
+	"strconv"
+	"strings"
 )
 
 type Logger interface {
@@ -38,7 +40,14 @@ func (np NetProtocol) String() string {
 func (np NetProtocol) Verify(addr string) bool {
 	switch np {
 	case NetProtocolTcp:
-		if net.ParseIP(addr) == nil {
+		sep := strings.LastIndex(addr, ":")
+		if sep == -1 {
+			return false
+		}
+		if net.ParseIP((addr)[:sep]) == nil {
+			return false
+		}
+		if _, err := strconv.ParseUint((addr)[sep+1:], 10, 16); err != nil {
 			return false
 		}
 		return true
@@ -63,7 +72,7 @@ type OperationCode byte
 
 const (
 	// []byte{opcode, statuscode}
-	OperationCodeMyStatusChanged OperationCode = 1
+	OperationCodeMyStatusChanged OperationCode = 2
 	// []byte{opcode, len(pubname), pubname, len(pubname), pubname, ...}
 	OperationCodeUnsubscribeFromServices OperationCode = 3
 	// []byte{opcode, len(pubname), pubname, len(pubname), pubname, ...}
@@ -80,10 +89,10 @@ const (
 	// []byte{opcode}
 	OperationCodePing OperationCode = 7
 	// []byte{opcode}
-	OperationCodeOK OperationCode = 2
+	OperationCodeOK OperationCode = 1
 	// []byte{opcode}
 	OperationCodeNOTOK OperationCode = 10
-	// []byte{opcode, len(addr), addr}
+	// []byte{opcode, port}
 	OperationCodeMyOuterPort OperationCode = 11
 )
 

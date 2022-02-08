@@ -31,6 +31,7 @@ func newConfigurator(ctx context.Context, l types.Logger, servStatus *serviceSta
 		thisServiceName: thisServiceName,
 		l:               l, servStatus: servStatus,
 		publishers:                pubs,
+		listener:                  listener,
 		terminationByConfigurator: make(chan struct{}, 1)}
 
 	connector.InitReconnection(ctx, reconnectTimeout, 1, 1)
@@ -86,7 +87,9 @@ func (c *configurator) handshake(conn net.Conn) error {
 		if buf[4] == byte(types.OperationCodeOK) {
 			return nil
 		} else if buf[4] == byte(types.OperationCodeNOTOK) {
-			go c.conn.CancelReconnect() // горутина пушто этот хэндшейк под залоченным мьютексом выполняется
+			if c.conn != nil {
+				go c.conn.CancelReconnect() // горутина пушто этот хэндшейк под залоченным мьютексом выполняется
+			}
 			c.terminationByConfigurator <- struct{}{}
 			return errors.New("configurator do not approve this service")
 		}
@@ -99,7 +102,7 @@ func (c *configurator) afterConnProc() error {
 	if c.servStatus.onAir() {
 		myStatus = byte(types.StatusOn)
 	}
-	if err := c.conn.Send(connector.FormatBasicMessage([]byte{myStatus})); err != nil {
+	if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), myStatus})); err != nil {
 		return err
 	}
 
@@ -124,6 +127,7 @@ func (c *configurator) afterConnProc() error {
 }
 
 func (c *configurator) send(message []byte) error {
+	fmt.Println("SENDING MESSAGE: ", message) // FOR TEST
 	if c == nil {
 		return errors.New("nil configurator")
 	}
@@ -133,26 +137,17 @@ func (c *configurator) send(message []byte) error {
 	if c.conn.IsClosed() {
 		return connector.ErrClosedConnector
 	}
-	fmt.Println("send", message, "|||", string(message))
 	return c.conn.Send(message)
 }
 
 func (c *configurator) onSuspend(reason string) {
 	c.l.Warning("OwnStatus", suckutils.ConcatTwo("suspended, reason: ", reason))
-	if c.conn != nil && !c.conn.IsClosed() {
-		if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusSuspended)})); err != nil {
-			c.l.Error("Send", err)
-		}
-	}
+	c.send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusSuspended)}))
 }
 
 func (c *configurator) onUnSuspend() {
 	c.l.Warning("OwnStatus", "unsuspended")
-	if c.conn != nil && !c.conn.IsClosed() {
-		if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusOn)})); err != nil {
-			c.l.Error("Send", err)
-		}
-	}
+	c.send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusOn)}))
 }
 
 func (c *configurator) NewMessage() connector.MessageReader {
@@ -178,7 +173,7 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 		if len(payload) < 2+int(payload[1]) {
 			return connector.ErrWeirdData
 		}
-		if netw, addr, err := types.UnformatAddress(payload[2 : 3+int(payload[1])]); err != nil {
+		if netw, addr, err := types.UnformatAddress(payload[2 : 2+int(payload[1])]); err != nil {
 			return err
 		} else {
 			if netw == types.NetProtocolNil {

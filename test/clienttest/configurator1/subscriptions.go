@@ -122,7 +122,7 @@ loop:
 
 			sub.l.Debug("subs", suckutils.ConcatThree("subscribed to \"", string(pubname), "\""))
 		} else {
-			subs.subs_list[pubname] = append(make([]*service, 1), sub)
+			subs.subs_list[pubname] = append(make([]*service, 0, 1), sub)
 		}
 
 		subs.Unlock()

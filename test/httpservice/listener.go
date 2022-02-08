@@ -37,17 +37,13 @@ func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus,
 	if threads < 1 {
 		panic("threads num cant be less than 1")
 	}
-	ln := &listener{ctx: ctx,
+	return &listener{ctx: ctx,
 		connsToHandle: make(chan net.Conn, 1),
 		activeWorkers: make(chan struct{}, threads),
 		handler:       handler,
 		keepAlive:     keepAlive,
 		servStatus:    servStatus,
 		l:             l}
-	for i := 0; i < threads; i++ {
-
-	}
-	return ln
 }
 
 func (listener *listener) listen(network, address string) error {
@@ -210,6 +206,9 @@ func (listener *listener) onAir() bool {
 }
 
 func (listener *listener) Addr() (string, string) {
+	if listener == nil {
+
+	}
 	listener.RLock()
 	defer listener.RUnlock()
 	if listener.listener == nil {

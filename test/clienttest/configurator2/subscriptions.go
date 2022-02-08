@@ -7,6 +7,7 @@ import (
 	"project/test/types"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/big-larry/suckutils"
 )
@@ -60,11 +61,14 @@ func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 				continue
 			}
 			if subscriptors := subs.getSubscribers(ServiceName(update.servicename)); len(subscriptors) != 0 {
+				println("SENDTOsubs: ", len(subscriptors))
+				time.Sleep(time.Second * 2)
 				payload := types.ConcatPayload(types.FormatOpcodeUpdatePubMessage(update.servicename, update.address, update.status))
 				message := append(append(make([]byte, 1, len(payload)+1), byte(types.OperationCodeUpdatePubs)), payload...)
 				if update.sendToConfs {
 					sendToMany(connector.FormatBasicMessage(message), subscriptors)
 				} else {
+
 					for _, subscriptor := range subscriptors {
 						if subscriptor == nil || subscriptor.connector.IsClosed() || subscriptor.name == ServiceName(types.ConfServiceName) {
 							continue
@@ -99,10 +103,12 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 		return errors.New("empty pubnames")
 	}
 	sendToConfs := sub.name != ServiceName(types.ConfServiceName)
-	subs.Lock()
 
 	formatted_updateinfos := make([][]byte, 0, len(pubnames)+2)                                              // alive local pubs
 	confs_message := append(make([]byte, 0, len(pubnames)*15), byte(types.OperationCodeSubscribeToServices)) // subscription to send to other confs
+
+	subs.Lock()
+
 loop:
 	for _, pubname := range pubnames {
 		if sub.name == pubname && sub.name != ServiceName(types.ConfServiceName) { // avoiding self-subscription

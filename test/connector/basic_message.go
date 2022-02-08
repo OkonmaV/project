@@ -3,6 +3,7 @@ package connector
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"net"
 	"time"
 )
@@ -36,6 +37,7 @@ func (msg *BasicMessage) Read(conn net.Conn) error {
 	if n, err = conn.Read(msg.Payload); err != nil {
 		return err
 	}
+	fmt.Println("CONNECTOR MESSAGE READED: ", msg.Payload, " LEN: ", msglength)
 	if uint32(n) != msglength {
 		return errReadedLess
 	}

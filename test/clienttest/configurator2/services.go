@@ -123,7 +123,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 			if addr := readAddress(a); addr != nil {
 				settings_addrs = append(settings_addrs, addr)
 			} else {
-				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n+1), ": ", a))
+				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n), ": ", a))
 			}
 		}
 
@@ -209,9 +209,9 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 		return errors.New("unknown service") // да, неочевидно
 	}
 
-	if isConf && isLocalhosted {
-		return errors.New(suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
-	}
+	// if isConf && isLocalhosted {
+	// 	return errors.New(suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
+	// }
 
 	state.rwmux.Lock()
 	defer state.rwmux.Unlock()
@@ -225,10 +225,10 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 		state.connections[i].statusmux.Lock()
 		var con connector.Conn
 		var err error
-
 		if state.connections[i].status == types.StatusOff {
 			if !isLocalhosted {
 				if state.connections[i].outerAddr.remotehost != conn_host {
+
 					goto failure
 				}
 			}

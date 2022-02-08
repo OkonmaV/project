@@ -53,7 +53,6 @@ func main() {
 			consolelogger.WriteMany(logspack)
 		}
 	}()
-
 	connector.SetupEpoll(func(e error) {
 		l.Error("Epoll", e)
 		cancel()
@@ -65,7 +64,6 @@ func main() {
 		cancel()
 	})
 	initReconnection(ctx, reconnectsCheckTicktime, reconnectsTargetBufSize, 1)
-
 	subs := newSubscriptions(ctx, l, 5, nil)
 
 	servs := newServices(ctx, l, conf.Settings, settingsCheckTicktime, subs)
@@ -86,7 +84,6 @@ func main() {
 			allow_remote_on_local_ln = true
 		}
 	}
-
 	if local_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], allow_remote_on_local_ln, subs, servs, l); err != nil {
 		l.Error("newListener local", err)
 		cancel()
