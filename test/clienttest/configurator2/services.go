@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"project/test/connector"
@@ -73,12 +72,6 @@ func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspa
 }
 
 func (s *services) readSettings(l types.Logger, settingspath string) error { // TODO: test this
-
-	defer func() { // FOR TESTING
-		s.rwmux.RLock()
-		fmt.Println("SERVICES AFTER READSETTINGS: ", s.list)
-		s.rwmux.RUnlock()
-	}()
 
 	data, err := os.ReadFile(settingspath)
 	if err != nil {

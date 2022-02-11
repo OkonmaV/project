@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net"
 	"os"
+	"project/test/connector"
 	"project/test/types"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,13 +17,15 @@ import (
 
 type listener struct {
 	listener      net.Listener
+	random        bool
 	connsToHandle chan net.Conn
 	activeWorkers chan struct{}
 	handler       handlefunc
 	keepAlive     bool
 
-	servStatus *serviceStatus
-	l          types.Logger
+	servStatus   *serviceStatus
+	configurator *configurator
+	l            types.Logger
 
 	ctx context.Context
 
@@ -33,7 +37,7 @@ type handlefunc func(conn net.Conn) error
 
 const handlerCallTimeout time.Duration = time.Second * 10
 
-func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus, threads int, keepAlive bool, handler handlefunc) *listener {
+func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus, configurator *configurator, threads int, keepAlive bool, handler handlefunc) *listener {
 	if threads < 1 {
 		panic("threads num cant be less than 1")
 	}
@@ -43,20 +47,34 @@ func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus,
 		handler:       handler,
 		keepAlive:     keepAlive,
 		servStatus:    servStatus,
+		configurator:  configurator,
 		l:             l}
 }
 
+// TODO: я пока не придомул шо делать, если поднять листнер не удалось и мы ушли в суспенд (сейчас мы тупо не выйдем из суспенда)
 func (listener *listener) listen(network, address string) error {
 	if listener == nil {
 		panic("listener.listen() called on nil listener")
 	}
+	listener.RLock()
+	if listener.listener != nil {
+		if address == "*" && listener.random {
+			port := listener.listener.Addr().String()
+			if listener.listener.Addr().Network() == "tcp" {
+				port = (port)[strings.LastIndex(port, ":")+1:]
+			}
+			listener.configurator.send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(port)+1), byte(types.OperationCodeMyOuterPort)), []byte(port)...)))
 
-	if listener.onAir() {
+			listener.RUnlock()
+			return nil
+		}
 		if listener.listener.Addr().String() == address {
+			listener.RUnlock()
 			return nil
 		}
 		listener.stop()
 	}
+	listener.RUnlock()
 
 	listener.Lock()
 	defer listener.Unlock()
@@ -74,21 +92,38 @@ loop:
 
 	var err error
 	if network == "unix" {
-		if !strings.HasPrefix(address, "/tmp/") || !strings.HasSuffix(address, ".sock") {
-			err = errors.New("unix address must be in form \"/tmp/[socketname].sock\"")
-			goto failure
+		if address == "*" {
+			listener.random = true
+			address = suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock")
+		} else {
+			listener.random = false
 		}
 		if err = os.RemoveAll(address); err != nil {
 			goto failure
 		}
+	} else {
+		if address == "*" {
+			listener.random = true
+			address = "127.0.0.1:0"
+		} else {
+			listener.random = false
+		}
 	}
-	listener.listener, err = net.Listen(network, address)
-	if err != nil {
+	if listener.listener, err = net.Listen(network, address); err != nil {
 		goto failure
 	}
 
 	listener.cancelAccept = false
 	go listener.acceptWorker()
+
+	if listener.random {
+		port := listener.listener.Addr().String()
+		if listener.listener.Addr().Network() == "tcp" {
+			port = (port)[strings.LastIndex(port, ":")+1:]
+		}
+		listener.configurator.send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(port)+1), byte(types.OperationCodeMyOuterPort)), []byte(port)...)))
+	}
+
 	listener.servStatus.setListenerStatus(true)
 	listener.l.Info("listen", suckutils.ConcatFour("start listening at ", network, ":", address))
 	return nil
@@ -205,14 +240,14 @@ func (listener *listener) onAir() bool {
 	return listener.listener != nil
 }
 
-func (listener *listener) Addr() (string, string) {
+func (listener *listener) Addr() (string, string, bool) {
 	if listener == nil {
-
+		return "", "", false
 	}
 	listener.RLock()
 	defer listener.RUnlock()
 	if listener.listener == nil {
-		return "", ""
+		return "", "", false
 	}
-	return listener.listener.Addr().Network(), listener.listener.Addr().String()
+	return listener.listener.Addr().Network(), listener.listener.Addr().String(), listener.random
 }

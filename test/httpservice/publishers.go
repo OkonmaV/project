@@ -269,7 +269,7 @@ func (pub *Publisher) connect() (err error) {
 		if pub.current_ind == len(pub.addresses) {
 			pub.current_ind = 0
 		}
-		if pub.conn, err = net.Dial(pub.addresses[pub.current_ind].netw, pub.addresses[pub.current_ind].addr); err != nil {
+		if pub.conn, err = net.DialTimeout(pub.addresses[pub.current_ind].netw, pub.addresses[pub.current_ind].addr, time.Second); err != nil {
 			pub.l.Error("connect/Dial", err)
 			pub.current_ind++
 		} else {

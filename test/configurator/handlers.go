@@ -90,20 +90,18 @@ func (s *service) Handle(message connector.MessageReader) error {
 		s.changeStatus(types.ServiceStatus(payload[1]))
 	case types.OperationCodeMyOuterPort:
 		s.l.Debug("New message", "OperationCodeMyOuterPort")
-		if s.name == ServiceName(types.ConfServiceName) {
-			if len(payload) < 2 {
-				return connector.ErrWeirdData
-			}
-			if p, err := strconv.Atoi(string(payload[1:])); err != nil || p == 0 {
-				return connector.ErrWeirdData
-			} else {
-				s.statusmux.Lock()
-				s.outerAddr.port = string(payload)
-				s.statusmux.Unlock()
-			}
-		} else {
-			return errors.New("not configurator, but sent OperationCodeMyOuterPort")
+
+		if len(payload) < 2 {
+			return connector.ErrWeirdData
 		}
+		if p, err := strconv.Atoi(string(payload[1:])); err != nil || p == 0 {
+			return connector.ErrWeirdData
+		} else {
+			s.statusmux.Lock()
+			s.outerAddr.port = string(payload)
+			s.statusmux.Unlock()
+		}
+
 	default:
 		return connector.ErrWeirdData
 	}

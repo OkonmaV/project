@@ -2,11 +2,9 @@ package main
 
 import (
 	"errors"
-	"net"
 	"project/test/types"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/big-larry/suckutils"
 )
@@ -78,37 +76,10 @@ func (a *Address) getListeningAddr() (types.NetProtocol, string, error) {
 		return 0, "", errors.New("nil address struct")
 	}
 	if a.random {
-		if len(a.remotehost) != 0 {
-			return 0, "", errors.New("cant get random tcp-listening-addr for remote host")
-		}
-
-		if a.port != "*" { // TODO: затык - если каждый раз выдавать рандомный адрес (тем кому по конфигурации положено), то у их подпищиков будет складироваться помойка мертвых адресов, а если только один раз записать рандомный и его отдавать, то если он будет занят, сервис никогда не поднимется
-			if a.netw == types.NetProtocolTcp {
-				return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
-			} else {
-				return a.netw, a.port, nil
-			}
-		}
-		var err error
-		var port string
-		for i := 0; i < 3; i++ {
-			port, err = getFreePort(a.netw)
-			if err != nil {
-				continue
-			}
-			a.port = port
-			switch a.netw {
-			case types.NetProtocolTcp:
-				return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
-			case types.NetProtocolUnix:
-				return a.netw, a.port, nil
-			case types.NetProtocolNil:
-				return a.netw, a.port, nil
-			}
-
-		}
-
-		return 0, "", err
+		// if a.port != "*" {
+		// 	// TODO: подумать, не будет ли затыков в плане жесткой очередности опкодов при уже записанном мертвом адресе сервиса: явсуспенде > дай арес для прослушания > вот мой новый адрес > ансуспенд
+		// }
+		return a.netw, "*", nil
 	}
 	return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
 }
@@ -124,21 +95,21 @@ func (addr1 *Address) equalAsListeningAddr(addr2 Address) bool {
 	return false
 }
 
-func getFreePort(netw types.NetProtocol) (string, error) {
-	switch netw {
-	case types.NetProtocolTcp:
-		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-		if err != nil {
-			return "", err
-		}
-		return strconv.Itoa(addr.Port), nil
-	case types.NetProtocolUnix:
-		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
-	case types.NetProtocolNil:
-		return "", nil
-	}
-	return "", errors.New("unknown protocol")
-}
+// func getFreePort(netw types.NetProtocol) (string, error) {
+// 	switch netw {
+// 	case types.NetProtocolTcp:
+// 		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+// 		if err != nil {
+// 			return "", err
+// 		}
+// 		return strconv.Itoa(addr.Port), nil
+// 	case types.NetProtocolUnix:
+// 		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
+// 	case types.NetProtocolNil:
+// 		return "", nil
+// 	}
+// 	return "", errors.New("unknown protocol")
+// }
 
 // DOES NOT FORMAT THE MESSAGE
 func sendToMany(message []byte, recievers []*service) {

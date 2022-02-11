@@ -34,7 +34,7 @@ type HTTPService interface {
 	Handle(request *suckhttp.Request, logger types.Logger) (*suckhttp.Response, error)
 }
 
-const pubscheckTicktime time.Duration = time.Second * 2
+const pubscheckTicktime time.Duration = time.Second * 5
 
 // TODO: исправить жопу с логами
 // TODO: придумать шото для неторчащих наружу сервисов
@@ -84,7 +84,7 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		panic(err)
 	}
 
-	ln := newListener(ctx, l, servStatus, threads, keepConnAlive, func(conn net.Conn) error {
+	ln := newListener(ctx, l, servStatus, nil, threads, keepConnAlive, func(conn net.Conn) error {
 		request, err := suckhttp.ReadRequest(ctx, conn, time.Minute)
 		if err != nil {
 			return err
@@ -105,6 +105,7 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 	if pubs != nil {
 		pubs.configurator = configurator
 	}
+	ln.configurator = configurator
 	servStatus.setOnSuspendFunc(configurator.onSuspend)
 	servStatus.setOnUnSuspendFunc(configurator.onUnSuspend)
 
@@ -116,9 +117,9 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
-	if ln != nil {
-		ln.close()
-	}
+
+	ln.close()
+
 	if handle_closer, ok := handler.(handlecloser); ok {
 		handle_closer.Close()
 	}

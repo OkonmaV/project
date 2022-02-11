@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/big-larry/suckutils"
 )
 
 type conf struct {
@@ -89,9 +91,28 @@ func (c *conf) afterConnProc() error {
 	return nil
 }
 
+func getFreePort(netw types.NetProtocol) (string, error) {
+	switch netw {
+	case types.NetProtocolTcp:
+		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
+		if err != nil {
+			return "", err
+		}
+		return strconv.Itoa(addr.Port), nil
+	case types.NetProtocolUnix:
+		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
+	case types.NetProtocolNil:
+		return "", nil
+	}
+	return "", errors.New("unknown protocol")
+}
+
 func main() {
-	p, err := strconv.Atoi(string([]byte{4, 56, 48, 57, 57}))
-	fmt.Println(p, err, string([]byte{4, 56, 48, 57, 57}))
+	//addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
+	//fmt.Println(addr, err)
+	lnn, _ := net.Listen("unix", "/tmp/test1.sock")
+	port := lnn.Addr().(*net.TCPAddr).Port
+	fmt.Println(port)
 	return
 
 	connector.InitReconnection(context.Background(), time.Second*3, 1, 1)
