@@ -72,7 +72,8 @@ func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspa
 	}
 }
 
-func (s *services) readSettings(l types.Logger, settingspath string) error { // TODO: test this
+// TODO: сервисы из мапы сейчас не трутся (возможна ситуация наличия в мапе сервиса с нулем разрешенных для запуска инстансов)
+func (s *services) readSettings(l types.Logger, settingspath string) error {
 
 	defer func() { // FOR TESTING
 		s.rwmux.RLock()

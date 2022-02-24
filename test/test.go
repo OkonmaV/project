@@ -107,12 +107,47 @@ func getFreePort(netw types.NetProtocol) (string, error) {
 	return "", errors.New("unknown protocol")
 }
 
+func fortest1(payload []byte) {
+	updates := types.SeparatePayload(payload[1:])
+	fmt.Println("FORTEST1, separated payload: ", updates)
+	if len(updates) != 0 {
+		foo := "127.0.0.1:9563"
+		external_ip := (foo)[:strings.Index(foo, ":")]
+		for _, update := range updates {
+			pubname, raw_addr, status, err := types.UnformatOpcodeUpdatePubMessage(update)
+			if err != nil {
+				fmt.Println("FORTEST1, 1 error:", err)
+				return
+			}
+			netw, addr, err := types.UnformatAddress(raw_addr)
+			if err != nil {
+				fmt.Println("FORTEST1, 2 error:", err)
+				return
+			}
+			switch netw {
+			case types.NetProtocolUnix:
+				netw = types.NetProtocolNonlocalUnix
+			case types.NetProtocolTcp:
+				if (addr)[:strings.Index(addr, ":")] == "127.0.0.1" {
+					addr = suckutils.ConcatTwo(external_ip, (addr)[strings.Index(addr, ":"):])
+				}
+			}
+			fmt.Println("FORTEST1, update:", string(pubname), netw.String(), addr, status.String())
+		}
+	}
+}
+
+func fortest2() []byte {
+	formatted_updateinfos := append(make([]byte, 0, 20), types.FormatOpcodeUpdatePubMessage([]byte("pubname1"), types.FormatAddress(types.NetProtocolTcp, "127.0.0.1:5050"), types.StatusOn)...)
+	updateinfos := types.ConcatPayload(formatted_updateinfos)
+	message := append(make([]byte, 1, len(updateinfos)+1), updateinfos...)
+	message[0] = byte(types.OperationCodeUpdatePubs)
+	fmt.Println("FORTEST2, message: ", message)
+	return message
+}
+
 func main() {
-	//addr, err := net.ResolveTCPAddr("tcp", "localhost:0")
-	//fmt.Println(addr, err)
-	lnn, _ := net.Listen("unix", "/tmp/test1.sock")
-	port := lnn.Addr().(*net.TCPAddr).Port
-	fmt.Println(port)
+	fortest1(fortest2())
 	return
 
 	connector.InitReconnection(context.Background(), time.Second*3, 1, 1)

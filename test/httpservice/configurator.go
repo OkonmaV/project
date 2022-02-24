@@ -98,15 +98,6 @@ func (c *configurator) handshake(conn net.Conn) error {
 
 func (c *configurator) afterConnProc() error {
 
-	if netw, port, randomized := c.listener.Addr(); randomized {
-		if netw == "tcp" {
-			port = (port)[strings.LastIndex(port, ":")+1:]
-		}
-		if err := c.conn.Send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(port)+1), byte(types.OperationCodeMyOuterPort)), []byte(port)...))); err != nil {
-			return err
-		}
-	}
-
 	myStatus := byte(types.StatusSuspended)
 	if c.servStatus.onAir() {
 		myStatus = byte(types.StatusOn)
@@ -191,6 +182,10 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 			if netw == types.NetProtocolNil {
 				c.listener.stop()
 				c.servStatus.setListenerStatus(true)
+				return nil
+			}
+			if cur_netw, cur_addr := c.listener.Addr(); cur_addr == addr && cur_netw == netw.String() {
+				return nil
 			}
 			var err error
 			for i := 0; i < 3; i++ {

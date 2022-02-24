@@ -28,6 +28,8 @@ type listenier interface {
 	close()
 }
 
+// суть разделения на внешний и локальный листенер - юникс по локалке. а так - конфигуратору сейчас до пизды, если к внешнему листнеру подрубается локальный сервис (и я не особо вижу смысл вешать ограничение)
+
 func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l types.Logger) (listenier, error) {
 
 	lninfo := &listener_info{allowRemote: allowRemote, subs: subs, services: services, l: l}
@@ -47,12 +49,12 @@ func newListener(network, address string, allowRemote bool, subs subscriptionsie
 // for listener's interface
 func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 	lninfo.l.Debug("HandleNewConn", suckutils.ConcatTwo("new conn from ", conn.RemoteAddr().String()))
-	var connLocalhosted bool
-	if connLocalhosted = isConnLocalhost(conn); !connLocalhosted && !lninfo.allowRemote {
-		lninfo.l.Warning("HandleNewConn", suckutils.Concat("new remote conn to local-only listener from: ", conn.RemoteAddr().String(), ", conn denied"))
-		conn.Close()
-		return
-	}
+	var connLocalhosted bool = true
+	// if connLocalhosted = isConnLocalhost(conn); !connLocalhosted && !lninfo.allowRemote {
+	// 	lninfo.l.Warning("HandleNewConn", suckutils.Concat("new remote conn to local-only listener from: ", conn.RemoteAddr().String(), ", conn denied"))
+	// 	conn.Close()
+	// 	return
+	// }
 
 	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 	buf := make([]byte, 4)

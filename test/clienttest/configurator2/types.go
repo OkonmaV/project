@@ -2,9 +2,11 @@ package main
 
 import (
 	"errors"
+	"net"
 	"project/test/types"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/big-larry/suckutils"
 )
@@ -75,13 +77,19 @@ func (a *Address) getListeningAddr() (types.NetProtocol, string, error) {
 	if a == nil {
 		return 0, "", errors.New("nil address struct")
 	}
-	if a.random {
-		// if a.port != "*" {
-		// 	// TODO: подумать, не будет ли затыков в плане жесткой очередности опкодов при уже записанном мертвом адресе сервиса: явсуспенде > дай арес для прослушания > вот мой новый адрес > ансуспенд
-		// }
-		return a.netw, "*", nil
+	if a.random { // TODO: подумать, не будет ли затыков в плане жесткой очередности опкодов при уже записанном мертвом адресе сервиса: явсуспенде > дай арес для прослушания > вот мой новый адрес > ансуспенд
+		if randport, err := getFreePort(a.netw); err != nil {
+			return 0, "", err
+		} else {
+			a.port = randport
+		}
 	}
-	return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
+	if a.netw == types.NetProtocolUnix || a.netw == types.NetProtocolNil {
+		return a.netw, a.port, nil
+	} else if a.netw == types.NetProtocolTcp {
+		return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
+	}
+	return 0, "", errors.New("unknown protocol")
 }
 
 // если адреса рандомны то всегда true
@@ -95,21 +103,22 @@ func (addr1 *Address) equalAsListeningAddr(addr2 Address) bool {
 	return false
 }
 
-// func getFreePort(netw types.NetProtocol) (string, error) {
-// 	switch netw {
-// 	case types.NetProtocolTcp:
-// 		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")
-// 		if err != nil {
-// 			return "", err
-// 		}
-// 		return strconv.Itoa(addr.Port), nil
-// 	case types.NetProtocolUnix:
-// 		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
-// 	case types.NetProtocolNil:
-// 		return "", nil
-// 	}
-// 	return "", errors.New("unknown protocol")
-// }
+func getFreePort(netw types.NetProtocol) (string, error) {
+	switch netw {
+	case types.NetProtocolTcp:
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			return "", err
+		}
+		ln.Close()
+		return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port), nil
+	case types.NetProtocolUnix:
+		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
+	case types.NetProtocolNil:
+		return "", nil
+	}
+	return "", errors.New("unknown protocol")
+}
 
 // DOES NOT FORMAT THE MESSAGE
 func sendToMany(message []byte, recievers []*service) {

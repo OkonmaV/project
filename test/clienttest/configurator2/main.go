@@ -53,6 +53,7 @@ func main() {
 			consolelogger.WriteMany(logspack)
 		}
 	}()
+
 	connector.SetupEpoll(func(e error) {
 		l.Error("Epoll", e)
 		cancel()

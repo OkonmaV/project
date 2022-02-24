@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"project/test/connector"
@@ -71,7 +72,14 @@ func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspa
 	}
 }
 
-func (s *services) readSettings(l types.Logger, settingspath string) error { // TODO: test this
+// TODO: сервисы из мапы сейчас не трутся (возможна ситуация наличия в мапе сервиса с нулем разрешенных для запуска инстансов)
+func (s *services) readSettings(l types.Logger, settingspath string) error {
+
+	defer func() { // FOR TESTING
+		s.rwmux.RLock()
+		fmt.Println("SERVICES AFTER READSETTINGS: ", s.list)
+		s.rwmux.RUnlock()
+	}()
 
 	data, err := os.ReadFile(settingspath)
 	if err != nil {
@@ -116,7 +124,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 			if addr := readAddress(a); addr != nil {
 				settings_addrs = append(settings_addrs, addr)
 			} else {
-				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n), ": ", a))
+				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n+1), ": ", a))
 			}
 		}
 
@@ -218,10 +226,10 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 		state.connections[i].statusmux.Lock()
 		var con connector.Conn
 		var err error
+
 		if state.connections[i].status == types.StatusOff {
 			if !isLocalhosted {
 				if state.connections[i].outerAddr.remotehost != conn_host {
-
 					goto failure
 				}
 			}

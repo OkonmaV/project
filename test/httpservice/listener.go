@@ -5,10 +5,7 @@ import (
 	"errors"
 	"net"
 	"os"
-	"project/test/connector"
 	"project/test/types"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,7 +14,6 @@ import (
 
 type listener struct {
 	listener      net.Listener
-	random        bool
 	connsToHandle chan net.Conn
 	activeWorkers chan struct{}
 	handler       handlefunc
@@ -58,16 +54,6 @@ func (listener *listener) listen(network, address string) error {
 	}
 	listener.RLock()
 	if listener.listener != nil {
-		if address == "*" && listener.random {
-			port := listener.listener.Addr().String()
-			if listener.listener.Addr().Network() == "tcp" {
-				port = (port)[strings.LastIndex(port, ":")+1:]
-			}
-			listener.configurator.send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(port)+1), byte(types.OperationCodeMyOuterPort)), []byte(port)...)))
-
-			listener.RUnlock()
-			return nil
-		}
 		if listener.listener.Addr().String() == address {
 			listener.RUnlock()
 			return nil
@@ -92,21 +78,8 @@ loop:
 
 	var err error
 	if network == "unix" {
-		if address == "*" {
-			listener.random = true
-			address = suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock")
-		} else {
-			listener.random = false
-		}
 		if err = os.RemoveAll(address); err != nil {
 			goto failure
-		}
-	} else {
-		if address == "*" {
-			listener.random = true
-			address = "127.0.0.1:0"
-		} else {
-			listener.random = false
 		}
 	}
 	if listener.listener, err = net.Listen(network, address); err != nil {
@@ -115,14 +88,6 @@ loop:
 
 	listener.cancelAccept = false
 	go listener.acceptWorker()
-
-	if listener.random {
-		port := listener.listener.Addr().String()
-		if listener.listener.Addr().Network() == "tcp" {
-			port = (port)[strings.LastIndex(port, ":")+1:]
-		}
-		listener.configurator.send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(port)+1), byte(types.OperationCodeMyOuterPort)), []byte(port)...)))
-	}
 
 	listener.servStatus.setListenerStatus(true)
 	listener.l.Info("listen", suckutils.ConcatFour("start listening at ", network, ":", address))
@@ -240,14 +205,14 @@ func (listener *listener) onAir() bool {
 	return listener.listener != nil
 }
 
-func (listener *listener) Addr() (string, string, bool) {
+func (listener *listener) Addr() (string, string) {
 	if listener == nil {
-		return "", "", false
+		return "", ""
 	}
 	listener.RLock()
 	defer listener.RUnlock()
 	if listener.listener == nil {
-		return "", "", false
+		return "", ""
 	}
-	return listener.listener.Addr().Network(), listener.listener.Addr().String(), listener.random
+	return listener.listener.Addr().Network(), listener.listener.Addr().String()
 }

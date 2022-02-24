@@ -72,7 +72,8 @@ func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspa
 	}
 }
 
-func (s *services) readSettings(l types.Logger, settingspath string) error { // TODO: test this
+// TODO: сервисы из мапы сейчас не трутся (возможна ситуация наличия в мапе сервиса с нулем разрешенных для запуска инстансов)
+func (s *services) readSettings(l types.Logger, settingspath string) error {
 
 	defer func() { // FOR TESTING
 		s.rwmux.RLock()
@@ -123,7 +124,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error { // 
 			if addr := readAddress(a); addr != nil {
 				settings_addrs = append(settings_addrs, addr)
 			} else {
-				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n), ": ", a))
+				l.Warning(settingspath, suckutils.ConcatFour("incorrect address at line ", strconv.Itoa(n+1), ": ", a))
 			}
 		}
 
@@ -218,6 +219,8 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 
 	var conn_host string
 	if !isLocalhosted {
+		println(conn.RemoteAddr().String())
+		time.Sleep(time.Second * 2)
 		conn_host = (conn.RemoteAddr().String())[:strings.Index(conn.RemoteAddr().String(), ":")]
 	}
 

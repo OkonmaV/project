@@ -66,7 +66,7 @@ func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 					sendToMany(connector.FormatBasicMessage(message), subscriptors)
 				} else {
 					for _, subscriptor := range subscriptors {
-						if subscriptor == nil || subscriptor.connector.IsClosed() || subscriptor.name == ServiceName(types.ConfServiceName) {
+						if subscriptor == nil || subscriptor.connector == nil || subscriptor.connector.IsClosed() || subscriptor.name == ServiceName(types.ConfServiceName) {
 							continue
 						}
 						if err := subscriptor.connector.Send(message); err != nil {
@@ -116,7 +116,7 @@ loop:
 					continue loop
 				}
 			}
-			if cap(subs.subs_list[pubname]) == len(subs.subs_list[pubname]) { // reslice, also allocation here if not yet
+			if cap(subs.subs_list[pubname]) == len(subs.subs_list[pubname]) || (cap(subs.subs_list[pubname])-len(subs.subs_list[pubname])) > maxFreeSpace { // reslice, also allocation here if not yet
 				subs.subs_list[pubname] = append(make([]*service, 0, len(subs.subs_list[pubname])+maxFreeSpace+1), subs.subs_list[pubname]...)
 			}
 			subs.subs_list[pubname] = append(subs.subs_list[pubname], sub)
@@ -125,8 +125,6 @@ loop:
 		} else {
 			subs.subs_list[pubname] = append(make([]*service, 1), sub)
 		}
-
-		subs.Unlock()
 
 		pubname_byte := []byte(pubname)
 
@@ -137,22 +135,27 @@ loop:
 		if state := subs.services.getServiceState(pubname); state != nil { // getting alive local pubs
 			addrs := state.getAllOutsideAddrsWithStatus(types.StatusOn)
 			if len(addrs) != 0 {
-
 				for _, addr := range addrs {
 					var concatted_address string
-					if len(addr.remotehost) == 0 {
-						concatted_address = suckutils.ConcatTwo("127.0.0.1:", addr.port)
+					if addr.netw == types.NetProtocolTcp {
+						if len(addr.remotehost) == 0 {
+							concatted_address = suckutils.ConcatTwo("127.0.0.1:", addr.port)
+						} else {
+							concatted_address = suckutils.ConcatThree(addr.remotehost, ":", addr.port)
+						}
 					} else {
-						concatted_address = suckutils.ConcatThree(addr.remotehost, ":", addr.port)
+						concatted_address = addr.port
 					}
+
 					formatted_updateinfos = append(formatted_updateinfos, types.FormatOpcodeUpdatePubMessage(pubname_byte, types.FormatAddress(addr.netw, concatted_address), types.StatusOn))
 				}
-
 			} else {
 				sub.l.Warning("subs", suckutils.ConcatThree("no alive local services with name \"", string(pubname), "\""))
 			}
 		}
 	}
+
+	subs.Unlock()
 
 	if sendToConfs {
 		if confs_state := subs.services.getServiceState(ServiceName(types.ConfServiceName)); confs_state != nil { // sending subscription to other confs
