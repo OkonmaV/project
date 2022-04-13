@@ -193,6 +193,9 @@ func (pubs *publishers) GetAllPubNames() []ServiceName {
 }
 
 func (pubs *publishers) Get(servicename ServiceName) *Publisher {
+	if pubs == nil {
+		return nil
+	}
 	pubs.mux.Lock()
 	defer pubs.mux.Unlock()
 	return pubs.list[servicename]

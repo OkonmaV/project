@@ -6,6 +6,7 @@ import (
 	"net"
 	"project/test/connector"
 	"project/test/types"
+	"strconv"
 	"strings"
 	"time"
 
@@ -24,11 +25,60 @@ type configurator struct {
 	l                         types.Logger
 }
 
+func newFakeConfigurator(ctx context.Context, l types.Logger, servStatus *serviceStatus, listener *listener) *configurator {
+	connector.InitReconnection(ctx, time.Second*5, 1, 1)
+	c := &configurator{
+		l:          l,
+		servStatus: servStatus,
+		listener:   listener,
+	}
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		c.l.Error("newFakeConfigurator", err)
+		return nil
+	}
+	go func() {
+		if _, err := ln.Accept(); err != nil {
+			panic("newFakeConfigurator/ln.Accept err:" + err.Error())
+		}
+	}()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		c.l.Error("newFakeConfigurator/Dial", err)
+		return nil
+	}
+
+	if c.conn, err = connector.NewEpollReConnector(conn, c, nil, nil, "", ""); err != nil {
+		c.l.Error("NewEpollReConnector", err)
+		return nil
+	}
+
+	go func() {
+		p := 9010
+		for {
+			time.Sleep(time.Millisecond * 50)
+			addr := types.FormatAddress(types.NetProtocolTcp, "127.0.0.1:"+strconv.Itoa(p+1))
+			if err := c.Handle(&connector.BasicMessage{Payload: append(append(make([]byte, 0, len(addr)+2), byte(types.OperationCodeSetOutsideAddr), byte(len(addr))), addr...)}); err != nil {
+				c.l.Error("FakeConfiguratorsMessageHandle", err)
+				p++
+				continue
+			}
+			if c.servStatus.isListenerOK() {
+				return
+			}
+
+		}
+	}()
+	return c
+}
+
 func newConfigurator(ctx context.Context, l types.Logger, servStatus *serviceStatus, pubs *publishers, listener *listener, configuratoraddr string, thisServiceName ServiceName, reconnectTimeout time.Duration) *configurator {
 
 	c := &configurator{
-		thisServiceName: thisServiceName,
-		l:               l, servStatus: servStatus,
+		thisServiceName:           thisServiceName,
+		l:                         l,
+		servStatus:                servStatus,
 		publishers:                pubs,
 		listener:                  listener,
 		terminationByConfigurator: make(chan struct{}, 1)}

@@ -1,6 +1,7 @@
 package httpservice
 
 import (
+	"confdecoder"
 	"context"
 	"net"
 	"os"
@@ -11,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/BurntSushi/toml"
 	"github.com/big-larry/suckhttp"
 )
 
@@ -22,7 +22,7 @@ type Servicier interface {
 }
 
 type handlecloser interface {
-	Close()
+	Close() error
 }
 
 type config_toml struct {
@@ -30,7 +30,7 @@ type config_toml struct {
 }
 
 type HTTPService interface {
-	// nil responce = 500
+	// nil response = 500
 	Handle(request *suckhttp.Request, logger types.Logger) (*suckhttp.Response, error)
 }
 
@@ -38,17 +38,24 @@ const pubscheckTicktime time.Duration = time.Second * 5
 
 // TODO: исправить жопу с логами
 // TODO: придумать шото для неторчащих наружу сервисов
-// TODO: написать самому замену томлу сраному
+
 func InitNewService(servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
-	conf := &config_toml{}
-	if _, err := toml.DecodeFile("config.toml", conf); err != nil {
-		panic("read toml err: " + err.Error())
+	initNewService(true, servicename, config, keepConnAlive, threads, publishers_names...)
+}
+func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
+	if len(publishers_names) > 0 {
+		panic("cant use publishers without configurator")
 	}
-	if conf.ConfiguratorAddr == "" {
+	initNewService(false, servicename, config, keepConnAlive, threads, publishers_names...)
+}
+
+func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
+	servconf := &config_toml{}
+	if err := confdecoder.DecodeFile("config.txt", servconf, config); err != nil {
+		panic("reading/decoding config.txt err: " + err.Error())
+	}
+	if configurator_enabled && servconf.ConfiguratorAddr == "" {
 		panic("ConfiguratorAddr in config.toml not specified")
-	}
-	if _, err := toml.DecodeFile("config.toml", config); err != nil { // эта ебала отдает мапу, но она в привате
-		panic("read toml err: " + err.Error())
 	}
 
 	ctx, cancel := createContextWithInterruptSignal()
@@ -84,7 +91,7 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		panic(err)
 	}
 
-	ln := newListener(ctx, l, servStatus, nil, threads, keepConnAlive, func(conn net.Conn) error {
+	ln := newListener(ctx, l, servStatus, threads, keepConnAlive, func(conn net.Conn) error {
 		request, err := suckhttp.ReadRequest(ctx, conn, time.Minute)
 		if err != nil {
 			return err
@@ -101,11 +108,21 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 		}
 		return response.Write(conn, time.Minute)
 	})
-	configurator := newConfigurator(ctx, l, servStatus, pubs, ln, conf.ConfiguratorAddr, servicename, time.Second*5)
-	if pubs != nil {
-		pubs.configurator = configurator
+
+	var configurator *configurator
+
+	if configurator_enabled {
+		configurator = newConfigurator(ctx, l, servStatus, pubs, ln, servconf.ConfiguratorAddr, servicename, time.Second*5)
+		if pubs != nil {
+			pubs.configurator = configurator
+		}
+	} else {
+		if configurator = newFakeConfigurator(ctx, l, servStatus, ln); configurator == nil {
+			cancel()
+		}
 	}
-	ln.configurator = configurator
+
+	//ln.configurator = configurator
 	servStatus.setOnSuspendFunc(configurator.onSuspend)
 	servStatus.setOnUnSuspendFunc(configurator.onUnSuspend)
 
@@ -121,7 +138,9 @@ func InitNewService(servicename ServiceName, config Servicier, keepConnAlive boo
 	ln.close()
 
 	if handle_closer, ok := handler.(handlecloser); ok {
-		handle_closer.Close()
+		if err = handle_closer.Close(); err != nil {
+			l.Error("CloseFunc", err)
+		}
 	}
 	logscancel()
 }

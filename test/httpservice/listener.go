@@ -19,9 +19,9 @@ type listener struct {
 	handler       handlefunc
 	keepAlive     bool
 
-	servStatus   *serviceStatus
-	configurator *configurator
-	l            types.Logger
+	servStatus *serviceStatus
+	//configurator *configurator // если раскомменчивать - не забыть раскомментить строку в service.go после вызова newConfigurator()
+	l types.Logger
 
 	ctx context.Context
 
@@ -33,7 +33,7 @@ type handlefunc func(conn net.Conn) error
 
 const handlerCallTimeout time.Duration = time.Second * 10
 
-func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus, configurator *configurator, threads int, keepAlive bool, handler handlefunc) *listener {
+func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus /* configurator *configurator,*/, threads int, keepAlive bool, handler handlefunc) *listener {
 	if threads < 1 {
 		panic("threads num cant be less than 1")
 	}
@@ -43,11 +43,11 @@ func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus,
 		handler:       handler,
 		keepAlive:     keepAlive,
 		servStatus:    servStatus,
-		configurator:  configurator,
-		l:             l}
+		//configurator:  configurator,
+		l: l}
 }
 
-// TODO: я пока не придомул шо делать, если поднять листнер не удалось и мы ушли в суспенд (сейчас мы тупо не выйдем из суспенда)
+// TODO: я пока не придумал шо делать, если поднять листнер не удалось и мы ушли в суспенд (сейчас мы тупо не выйдем из суспенда)
 func (listener *listener) listen(network, address string) error {
 	if listener == nil {
 		panic("listener.listen() called on nil listener")

@@ -1,0 +1,5 @@
+ConfiguratorAddr unix:/tmp/conftest1.sock
+SayHello service 1 says hello
+ClickhouseAddr 127.0.0.1:9000
+ClickhouseTable messagestest
+FilesPath /shit/
