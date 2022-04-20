@@ -99,7 +99,7 @@ func handshake(conn net.Conn) error {
 		return err
 	}
 	buf := make([]byte, 5)
-	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	_, err := conn.Read(buf)
 	if err != nil {
 		return errors.New(suckutils.ConcatTwo("err reading configurator's approving, err: ", err.Error()))

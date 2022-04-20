@@ -19,7 +19,7 @@ var errReadedLess error = errors.New("readed less bytes than expected")
 func (msg *BasicMessage) Read(conn net.Conn) error {
 
 	buf := make([]byte, 4)
-	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	n, err := conn.Read(buf)
 	if err != nil {
 		return err

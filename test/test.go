@@ -2,17 +2,14 @@ package main
 
 import (
 	"fmt"
-	"mime"
 )
 
 type test1 struct {
-	DataStr      string
-	DataStrSlice []string
-	DataStruct   *test2
+	DataStr    string
+	DataStruct *test2
 }
 type test2 struct {
-	DataInt      int
-	DataIntSlice []int
+	DataInt int
 }
 
 func main() {
@@ -23,7 +20,7 @@ func main() {
 	// } else {
 	// 	fmt.Println(t, tt)
 	// }
-	f, s, err := mime.ParseMediaType("")
-
-	fmt.Println(f, s, err)
+	f := test1{}
+	f1 := test1{}
+	fmt.Println(f == f1)
 }

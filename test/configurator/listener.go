@@ -56,7 +56,7 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 		return
 	}
 
-	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	buf := make([]byte, 4)
 	_, err := conn.Read(buf)
 	if err != nil {
