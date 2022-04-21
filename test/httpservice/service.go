@@ -21,7 +21,7 @@ type Servicier interface {
 	CreateHandler(ctx context.Context, pubs_getter Publishers_getter) (HTTPService, error)
 }
 
-type handlecloser interface {
+type closer interface {
 	Close() error
 }
 
@@ -137,8 +137,8 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 
 	ln.close()
 
-	if handle_closer, ok := handler.(handlecloser); ok {
-		if err = handle_closer.Close(); err != nil {
+	if closehandler, ok := handler.(closer); ok {
+		if err = closehandler.Close(); err != nil {
 			l.Error("CloseFunc", err)
 		}
 	}

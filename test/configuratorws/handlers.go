@@ -110,7 +110,7 @@ func (c *Configurator) handleHTTP(conn net.Conn, l *logscontainer.WrappedLogsCon
 			}
 			pool.Schedule(func() {
 				confinstance.mutex.Lock()
-				c.handleConfiguratoreWS(wl, servinfo.name, confinstance, poller, desc)
+				c.handleConfiguratorWS(wl, servinfo.name, confinstance, poller, desc)
 				confinstance.mutex.Unlock()
 			})
 		})

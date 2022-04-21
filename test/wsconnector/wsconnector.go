@@ -60,7 +60,7 @@ func SetupConnectionsEndpointsSides(thisEndpoint ws.State) {
 	//otherSide = otherEndpoint
 }
 
-func CreateUpgrader(v UpgradeReqChecker) ws.Upgrader {
+func createUpgrader(v UpgradeReqChecker) ws.Upgrader {
 	return ws.Upgrader{
 		OnRequest: func(uri []byte) error {
 			if sc := v.CheckPath(uri); sc != 200 {
@@ -90,12 +90,12 @@ func CreateUpgrader(v UpgradeReqChecker) ws.Upgrader {
 }
 
 // upgrades connection and adds it to epoll
-func NewWSConnector(upgrader ws.Upgrader, conn net.Conn, handler WsHandler) (*EpollConnector, error) {
+func NewWSConnector(conn net.Conn, handler WsHandler) (*EpollConnector, error) {
 	if conn == nil {
 		return nil, ErrNilConn
 	}
 
-	if _, err := upgrader.Upgrade(conn); err != nil { // upgrade сам отправляет респонс
+	if _, err := createUpgrader(handler).Upgrade(conn); err != nil { // upgrade сам отправляет респонс
 		return nil, err
 	}
 

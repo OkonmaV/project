@@ -155,7 +155,7 @@ func (listener *listener) handlingWorker() {
 	<-listener.activeWorkers
 }
 
-// calling stop() we can call listen() in future.
+// calling stop() we can call listen() again.
 // и мы не ждем пока все отхэндлится
 func (listener *listener) stop() {
 	if listener == nil {
@@ -176,7 +176,7 @@ func (listener *listener) stop() {
 	//listener.wg.Wait()
 }
 
-// calling close() we r closing listener for further listen() calls and waiting for all reqests to be handled
+// calling close() we r closing listener forever (no further listen() calls) and waiting for all reqests to be handled
 // потенциальная дыра: вызов listener.close() при keepAlive=true и НЕ завершенном контексте (см. handlingWorker())
 func (listener *listener) close() {
 	if listener == nil {

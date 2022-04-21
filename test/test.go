@@ -20,7 +20,8 @@ func main() {
 	// } else {
 	// 	fmt.Println(t, tt)
 	// }
-	f := test1{}
-	f1 := test1{}
-	fmt.Println(f == f1)
+
+	tt := []int{0, 1, 2, 3}
+	tt = append(tt[:2], tt[2+1:]...)
+	fmt.Println(tt, len(tt), cap(tt))
 }

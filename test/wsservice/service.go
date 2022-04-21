@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"project/test/connector"
 	"project/test/logs"
+	"project/test/types"
 	"project/test/wsconnector"
 	"syscall"
 	"time"
@@ -20,10 +21,15 @@ type Servicier interface {
 }
 
 type Service interface {
-	wsconnector.UpgradeCreator
+	CreateNewWsData(l types.Logger) Handler
 }
 
-type handlecloser interface {
+type Handler interface {
+	HandleWSCreating(wsconnector.Sender) error
+	wsconnector.WsHandler
+}
+
+type closer interface {
 	Close() error
 }
 
@@ -96,13 +102,17 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	}
 
 	ln := newListener(l, servStatus, threads, keepConnAlive, func(conn net.Conn) error {
-		handler := srvc.CreateNewConnInfo()
-		connector, err := wsconnector.NewWSConnector(wsconnector.CreateUpgrader(handler), conn, handler)
+		wsdata := srvc.CreateNewWsData(l)
+		connector, err := wsconnector.NewWSConnector(conn, wsdata)
 		if err != nil {
 			return err
 		}
-		handler.SetSender(connector)
+		if err = wsdata.HandleWSCreating(connector); err != nil {
+			l.Debug("HandleWSCreating", err.Error())
+			return err
+		}
 		if err := connector.StartServing(); err != nil {
+			l.Debug("StartServing", err.Error())
 			connector.ClearFromCache()
 			return err
 		}
@@ -137,8 +147,8 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 
 	ln.close()
 
-	if handle_closer, ok := srvc.(handlecloser); ok {
-		if err = handle_closer.Close(); err != nil {
+	if closehandler, ok := srvc.(closer); ok {
+		if err = closehandler.Close(); err != nil {
 			l.Error("CloseFunc", err)
 		}
 	}

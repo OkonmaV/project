@@ -14,20 +14,17 @@ var ErrReadTimeout error = errors.New("read timeout")
 
 type StatusCode int
 
-type UpgradeCreator interface {
-	CreateNewConnInfo() WsHandler
-}
+type CreateWsHandler func() WsHandler
 
 // for user's implementation
 type WsHandler interface {
 	UpgradeReqChecker
-	SetSender(Sender)
 	Handle(message []byte) error
 	HandleClose(error)
 }
 
 // for user's implementation
-// for ckecking headers while reading it in ws.Upgrade()
+// for ckecking headers while reading request in ws.Upgrade()
 type UpgradeReqChecker interface {
 	// 200 = no err
 	CheckPath(path []byte) StatusCode
