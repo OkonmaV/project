@@ -102,11 +102,13 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	}
 
 	ln := newListener(l, servStatus, threads, keepConnAlive, func(conn net.Conn) error {
+		println("HERE")
 		wsdata := srvc.CreateNewWsData(l)
 		connector, err := wsconnector.NewWSConnector(conn, wsdata)
 		if err != nil {
 			return err
 		}
+
 		if err = wsdata.HandleWSCreating(connector); err != nil {
 			l.Debug("HandleWSCreating", err.Error())
 			return err

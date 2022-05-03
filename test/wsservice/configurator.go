@@ -55,7 +55,7 @@ func newFakeConfigurator(ctx context.Context, l types.Logger, servStatus *servic
 	}
 
 	go func() {
-		p := 9010
+		p := 9009
 		for {
 			time.Sleep(time.Millisecond * 50)
 			addr := types.FormatAddress(types.NetProtocolTcp, "127.0.0.1:"+strconv.Itoa(p+1))

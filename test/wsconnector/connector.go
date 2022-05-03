@@ -2,7 +2,10 @@ package wsconnector
 
 import (
 	"errors"
+	"io"
 	"net"
+
+	"github.com/gobwas/ws"
 )
 
 var ErrWeirdData error = errors.New("weird data")
@@ -16,10 +19,18 @@ type StatusCode int
 
 type CreateWsHandler func() WsHandler
 
+//type CreateNewMessage func() MessageReader
+
+type MessageReader interface {
+	Read(r io.Reader, h ws.Header) error
+}
+
 // for user's implementation
 type WsHandler interface {
+	NewMessage() MessageReader
+
 	UpgradeReqChecker
-	Handle(message []byte) error
+	Handle(MessageReader) error
 	HandleClose(error)
 }
 

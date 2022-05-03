@@ -12,7 +12,7 @@ import (
 	"github.com/mailru/easygo/netpoll"
 )
 
-type EpollConnector struct {
+type EpollWSConnector struct {
 	conn    net.Conn
 	desc    *netpoll.Desc
 	handler WsHandler
@@ -54,8 +54,8 @@ func SetupEpoll(errhandler EpollErrorHandler) error {
 	return nil
 }
 
-// default: this = serverside, other = clientside
-func SetupConnectionsEndpointsSides(thisEndpoint ws.State) {
+// default: thisEndpoint = serverside
+func SetupConnectionsEndpointSide(thisEndpoint ws.State) {
 	thisSide = thisEndpoint
 	//otherSide = otherEndpoint
 }
@@ -90,7 +90,7 @@ func createUpgrader(v UpgradeReqChecker) ws.Upgrader {
 }
 
 // upgrades connection and adds it to epoll
-func NewWSConnector(conn net.Conn, handler WsHandler) (*EpollConnector, error) {
+func NewWSConnector(conn net.Conn, handler WsHandler) (*EpollWSConnector, error) {
 	if conn == nil {
 		return nil, ErrNilConn
 	}
@@ -104,24 +104,24 @@ func NewWSConnector(conn net.Conn, handler WsHandler) (*EpollConnector, error) {
 		return nil, err
 	}
 
-	connector := &EpollConnector{conn: conn, desc: desc, handler: handler}
+	connector := &EpollWSConnector{conn: conn, desc: desc, handler: handler}
 
 	return connector, nil
 }
 
-func (connector *EpollConnector) StartServing() error {
+func (connector *EpollWSConnector) StartServing() error {
 	return poller.Start(connector.desc, connector.handle)
 }
 
 // MUST be called after StartServing() failure to prevent memory leak!
-func (connector *EpollConnector) ClearFromCache() {
+func (connector *EpollWSConnector) ClearFromCache() {
 	connector.Lock()
 	defer connector.Unlock()
 
 	connector.stopserving()
 }
 
-func (connector *EpollConnector) handle(e netpoll.Event) {
+func (connector *EpollWSConnector) handle(e netpoll.Event) {
 	defer poller.Resume(connector.desc)
 
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
@@ -135,33 +135,53 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 
 	connector.Lock()                                                //
 	connector.conn.SetReadDeadline(time.Now().Add(time.Second * 5)) // TODO: for test???
-	payload, _, err := wsutil.ReadData(connector.conn, thisSide)
+	h, r, err := wsutil.NextReader(connector.conn, thisSide)
 	if err != nil {
 		connector.Unlock() //
 		connector.Close(err)
 		return
 	}
-	connector.Unlock() //
-
-	if len(payload) == 0 {
-		connector.Close(ErrEmptyPayload)
+	if h.OpCode.IsControl() {
+		if err := wsutil.ControlFrameHandler(connector.conn, thisSide)(h, r); err != nil {
+			connector.Unlock() //
+			connector.Close(err)
+		}
 		return
 	}
+	println("AAA")
+	time.Sleep(time.Second)
+	message := connector.handler.NewMessage()
+	if err := message.Read(r, h); err != nil {
+		connector.Unlock() //
+		connector.Close(err)
+	}
+	// payload, _, err := wsutil.ReadData(connector.conn, thisSide)
+	// if err != nil {
+	// 	connector.Unlock() //
+	// 	connector.Close(err)
+	// 	return
+	// }
+	connector.Unlock() //
+
+	// if len(payload) == 0 {
+	// 	connector.Close(ErrEmptyPayload)
+	// 	return
+	// }
 
 	if pool != nil {
 		pool.Schedule(func() {
-			if err := connector.handler.Handle(payload); err != nil {
+			if err := connector.handler.Handle(message); err != nil {
 				connector.Close(err)
 			}
 		})
 		return
 	}
-	if err = connector.handler.Handle(payload); err != nil {
+	if err = connector.handler.Handle(message); err != nil {
 		connector.Close(err)
 	}
 }
 
-func (connector *EpollConnector) Send(message []byte) error {
+func (connector *EpollWSConnector) Send(message []byte) error {
 	if connector.IsClosed() {
 		return ErrClosedConnector
 	}
@@ -171,7 +191,7 @@ func (connector *EpollConnector) Send(message []byte) error {
 	return wsutil.WriteMessage(connector.conn, thisSide, ws.OpText, message)
 }
 
-func (connector *EpollConnector) Close(reason error) { // TODO: можно добавить отправку OpClose перед закрытием соединения
+func (connector *EpollWSConnector) Close(reason error) { // TODO: можно добавить отправку OpClose перед закрытием соединения
 	connector.Lock()
 	defer connector.Unlock()
 
@@ -182,7 +202,7 @@ func (connector *EpollConnector) Close(reason error) { // TODO: можно до�
 	connector.handler.HandleClose(reason)
 }
 
-func (connector *EpollConnector) stopserving() error {
+func (connector *EpollWSConnector) stopserving() error {
 	connector.isclosed = true
 	poller.Stop(connector.desc)
 	connector.desc.Close()
@@ -190,12 +210,12 @@ func (connector *EpollConnector) stopserving() error {
 }
 
 // call in HandleClose() will cause deadlock
-func (connector *EpollConnector) IsClosed() bool {
+func (connector *EpollWSConnector) IsClosed() bool {
 	connector.RLock()
 	defer connector.RUnlock()
 	return connector.isclosed
 }
 
-func (connector *EpollConnector) RemoteAddr() net.Addr {
+func (connector *EpollWSConnector) RemoteAddr() net.Addr {
 	return connector.conn.RemoteAddr()
 }
