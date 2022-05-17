@@ -3,6 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net"
+	"os"
+	"project/services/messages/messagestypes"
+	"project/wsconnector"
+	"strings"
 	"time"
 
 	"github.com/gobwas/ws"
@@ -50,50 +57,139 @@ import (
 // }
 
 type message struct {
-	ID   string `json:"id"`
-	Text string `json:"text"`
+	UserId  string                           `json:"userid"`
+	ChatId  string                           `json:"chatid"`
+	Type    messagestypes.MessageContentType `json:"mtype"`
+	ErrCode int                              `json:"type"`
+	Data    []byte                           `json:"data"`
+	Time    time.Time                        `json:"time"`
+}
+
+func readmessage(conn net.Conn) (*message, error) {
+	h, r, err := wsutil.NextReader(conn, ws.StateClientSide)
+	if err != nil {
+		return nil, err
+	}
+	if h.OpCode.IsControl() {
+		return nil, errors.New("control frame")
+	}
+	m := &message{}
+	wsconnector.ReadAndDecodeJson(r, m)
+	return m, err
+}
+
+// image formats and magic numbers
+var magicTable = map[string]string{
+	"\xff\xd8\xff":      "image/jpeg",
+	"\x89PNG\r\n\x1a\n": "image/png",
+	"GIF87a":            "image/gif",
+	"GIF89a":            "image/gif",
+}
+
+// mimeFromIncipit returns the mime type of an image file from its first few
+// bytes or the empty string if the file does not look like a known file type
+func mimeFromIncipit(incipit []byte) string {
+	incipitStr := string(incipit)
+	for magic, mime := range magicTable {
+		if strings.HasPrefix(incipitStr, magic) {
+			return mime
+		}
+	}
+
+	return ""
 }
 
 func main() {
-	msg := &message{ID: "client1", Text: "oh hi mark"}
 
-	jmsg, err := json.Marshal(msg)
+	msg1 := &message{UserId: "user1", ChatId: "someeechat", Type: messagestypes.Text, Data: []byte("text 11111")}
+	msg2 := &message{UserId: "user2", ChatId: "someeechat", Type: messagestypes.Image}
+
+	jmsg1, err := json.Marshal(msg1)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	file, err := os.ReadFile("testpics/testpic1.jpg")
 	if err != nil {
 		println(err.Error())
 		return
 	}
 
-	conn, _, _, err := ws.Dial(context.Background(), "ws://127.0.0.1:9010/cl1")
+	println(mimeFromIncipit(file))
+	msg2.Data = file
+	jmsg2, err := json.Marshal(msg2)
+
 	if err != nil {
 		println(err.Error())
 		return
 	}
-	err = wsutil.WriteClientBinary(conn, jmsg)
+	// f := &message{}
+	// json.Unmarshal(jmsg1, f)
+	// fmt.Println(f)
+	// return
+	conn1, _, _, err := ws.Dial(context.Background(), "ws://127.0.0.1:8092/user1")
 	if err != nil {
 		println(err.Error())
 		return
 	}
-	jmsg1 := make([]byte, 5)
-	jmsg2 := make([]byte, len(jmsg)-5)
-	copy(jmsg1, jmsg[:5])
-	copy(jmsg2, jmsg[5:])
-	println("WRITED")
-	err = wsutil.WriteClientBinary(conn, jmsg)
+	conn2, _, _, err := ws.Dial(context.Background(), "ws://127.0.0.1:8092/user2")
 	if err != nil {
 		println(err.Error())
 		return
 	}
+
+	time.Sleep(time.Second)
+
+	err = wsutil.WriteClientBinary(conn1, jmsg1)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+
+	// confirmed_msg, err := wsconnector.EncodeJson(msg1)
+	// if err != nil {
+	// 	println(err.Error())
+	// 	return
+	// }
+	// f := &message{}
+	// json.Unmarshal(confirmed_msg, f)
+	// fmt.Println(f)
+	// return
+
+	err = wsutil.WriteClientBinary(conn2, jmsg2)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	time.Sleep(time.Second)
+
+	r1, err := readmessage(conn1)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	fmt.Println("message to user1:", r1)
+	r11, err := readmessage(conn1)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	fmt.Println("message to user1:", r11)
+
+	r2, err := readmessage(conn2)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	fmt.Println("message to user2:", r2)
+	r22, err := readmessage(conn2)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	fmt.Println("message to user2:", r22)
 	time.Sleep(time.Second * 2)
-	fr1 := ws.NewBinaryFrame(jmsg)
 
-	// r = wsutil.NewReader(conn, ws.StateServerSide).NextFrame()
-	//fr1.Header.Fin = false
-	// fr2 := ws.NewBinaryFrame(jmsg2)
-	// fr2.Header.OpCode = ws.OpContinuation
-	ws.MaskFrameInPlace(fr1)
-	// ws.MaskFrameInPlace(fr2)
-
-	time.Sleep(time.Second * 5)
 	// ws.Cipher(fr2.Payload, fr1.Header.Mask, 0)
 	// bfr1, err := ws.CompileFrame(fr1)
 	// if err != nil {

@@ -3,8 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
-	"project/test/connector"
+	"project/connector"
 	"project/test/types"
 	"strconv"
 	"sync"
@@ -161,9 +160,7 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 	if sendToConfs {
 		if confs_state := subs.services.getServiceState(ServiceName(types.ConfServiceName)); confs_state != nil { // sending subscription to other confs
 			confs := confs_state.getAllServices()
-
 			if len(confs) != 0 {
-				fmt.Println("SENDING SUBSCRIPTION TO OUTER CONF:", confs_message) ///////////////////////////////
 				sendToMany(connector.FormatBasicMessage(confs_message), confs)
 			}
 		}

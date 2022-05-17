@@ -13,7 +13,7 @@ type config struct {
 }
 
 type service struct {
-	pub_service httpservice.Publisher
+	pub_service *httpservice.Publisher
 }
 
 const thisServiceName httpservice.ServiceName = "service2"
@@ -21,7 +21,7 @@ const publisherName httpservice.ServiceName = "service1"
 
 func (c *config) CreateHandler(ctx context.Context, pubs_getter httpservice.Publishers_getter) (httpservice.HTTPService, error) {
 	println(c.SayHello)
-	s := &service{pub_service: *pubs_getter.Get(publisherName)}
+	s := &service{pub_service: pubs_getter.Get(publisherName)}
 	return s, nil
 }
 

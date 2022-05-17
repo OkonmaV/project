@@ -2,8 +2,7 @@ package main
 
 import (
 	"errors"
-	"fmt"
-	"project/test/connector"
+	"project/connector"
 	"project/test/types"
 	"strconv"
 	"strings"
@@ -45,7 +44,6 @@ func (s *service) Handle(message connector.MessageReader) error {
 		pubnames := make([]ServiceName, 0, len(raw_pubnames))
 		for _, raw_pubname := range raw_pubnames {
 			if len(raw_pubname) == 0 {
-				fmt.Println("THIS - empty raw_pubname!") ///////////////////////////////////////////////////
 				return connector.ErrWeirdData
 			}
 			pubnames = append(pubnames, ServiceName(raw_pubname))

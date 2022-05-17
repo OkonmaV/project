@@ -2,3 +2,6 @@ DataStr teststr
 DataStrSlice teststr1 teststr2
 DataInt 9
 DataIntSlice 1 2 3 4 5
+Text sometext
+Char c
+Num 5

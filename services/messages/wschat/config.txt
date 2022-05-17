@@ -1,0 +1,4 @@
+ConfiguratorAddr tcp:127.0.0.1:8099
+ClickhouseAddr 127.0.0.1:9000
+ClickhouseTable messagestest
+FilesPath shittestfiles/

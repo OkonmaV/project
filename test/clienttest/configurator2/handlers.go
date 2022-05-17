@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"project/test/connector"
 	"project/test/types"
 	"strconv"
@@ -44,6 +45,7 @@ func (s *service) Handle(message connector.MessageReader) error {
 		pubnames := make([]ServiceName, 0, len(raw_pubnames))
 		for _, raw_pubname := range raw_pubnames {
 			if len(raw_pubname) == 0 {
+				fmt.Println("THIS - empty raw_pubname!") ///////////////////////////////////////////////////
 				return connector.ErrWeirdData
 			}
 			pubnames = append(pubnames, ServiceName(raw_pubname))
@@ -111,7 +113,7 @@ func (s *service) Handle(message connector.MessageReader) error {
 }
 
 func (s *service) HandleClose(reason error) {
-	s.l.Warning("Connection", suckutils.ConcatTwo("closed, reason err: ", reason.Error()))
+	s.l.Warning("Connection", suckutils.ConcatFour("with \"", string(s.name), "\" closed, reason err: ", reason.Error()))
 	s.changeStatus(types.StatusOff)
 
 	if s.name == ServiceName(types.ConfServiceName) {

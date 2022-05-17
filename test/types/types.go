@@ -96,6 +96,34 @@ const (
 	OperationCodeMyOuterPort OperationCode = 11
 )
 
+func (op OperationCode) String() string {
+	switch op {
+	case OperationCodeMyStatusChanged:
+		return "OperationCodeMyStatusChanged"
+	case OperationCodeUnsubscribeFromServices:
+		return "OperationCodeUnsubscribeFromServices"
+	case OperationCodeSubscribeToServices:
+		return "OperationCodeSubscribeToServices"
+	case OperationCodeUpdatePubs:
+		return "OperationCodeUpdatePubs"
+	case OperationCodeGiveMeOuterAddr:
+		return "OperationCodeGiveMeOuterAddr"
+	case OperationCodeSetOutsideAddr:
+		return "OperationCodeSetOutsideAddr"
+	case OperationCodeImSupended:
+		return "OperationCodeImSupended"
+	case OperationCodePing:
+		return "OperationCodePing"
+	case OperationCodeOK:
+		return "OperationCodeOK"
+	case OperationCodeNOTOK:
+		return "OperationCodeNOTOK"
+	case OperationCodeMyOuterPort:
+		return "OperationCodeMyOuterPort"
+	}
+	return ""
+}
+
 // no total length and opcode in return slice
 func FormatOpcodeUpdatePubMessage(servname []byte, address []byte, newstatus ServiceStatus) []byte {
 	if len(servname) == 0 || len(address) == 0 {

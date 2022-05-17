@@ -61,7 +61,7 @@ func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 			}
 			if subscriptors := subs.getSubscribers(ServiceName(update.servicename)); len(subscriptors) != 0 {
 				payload := types.ConcatPayload(types.FormatOpcodeUpdatePubMessage(update.servicename, update.address, update.status))
-				message := append(append(make([]byte, 1, len(payload)+1), byte(types.OperationCodeUpdatePubs)), payload...)
+				message := append(append(make([]byte, 0, len(payload)+1), byte(types.OperationCodeUpdatePubs)), payload...)
 				if update.sendToConfs {
 					sendToMany(connector.FormatBasicMessage(message), subscriptors)
 				} else {
@@ -69,7 +69,7 @@ func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 						if subscriptor == nil || subscriptor.connector == nil || subscriptor.connector.IsClosed() || subscriptor.name == ServiceName(types.ConfServiceName) {
 							continue
 						}
-						if err := subscriptor.connector.Send(message); err != nil {
+						if err := subscriptor.connector.Send(connector.FormatBasicMessage(message)); err != nil {
 							subscriptor.connector.Close(err)
 						}
 					}
@@ -104,16 +104,22 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 	confs_message := append(make([]byte, 0, len(pubnames)*15), byte(types.OperationCodeSubscribeToServices)) // subscription to send to other confs
 
 	subs.Lock()
-loop:
+
 	for _, pubname := range pubnames {
 		if sub.name == pubname && sub.name != ServiceName(types.ConfServiceName) { // avoiding self-subscription
 			subs.Unlock()
 			return errors.New("service trying subscribe to itself")
 		}
+
+		pubname_byte := []byte(pubname)
+		if sendToConfs {
+			confs_message = append(append(confs_message, byte(len(pubname_byte))), pubname_byte...)
+		}
+
 		if _, ok := subs.subs_list[pubname]; ok {
 			for _, alreadysubbed := range subs.subs_list[pubname] {
 				if alreadysubbed == sub { // already subscribed
-					continue loop
+					goto sending_pubaddrs_to_sub
 				}
 			}
 			if cap(subs.subs_list[pubname]) == len(subs.subs_list[pubname]) || (cap(subs.subs_list[pubname])-len(subs.subs_list[pubname])) > maxFreeSpace { // reslice, also allocation here if not yet
@@ -125,13 +131,7 @@ loop:
 		} else {
 			subs.subs_list[pubname] = append(make([]*service, 1), sub)
 		}
-
-		pubname_byte := []byte(pubname)
-
-		if sendToConfs {
-			confs_message = append(append(confs_message, byte(len(pubname_byte))), pubname_byte...)
-		}
-
+	sending_pubaddrs_to_sub:
 		if state := subs.services.getServiceState(pubname); state != nil { // getting alive local pubs
 			addrs := state.getAllOutsideAddrsWithStatus(types.StatusOn)
 			if len(addrs) != 0 {
