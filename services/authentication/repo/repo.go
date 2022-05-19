@@ -7,11 +7,16 @@ import (
 	"github.com/dgrijalva/jwt-go"
 )
 
+const JwtKey string = "oleg"
+const CookieName string = "koki"
+
 type CookieClaims struct {
 	Login   string `json:"login"`
+	Id      string `json:"id"`
 	Role    int    `json:"role"`
 	Surname string `json:"surname"`
 	Name    string `json:"name"`
+
 	jwt.StandardClaims
 }
 

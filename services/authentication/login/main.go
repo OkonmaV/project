@@ -30,7 +30,7 @@ type service struct {
 	tokenGen   *httpservice.Publisher
 }
 
-const thisServiceName httpservice.ServiceName = "authentication.authorization"
+const thisServiceName httpservice.ServiceName = "authentication.login"
 const pubname httpservice.ServiceName = "authentication.tokengenerator"
 
 const expiresHours = 24
@@ -89,6 +89,7 @@ func (s *service) Handle(r *suckhttp.Request, l types.Logger) (*suckhttp.Respons
 		l.Error("CreateRequestFrom", err)
 		return suckhttp.NewResponse(500, "Internal Server Error"), nil
 	}
+	tokenreq.AddHeader(suckhttp.Accept, "application/json")
 	tokenreq.Body = []byte(hashLogin)
 	tokenresp, err := s.tokenGen.SendHTTP(tokenreq)
 	if err != nil {
@@ -107,7 +108,7 @@ func (s *service) Handle(r *suckhttp.Request, l types.Logger) (*suckhttp.Respons
 	expires := time.Now().Add(expiresHours * time.Hour).String()
 	resp := suckhttp.NewResponse(302, "Found")
 	resp.SetHeader(suckhttp.Location, "/")
-	resp.SetHeader(suckhttp.Set_Cookie, suckutils.ConcatFour("koki=", string(tokenresp.GetBody()), ";Expires=", expires))
+	resp.SetHeader(suckhttp.Set_Cookie, suckutils.Concat(repoAuthentication.CookieName, "=", string(tokenresp.GetBody()), ";Expires=", expires))
 
 	return resp, nil
 }

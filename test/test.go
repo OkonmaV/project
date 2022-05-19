@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,11 +11,9 @@ import (
 	"os"
 	"project/services/messages/messagestypes"
 	"project/wsconnector"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/big-larry/mgo/bson"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 )
@@ -100,12 +100,18 @@ func mimeFromIncipit(incipit []byte) string {
 
 	return ""
 }
-
+func GetMD5(str string) (string, error) {
+	hash := md5.New()
+	_, err := hash.Write([]byte(str))
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
 func main() {
 	unp := "0"
-	h, err1 := bson.NewObjectIdFromHex("6285c4c7cfda2e47e28d470c")
-	f, err := strconv.ParseUint(unp, 10, 1)
-	fmt.Println(f, err, h, err1)
+	h, err1 := GetMD5(unp)
+	fmt.Println(h, len(h), err1)
 	return
 	msg1 := &message{UserId: "user1", ChatId: "someeechat", Type: messagestypes.Text, Data: []byte("text 11111")}
 	msg2 := &message{UserId: "user2", ChatId: "someeechat", Type: messagestypes.Image}
