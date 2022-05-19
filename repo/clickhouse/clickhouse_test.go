@@ -1,8 +1,8 @@
-package clickhouse_test
+package repoClickhouse_test
 
 import (
 	"context"
-	"project/repo/clickhouse"
+	repo_clickhouse "project/repo/clickhouse"
 	"strings"
 	"testing"
 	"time"
@@ -35,8 +35,8 @@ func TestAsyncInsert(t *testing.B) {
 	end <- struct{}{}
 }
 
-func connect() (*clickhouse.ClickhouseConnection, error) {
-	return clickhouse.Connect(context.Background(), []string{"127.0.0.1:9000"}, "messagestest", "default", "", "", 0, 0)
+func connect() (*repo_clickhouse.ClickhouseConnection, error) {
+	return repo_clickhouse.Connect(context.Background(), []string{"127.0.0.1:9000"}, "messagestest", "default", "", "", 0, 0)
 }
 
 func worker(call func(), wait chan struct{}, iter int) {

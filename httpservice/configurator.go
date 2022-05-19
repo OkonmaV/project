@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
-	"project/test/connector"
+	"project/connector"
 	"project/test/types"
 	"strconv"
 	"strings"
@@ -221,11 +221,9 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 		return nil
 	case types.OperationCodeSetOutsideAddr:
 		if len(payload) < 2 {
-			println("THIS1") /////////////////////////////
 			return connector.ErrWeirdData
 		}
 		if len(payload) < 2+int(payload[1]) {
-			println("THIS2") /////////////////////////////
 			return connector.ErrWeirdData
 		}
 		if netw, addr, err := types.UnformatAddress(payload[2 : 2+int(payload[1])]); err != nil {
@@ -261,7 +259,6 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 				netw, addr, err := types.UnformatAddress(raw_addr)
 				if err != nil {
 					c.l.Error("Handle/OperationCodeUpdatePubs/UnformatAddress", err)
-					println("THIS3") /////////////////////////////
 					return connector.ErrWeirdData
 				}
 				if netw == types.NetProtocolNonlocalUnix {
@@ -272,11 +269,9 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 			}
 			return nil
 		} else {
-			println("THIS4") /////////////////////////////
 			return connector.ErrWeirdData
 		}
 	}
-	println("THIS5") /////////////////////////////
 	return connector.ErrWeirdData
 }
 

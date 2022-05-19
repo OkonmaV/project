@@ -41,6 +41,7 @@ const pubscheckTicktime time.Duration = time.Second * 5
 
 // TODO: исправить жопу с логами
 // TODO: придумать шото для неторчащих наружу сервисов
+// TODO: конфигурировать кол-во горутин-хендлеров конфигуратором
 
 func InitNewService(servicename ServiceName, config Servicier, threads int, publishers_names ...ServiceName) {
 	initNewService(true, servicename, config, threads, publishers_names...)

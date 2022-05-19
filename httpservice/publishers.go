@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
-	"project/test/connector"
+	"project/connector"
 	"project/test/types"
 	"strconv"
 	"strings"
@@ -165,14 +165,12 @@ loop:
 			if len(empty_pubs) != 0 {
 				servStatus.setPubsStatus(false)
 				pubs.l.Warning("publishersWorker", suckutils.ConcatTwo("no publishers with names: ", strings.Join(empty_pubs, ", ")))
-				//fmt.Println("EMPTY PUBS: len emptypubs:", len(empty_pubs), ", total emptypubs len:", empty_pubs_len) ///////////////////////////////////
 				message := make([]byte, 1, 1+empty_pubs_len+len(empty_pubs))
 				message[0] = byte(types.OperationCodeSubscribeToServices)
 				for _, pubname := range empty_pubs {
 					//check pubname len?
 					message = append(append(message, byte(len(pubname))), []byte(pubname)...)
 				}
-				//fmt.Println("SENDING SUBSCRIPTION IN PUBS LOOP:", message, "|| formatted:", connector.FormatBasicMessage(message))/////////////////////////////////////
 				if err := pubs.configurator.send(connector.FormatBasicMessage(message)); err != nil {
 					pubs.l.Error("Publishers", errors.New(suckutils.ConcatTwo("sending subscription to configurator error: ", err.Error())))
 				}
@@ -225,8 +223,8 @@ func (pub *Publisher) Send(message []byte) ([]byte, error) {
 	return nil, errors.New("TODO")
 }
 
-func CreateHTTPRequestFrom(method suckhttp.HttpMethod, recievedRequest *suckhttp.Request) (*suckhttp.Request, error) {
-	req, err := suckhttp.NewRequest(method, "")
+func CreateHTTPRequestFrom(method suckhttp.HttpMethod, uri string, recievedRequest *suckhttp.Request) (*suckhttp.Request, error) {
+	req, err := suckhttp.NewRequest(method, uri)
 	if err != nil {
 		return nil, err
 	}

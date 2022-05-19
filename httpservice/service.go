@@ -3,11 +3,10 @@ package httpservice
 import (
 	"confdecoder"
 	"context"
-	"fmt"
 	"net"
 	"os"
 	"os/signal"
-	"project/test/connector"
+	"project/connector"
 	"project/test/logs"
 	"project/test/types"
 	"syscall"
@@ -135,9 +134,7 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
-	fmt.Println("LN START CLOSING") /////////////////////////////////////////////
 	ln.close()
-	fmt.Println("LN CLOSED") ////////////////////////////////
 
 	if closehandler, ok := handler.(closer); ok {
 		if err = closehandler.Close(); err != nil {

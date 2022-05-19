@@ -144,6 +144,7 @@ func (listener *listener) handlingWorker() {
 	for conn := range listener.connsToHandle {
 		if err := listener.handler(conn); err != nil { // гарантированный первый хэндл, иначе если сразу в loop-у лезть, то при завершении контекста мы хер че отхэндлим
 			listener.l.Error("handlingWorker/handle", errors.New(suckutils.ConcatThree(conn.RemoteAddr().String(), ", err: ", err.Error())))
+			goto closing
 		}
 		if listener.keepAlive {
 		loop:
@@ -153,12 +154,14 @@ func (listener *listener) handlingWorker() {
 					break loop
 				default:
 					if err := listener.handler(conn); err != nil {
-						listener.l.Error("handlingWorker/handle", errors.New(suckutils.ConcatThree(conn.RemoteAddr().String(), ", err: ", err.Error())))
+						// по идее, тут двойной сёр ошибкой в логи, если в хендлере она тоже логается
+						listener.l.Error("handlingWorker/handle", errors.New(suckutils.ConcatThree(conn.RemoteAddr().String(), ", keepAlive closed on err: ", err.Error())))
 						break loop
 					}
 				}
 			}
 		}
+	closing:
 		conn.Close()
 	}
 	<-listener.activeWorkers
