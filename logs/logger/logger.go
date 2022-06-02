@@ -1,5 +1,7 @@
 package logger
 
+import "time"
+
 type Logger interface {
 	LogsWriter
 	NewSubLogger(tags ...string) Logger
@@ -21,6 +23,7 @@ type LogsWriter interface {
 type LogsFlusher interface {
 	NewLogsContainer(tags ...string) Logger
 	Close()
-	Done()
-	DoneWithTimeout()
+	Done() <-chan struct{}
+	DoneWithTimeout(timeout time.Duration)
+	flushWorker()
 }

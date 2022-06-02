@@ -2,7 +2,11 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"project/logs/encode"
+	"project/logs/logger"
 )
 
 type Category struct {
@@ -95,128 +99,44 @@ func (c *cache[T]) Get(key string) (v T) {
 // 	}
 // 	return hex.EncodeToString(hash.Sum(nil)), nil
 // }
+type foo []byte
+
+type str struct {
+	One int
+	Two int
+	Int interface{}
+}
+type ins struct {
+	Three int
+}
+
+func (f foo) Read(b []byte) (int, error) {
+	bb, err := json.Marshal(str{One: 1, Two: 2, Int: ins{Three: 3}})
+	if err != nil {
+		println("this")
+		return 0, err
+	}
+	copy(b, bb)
+	//b = append(b[0:], bb...)
+	return len(bb), nil
+}
+
 func main() {
-	// unp := "0"
-	// h, err1 := GetMD5(unp)
-	// fmt.Println(h, len(h), err1)
-	// return
-	// msg1 := &message{UserId: "user1", ChatId: "someeechat", Type: messagestypes.Text, Data: []byte("text 11111")}
-	// msg2 := &message{UserId: "user2", ChatId: "someeechat", Type: messagestypes.Image}
-
-	// jmsg1, err := json.Marshal(msg1)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// file, err := os.ReadFile("testpics/testpic1.jpg")
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-
-	// println(mimeFromIncipit(file))
-	// msg2.Data = file
-	// jmsg2, err := json.Marshal(msg2)
-
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// // f := &message{}
-	// // json.Unmarshal(jmsg1, f)
-	// // fmt.Println(f)
-	// // return
-	// conn1, _, _, err := ws.Dial(context.Background(), "ws://127.0.0.1:8092/user1")
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// conn2, _, _, err := ws.Dial(context.Background(), "ws://127.0.0.1:8092/user2")
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-
-	// time.Sleep(time.Second)
-
-	// err = wsutil.WriteClientBinary(conn1, jmsg1)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-
-	// // confirmed_msg, err := wsconnector.EncodeJson(msg1)
-	// // if err != nil {
-	// // 	println(err.Error())
-	// // 	return
-	// // }
-	// // f := &message{}
-	// // json.Unmarshal(confirmed_msg, f)
-	// // fmt.Println(f)
-	// // return
-
-	// err = wsutil.WriteClientBinary(conn2, jmsg2)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// time.Sleep(time.Second)
-
-	// r1, err := readmessage(conn1)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// fmt.Println("message to user1:", r1)
-	// r11, err := readmessage(conn1)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// fmt.Println("message to user1:", r11)
-
-	// r2, err := readmessage(conn2)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// fmt.Println("message to user2:", r2)
-	// r22, err := readmessage(conn2)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// fmt.Println("message to user2:", r22)
-	// time.Sleep(time.Second * 2)
-	////////////////////////////////////////////////////////////
-	// ws.Cipher(fr2.Payload, fr1.Header.Mask, 0)
-	// bfr1, err := ws.CompileFrame(fr1)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// bfr2, err := ws.CompileFrame(fr2)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// b := bytes.Join([][]byte{bfr1, bfr2}, []byte{})
-	// _, err = conn.Write(b)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// return
-	// err = ws.WriteFrame(conn, fr1)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
-	// err = ws.WriteFrame(conn, fr2)
-	// if err != nil {
-	// 	println(err.Error())
-	// 	return
-	// }
+	var f foo
+	m := &str{}
+	err := json.NewDecoder(f).Decode(m)
+	fmt.Println(m, err)
+	return
+	flusher := logger.NewFlusher(encode.DebugLevel)
+	l := flusher.NewLogsContainer("testtag1", "testtag2")
+	l.Debug("Hey", "Debug")
+	l.Info("Hey", "Info")
+	l.Warning("Hey", "Warning")
+	l.Error("Hey", errors.New("error"))
+	flusher.Close()
+	<-flusher.Done()
+	//time.Sleep(time.Second * 5)
+	return
 	// create a new category
 	category := Category{
 		ID:   1,

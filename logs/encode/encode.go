@@ -1,6 +1,10 @@
 package encode
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+
+	"github.com/big-larry/suckutils"
+)
 
 const (
 	TagStartSep byte = 91 // "["
@@ -50,6 +54,17 @@ func encode(tags []byte, logstr string, newtags ...string) []byte {
 	return log
 }
 
+func DecodeToString(log []byte) string {
+	if len(log) < 4 {
+		return ""
+	}
+	return suckutils.ConcatFour(string(TagStartSep), LogType(log[0]).String(), string(TagEndSep), string(log[3:]))
+}
+
 func PrintLog(log []byte) {
-	println(log[3:])
+	println(DecodeToString(log))
+}
+
+func GetLogLvl(log []byte) LogsFlushLevel {
+	return LogsFlushLevel(log[0])
 }
