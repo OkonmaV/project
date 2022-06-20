@@ -1,6 +1,9 @@
 package logger
 
-import "project/logs/encode"
+import (
+	"project/logs/encode"
+	"time"
+)
 
 type PackageLogsContainer struct {
 	ch   chan [][]byte
@@ -13,25 +16,25 @@ func (l *LogsContainer) NewPackageSubLogger(logsBufLen int, tags ...string) Pack
 }
 
 func (l *PackageLogsContainer) Debug(name, logstr string) {
-	l.list = append(l.list, encode.EncodeLog(encode.Debug, l.tags, name, logstr))
+	l.list = append(l.list, encode.EncodeLog(encode.Debug, time.Now(), l.tags, name, logstr))
 }
 
 func (l *PackageLogsContainer) Info(name, logstr string) {
-	l.list = append(l.list, encode.EncodeLog(encode.Info, l.tags, name, logstr))
+	l.list = append(l.list, encode.EncodeLog(encode.Info, time.Now(), l.tags, name, logstr))
 }
 
 func (l *PackageLogsContainer) Warning(name, logstr string) {
-	l.list = append(l.list, encode.EncodeLog(encode.Warning, l.tags, name, logstr))
+	l.list = append(l.list, encode.EncodeLog(encode.Warning, time.Now(), l.tags, name, logstr))
 }
 
 func (l *PackageLogsContainer) Error(name string, logerr error) {
 	var logstr string
-	if logerr == nil {
+	if logerr != nil {
 		logstr = logerr.Error()
 	} else {
 		logstr = "nil err"
 	}
-	l.list = append(l.list, encode.EncodeLog(encode.Error, l.tags, name, logstr))
+	l.list = append(l.list, encode.EncodeLog(encode.Error, time.Now(), l.tags, name, logstr))
 }
 
 func (l *PackageLogsContainer) Flush() {

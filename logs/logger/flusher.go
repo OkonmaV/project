@@ -70,7 +70,7 @@ func (f *Flusher) DoneWithTimeout(timeout time.Duration) {
 	case <-f.allflushed:
 		return
 	case <-t.C:
-		encode.PrintLog(encode.EncodeLog(encode.Error, flushertags, "DoneWithTimeout", "reached timeout, skip last flush"))
+		encode.PrintLog(encode.EncodeLog(encode.Error, time.Now(), flushertags, "DoneWithTimeout", "reached timeout, skip last flush"))
 		return
 	}
 

@@ -49,10 +49,11 @@ func NewBasicMessage() *BasicMessage {
 }
 
 func FormatBasicMessage(message []byte) []byte {
-	formattedmsg := make([]byte, 4, 4+len(message))
-	if len(message) > 0 {
-		binary.LittleEndian.PutUint32(formattedmsg, uint32(len(message)))
-		return append(formattedmsg, message...)
-	}
+	formattedmsg := make([]byte, 4+len(message))
+	// if len(message) > 0 {
+	binary.LittleEndian.PutUint32(formattedmsg, uint32(len(message)))
+	copy(formattedmsg[4:], message)
 	return formattedmsg
+	// 	}
+	// 	return formattedmsg
 }

@@ -2,22 +2,20 @@ package main
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
 	"os"
 	"project/services/messages/messagestypes"
-	"project/test/types"
-	"project/wsconnector"
-	"strings"
-	"unsafe"
 
+	"project/wsconnector"
+	"project/wsservice"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/big-larry/suckutils"
 )
@@ -87,14 +85,14 @@ type wsconn struct {
 }
 
 // wsservice.Handler interface implementation
-func (wsc *wsconn) HandleWSCreating(sender wsconnector.Sender) error {
+func (wsc *wsconn) HandleNewConnection(conn wsservice.WSconn) error {
 	wsc.srvc.adduser(wsc)
-	wsc.conn = sender
+	wsc.conn = conn
 	return nil
 }
 
 // wsservice.Handler {wsconnector.WsHandler} interface implementation
-func (wsc *wsconn) Handle(msg wsconnector.MessageReader) error {
+func (wsc *wsconn) Handle(msg interface{}) error {
 	//wsc.l.Info("NEW MESSAGE", string(message))
 
 	m := msg.(*message)
@@ -225,14 +223,9 @@ func (srvc *service) sendToMany(msg []byte, usersids []userid) {
 	for _, id := range usersids {
 		if conns, ok := srvc.users[id]; ok {
 			conns.RLock()
-			fmt.Println(len(conns.conns))
 		loop:
 			for _, wsc := range conns.conns {
 				for i := 1; i < numOfSendMsgTries; i++ {
-					println("sended")
-					f := &message{}
-					err = json.Unmarshal(msg, f)
-					fmt.Println(f, err)
 					if err = wsc.conn.Send(msg); err == nil {
 						continue loop
 					} else {

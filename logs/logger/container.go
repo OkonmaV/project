@@ -1,6 +1,9 @@
 package logger
 
-import "project/logs/encode"
+import (
+	"project/logs/encode"
+	"time"
+)
 
 type LogsContainer struct {
 	ch   chan [][]byte
@@ -13,25 +16,25 @@ func (f *Flusher) NewLogsContainer(tags ...string) Logger {
 }
 
 func (l *LogsContainer) Debug(name, logstr string) {
-	l.ch <- [][]byte{encode.EncodeLog(encode.Debug, l.tags, name, logstr)}
+	l.ch <- [][]byte{encode.EncodeLog(encode.Debug, time.Now(), l.tags, name, logstr)}
 }
 
 func (l *LogsContainer) Info(name, logstr string) {
-	l.ch <- [][]byte{encode.EncodeLog(encode.Info, l.tags, name, logstr)}
+	l.ch <- [][]byte{encode.EncodeLog(encode.Info, time.Now(), l.tags, name, logstr)}
 }
 
 func (l *LogsContainer) Warning(name, logstr string) {
-	l.ch <- [][]byte{encode.EncodeLog(encode.Warning, l.tags, name, logstr)}
+	l.ch <- [][]byte{encode.EncodeLog(encode.Warning, time.Now(), l.tags, name, logstr)}
 }
 
 func (l *LogsContainer) Error(name string, logerr error) {
 	var logstr string
-	if logerr == nil {
+	if logerr != nil {
 		logstr = logerr.Error()
 	} else {
 		logstr = "nil err"
 	}
-	l.ch <- [][]byte{encode.EncodeLog(encode.Error, l.tags, name, logstr)}
+	l.ch <- [][]byte{encode.EncodeLog(encode.Error, time.Now(), l.tags, name, logstr)}
 }
 
 func (l *LogsContainer) NewSubLogger(tags ...string) Logger {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"os"
-	"project/repo/clickhouse"
-	"project/test/types"
+	"project/logs/logger"
+	repoClickhouse "project/repo/clickhouse"
 	"project/wsservice"
 	"sync"
 )
@@ -30,7 +30,7 @@ type config struct {
 }
 
 type service struct {
-	chconn *clickhouse.ClickhouseConnection
+	chconn *repoClickhouse.ClickhouseConnection
 
 	path  string
 	users map[userid]*userconns
@@ -38,12 +38,11 @@ type service struct {
 }
 
 const thisServiceName wsservice.ServiceName = "messages.wschat"
-const cleanReqChanLen = 5
 const numOfSendMsgTries = 2
 
 // один вебсокет чтобы править всеми // 12byte objectid
 
-func (c *config) CreateHandlers(ctx context.Context, pubs_getter wsservice.Publishers_getter) (wsservice.Service, error) {
+func (c *config) CreateService(ctx context.Context, pubs_getter wsservice.Publishers_getter) (wsservice.WSService, error) {
 	if len(c.FilesPath) == 0 {
 		return nil, errors.New("FilesPath not set")
 	}
@@ -53,7 +52,7 @@ func (c *config) CreateHandlers(ctx context.Context, pubs_getter wsservice.Publi
 		return nil, errors.New("FilePath is not a directory")
 	}
 
-	conn, err := clickhouse.Connect(ctx, c.ClickhouseAddr, c.ClickhouseTable, "default", "", "", 0, 0)
+	conn, err := repoClickhouse.Connect(ctx, c.ClickhouseAddr, c.ClickhouseTable, "default", "", "", 0, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +70,7 @@ func (c *config) CreateHandlers(ctx context.Context, pubs_getter wsservice.Publi
 }
 
 // wsservice.Service interface implementation
-func (s *service) CreateNewWsData(l types.Logger) wsservice.Handler {
+func (s *service) CreateNewWsHandler(l logger.Logger) wsservice.Handler {
 	return &wsconn{
 		l:    l,
 		srvc: s,

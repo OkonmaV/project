@@ -3,7 +3,7 @@ package main
 import (
 	"errors"
 	"net"
-	"project/test/types"
+	"project/types/netprotocol"
 	"strconv"
 	"strings"
 	"time"
@@ -16,7 +16,7 @@ type ServiceName string
 // TODO: при подрубе удаленных сервисов 100% будут проблемы, поэтому так пока нельзя делать
 // TODO: рассмотреть возможность дифференцировать адрес и порт, навскидку непонятно нужно ли
 type Address struct {
-	netw       types.NetProtocol
+	netw       netprotocol.NetProtocol
 	remotehost string
 	port       string
 	random     bool
@@ -38,7 +38,7 @@ func readAddress(rawline string) *Address {
 
 	switch (rawline)[:first_sep] {
 	case "tcp":
-		addr.netw = types.NetProtocolTcp
+		addr.netw = netprotocol.NetProtocolTcp
 		if addr.random {
 			return addr
 		}
@@ -53,7 +53,7 @@ func readAddress(rawline string) *Address {
 			return nil
 		}
 	case "unix":
-		addr.netw = types.NetProtocolUnix
+		addr.netw = netprotocol.NetProtocolUnix
 		if addr.random {
 			return addr
 		}
@@ -61,7 +61,7 @@ func readAddress(rawline string) *Address {
 			return nil
 		}
 	case "nil":
-		addr.netw = types.NetProtocolNil
+		addr.netw = netprotocol.NetProtocolNil
 		if !addr.netw.Verify(addr.port) {
 			return nil
 		}
@@ -73,7 +73,7 @@ func readAddress(rawline string) *Address {
 }
 
 // TODO: переписать эту херь?
-func (a *Address) getListeningAddr() (types.NetProtocol, string, error) {
+func (a *Address) getListeningAddr() (netprotocol.NetProtocol, string, error) {
 	if a == nil {
 		return 0, "", errors.New("nil address struct")
 	}
@@ -84,9 +84,9 @@ func (a *Address) getListeningAddr() (types.NetProtocol, string, error) {
 			a.port = randport
 		}
 	}
-	if a.netw == types.NetProtocolUnix || a.netw == types.NetProtocolNil {
+	if a.netw == netprotocol.NetProtocolUnix || a.netw == netprotocol.NetProtocolNil {
 		return a.netw, a.port, nil
-	} else if a.netw == types.NetProtocolTcp {
+	} else if a.netw == netprotocol.NetProtocolTcp {
 		return a.netw, suckutils.ConcatTwo("127.0.0.1:", a.port), nil
 	}
 	return 0, "", errors.New("unknown protocol")
@@ -103,18 +103,18 @@ func (addr1 *Address) equalAsListeningAddr(addr2 Address) bool {
 	return false
 }
 
-func getFreePort(netw types.NetProtocol) (string, error) {
+func getFreePort(netw netprotocol.NetProtocol) (string, error) {
 	switch netw {
-	case types.NetProtocolTcp:
+	case netprotocol.NetProtocolTcp:
 		ln, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			return "", err
 		}
 		ln.Close()
 		return strconv.Itoa(ln.Addr().(*net.TCPAddr).Port), nil
-	case types.NetProtocolUnix:
+	case netprotocol.NetProtocolUnix:
 		return suckutils.Concat("/tmp/", strconv.FormatInt(time.Now().UnixNano(), 10), ".sock"), nil
-	case types.NetProtocolNil:
+	case netprotocol.NetProtocolNil:
 		return "", nil
 	}
 	return "", errors.New("unknown protocol")

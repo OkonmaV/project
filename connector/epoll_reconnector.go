@@ -14,11 +14,22 @@ type EpollReConnector struct {
 	mux        sync.Mutex
 	isstopped  bool
 
-	reconNetw string
-	reconAddr string
+	reconAddr Addr
 
 	doOnDial         func(net.Conn) error // right after dial, before NewEpollConnector() call
 	doAfterReconnect func() error         // after StartServing() call
+}
+
+type Addr struct {
+	netw    string
+	address string
+}
+
+func (a Addr) Network() string {
+	return a.netw
+}
+func (a Addr) String() string {
+	return a.address
 }
 
 func (reconnector *EpollReConnector) NewMessage() MessageReader {
@@ -65,7 +76,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 				buf[i].mux.Lock()
 				if !buf[i].isstopped {
 					if buf[i].connector.IsClosed() {
-						conn, err := net.Dial(buf[i].reconNetw, buf[i].reconAddr)
+						conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
 						if err != nil {
 							buf[i].mux.Unlock()
 							continue // не логается
@@ -115,22 +126,15 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 	}
 }
 
-func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial func(net.Conn) error, doAfterReconnect func() error, customReconnectNetw, customReconnectAddr string) (*EpollReConnector, error) {
+func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial func(net.Conn) error, doAfterReconnect func() error) (*EpollReConnector, error) {
 	if reconnectReq == nil {
 		panic("init reconnector first")
 	}
-	recon := &EpollReConnector{msghandler: messagehandler, doOnDial: doOnDial, doAfterReconnect: doAfterReconnect}
-
-	if len(customReconnectAddr) != 0 || len(customReconnectNetw) != 0 {
-		if len(customReconnectAddr) == 0 || len(customReconnectNetw) == 0 {
-			return nil, errors.New("weird custom reconnect address")
-		}
-		recon.reconNetw = customReconnectNetw
-		recon.reconAddr = customReconnectAddr
-	} else {
-		recon.reconNetw = conn.RemoteAddr().Network()
-		recon.reconAddr = conn.RemoteAddr().String()
-	}
+	recon := &EpollReConnector{
+		msghandler:       messagehandler,
+		doOnDial:         doOnDial,
+		doAfterReconnect: doAfterReconnect,
+		reconAddr:        Addr{netw: conn.RemoteAddr().Network(), address: conn.RemoteAddr().String()}}
 
 	var err error
 	if recon.connector, err = NewEpollConnector(conn, recon); err != nil {
@@ -138,6 +142,17 @@ func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial 
 	}
 
 	return recon, nil
+}
+
+func DialWithReconnect(netw string, addr string, messagehandler MessageHandler, doOnDial func(net.Conn) error, doAfterReconnect func() error) *EpollReConnector {
+	reconn := &EpollReConnector{
+		connector:        &EpollConnector{isclosed: true},
+		reconAddr:        Addr{netw: netw, address: addr},
+		msghandler:       messagehandler,
+		doOnDial:         doOnDial,
+		doAfterReconnect: doAfterReconnect}
+	reconnectReq <- reconn
+	return reconn
 }
 
 func (reconnector *EpollReConnector) StartServing() error {
@@ -173,7 +188,7 @@ func (reconnector *EpollReConnector) IsClosed() bool {
 }
 
 func (reconnector *EpollReConnector) RemoteAddr() net.Addr {
-	return reconnector.connector.RemoteAddr()
+	return reconnector.reconAddr
 }
 
 // далее фичи для тех, кто знает что это реконнектор

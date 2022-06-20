@@ -1,10 +1,11 @@
-package wsservice
+package main
 
 import (
-	"errors"
 	"net"
 	"os"
 	"project/logs/logger"
+	"project/wsconnector"
+	"strconv"
 	"sync"
 	"time"
 
@@ -15,11 +16,14 @@ type listener struct {
 	listener      net.Listener
 	connsToHandle chan net.Conn
 	activeWorkers chan struct{}
-	handler       handlefunc
+
+	clients *clientsConnsList
+	apps    *applications
 
 	servStatus *serviceStatus
 	//configurator *configurator // если раскомменчивать - не забыть раскомментить строку в service.go после вызова newConfigurator()
-	l logger.Logger
+	l         logger.Logger
+	clients_l logger.Logger
 
 	//ctx context.Context
 
@@ -28,21 +32,21 @@ type listener struct {
 	sync.RWMutex
 }
 
-type handlefunc func(conn net.Conn) error
-
 const handlerCallTimeout time.Duration = time.Second * 10
 
-func newListener(l logger.Logger, servStatus *serviceStatus /* configurator *configurator,*/, threads int, handler handlefunc) *listener {
+func newListener(l logger.Logger, clients_l logger.Logger, servStatus *serviceStatus, apps *applications, clients *clientsConnsList, threads int) *listener {
 	if threads < 1 {
 		panic("threads num cant be less than 1")
 	}
 	return &listener{
 		connsToHandle: make(chan net.Conn, 1),
 		activeWorkers: make(chan struct{}, threads),
-		handler:       handler,
+		clients:       clients,
 		servStatus:    servStatus,
-		//configurator:  configurator,
-		l: l}
+		apps:          apps,
+		l:             l,
+		clients_l:     clients_l,
+	}
 }
 
 // TODO: я пока не придумал шо делать, если поднять листнер не удалось и мы ушли в суспенд (сейчас мы тупо не выйдем из суспенда)
@@ -133,9 +137,31 @@ func (listener *listener) acceptWorker() {
 
 func (listener *listener) handlingWorker() {
 	for conn := range listener.connsToHandle {
-		if err := listener.handler(conn); err != nil {
-			listener.l.Error("handlingWorker/handle", errors.New(suckutils.ConcatThree(conn.RemoteAddr().String(), ", err: ", err.Error())))
+		newclient, err := listener.clients.newClient()
+		if err != nil {
+			listener.l.Error("handlingWorker/newClient", err)
+			conn.Close() // TODO: вернуть клиенту ошибку?
+			continue
+		}
+		newclient.apps = listener.apps
+		newclient.l = listener.clients_l.NewSubLogger(suckutils.ConcatTwo("ConnUID:", strconv.Itoa(int(newclient.connuid))), suckutils.ConcatTwo("Gen:", strconv.Itoa(int(newclient.curr_gen))))
+		newclient.closehandler = func() error { return listener.clients.handleCloseClientConn(newclient.connuid) }
+
+		connector, err := wsconnector.NewWSConnector(conn, newclient)
+		if err != nil {
+			listener.l.Error("handlingWorker/NewWSConnector", err)
+
+			listener.clients.handleCloseClientConn(newclient.connuid)
 			conn.Close()
+			continue
+		}
+		if err := connector.StartServing(); err != nil {
+			listener.l.Error("StartServing", err)
+
+			connector.ClearFromCache()
+			listener.clients.handleCloseClientConn(newclient.connuid)
+			conn.Close()
+			continue
 		}
 	}
 	<-listener.activeWorkers

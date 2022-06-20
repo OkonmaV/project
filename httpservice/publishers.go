@@ -155,10 +155,12 @@ loop:
 			//pubs.rwmux.RLock()
 			pubs.mux.Lock()
 			for pub_name, pub := range pubs.list {
+				pub.mux.Lock()
 				if len(pub.addresses) == 0 {
 					empty_pubs = append(empty_pubs, string(pub_name))
 					empty_pubs_len += len(pub_name)
 				}
+				pub.mux.Unlock()
 			}
 			pubs.mux.Unlock()
 			//pubs.rwmux.RUnlock()

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"confdecoder"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"project/logs/encode"
-	"project/logs/logger"
+	"math/rand"
+	"net"
+	"project/app/protocol"
+	"strings"
+	"time"
 )
 
 type Category struct {
@@ -99,44 +102,172 @@ func (c *cache[T]) Get(key string) (v T) {
 // 	}
 // 	return hex.EncodeToString(hash.Sum(nil)), nil
 // }
-type foo []byte
 
-type str struct {
-	One int
-	Two int
-	Int interface{}
-}
-type ins struct {
-	Three int
-}
+func readLoop(conn net.Conn, side_liter string, startreading chan struct{}) {
+	fmt.Println("side", side_liter, " readloop started")
+	for {
+		buf := make([]byte, 20)
+		startreading <- struct{}{}
+		fmt.Println("side", side_liter, " reading")
+		n, err := conn.Read(buf)
+		fmt.Println("side", side_liter, " readed")
+		fmt.Println("side", side_liter, " readed | err:", err, "| n:", n, "| buf:", buf)
 
-func (f foo) Read(b []byte) (int, error) {
-	bb, err := json.Marshal(str{One: 1, Two: 2, Int: ins{Three: 3}})
-	if err != nil {
-		println("this")
-		return 0, err
 	}
-	copy(b, bb)
-	//b = append(b[0:], bb...)
-	return len(bb), nil
 }
+
+func acceptLoop(ln net.Listener, side_liter string) {
+	for {
+		conn, err := ln.Accept()
+		if err != nil {
+			fmt.Println("side", side_liter, "| accept | err:", err)
+			continue
+		}
+		fmt.Println("side", side_liter, "| accept | from:", conn.RemoteAddr().String())
+		ch := make(chan struct{}, 1)
+		go readLoop(conn, side_liter, ch)
+		go writeAfterTimeout(conn, side_liter, ch)
+	}
+}
+
+func writeAfterTimeout(conn net.Conn, side_liter string, startreading chan struct{}) {
+	msg := []byte{1, 1}
+
+	<-startreading
+	//time.Sleep(time.Second)
+
+	fmt.Println("side", side_liter, "writing")
+	n, err := conn.Write(msg)
+	fmt.Println("side", side_liter, "written:", msg, "| n:", n, "| err:", err)
+}
+
+type ssdfg struct {
+	Uid string
+	Num int
+}
+
+type ht string
 
 func main() {
-	var f foo
-	m := &str{}
-	err := json.NewDecoder(f).Decode(m)
-	fmt.Println(m, err)
+	foo := []byte{10, 10, 10, 10}
+	fooo := []byte{0, 10, 10, 10}
+	a := binary.BigEndian.Uint32(foo)
+	aa := binary.BigEndian.Uint32(fooo)
+	b := 0x10ffffff
+	println(b)
+	println(b & 0x010000ff)
+	println(0x01000000)
+	println(0x020000ff>>24, 0x020000ff)
+	println(a)
+	println(a>>8, aa)
+	fff := []byte{0, 0, 0, 0}
+	binary.BigEndian.PutUint32(fff, 16777215)
+	fmt.Println(fff)
 	return
-	flusher := logger.NewFlusher(encode.DebugLevel)
-	l := flusher.NewLogsContainer("testtag1", "testtag2")
-	l.Debug("Hey", "Debug")
-	l.Info("Hey", "Info")
-	l.Warning("Hey", "Warning")
-	l.Error("Hey", errors.New("error"))
-	flusher.Close()
-	<-flusher.Done()
-	//time.Sleep(time.Second * 5)
+
+	connuid := uint32(50)
+	appid := uint16(15)
+	headers := []byte{21, 22, 23, 24, 25}
+	body := []byte{31, 32, 33, 34, 35}
+	client_encoded_message, err1 := protocol.EncodeClientMessage(protocol.TypeText, appid, headers, body)
+	client_decoded_message, err2 := protocol.DecodeClientMessage(client_encoded_message)
+	fmt.Println(1, client_decoded_message, err1, err2)
+	appserv_decoded_message, err3 := protocol.DecodeClientMessageToAppServerMessage(client_encoded_message)
+	fmt.Println(2, appserv_decoded_message, err3, client_encoded_message)
+	appservclient_encoded_message := appserv_decoded_message.EncodeToClientMessage()
+	clientappserv_decoded_message, err4 := protocol.DecodeClientMessage(appservclient_encoded_message)
+	fmt.Println(3, clientappserv_decoded_message, err4, appservclient_encoded_message)
+	appserv_decoded_message.ConnUID = connuid
+	appservapp_encoded_message, _ := appserv_decoded_message.EncodeToAppMessage()
+	appappserv_decoded_message, err5 := protocol.DecodeAppMessage(appservapp_encoded_message)
+	fmt.Println(4, appappserv_decoded_message, err5)
+	appservapp_encoded_message2, err6 := appappserv_decoded_message.Encode()
+	appappserv_decoded_message2, err7 := protocol.DecodeAppMessage(appservapp_encoded_message2)
+	fmt.Println(5, appappserv_decoded_message2, err6, err7)
+
 	return
+	pfd, err := confdecoder.ParseFile("config.txt")
+	if err != nil {
+		panic("parsing config.txt err: " + err.Error())
+	}
+	strr := &struct{ DataIntt int }{}
+	if err := pfd.DecodeTo(strr); err != nil {
+		panic("decoding config.txt err: " + err.Error())
+	}
+	fmt.Println(strr.DataIntt)
+	return
+	t := ssdfg{Uid: "smth", Num: 5}
+	tt := ssdfg{Uid: "tsm", Num: 4}
+	//fgh := ht("ht")
+	jt, err := json.Marshal(&[]interface{}{t, tt})
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	m := make([]interface{}, 5)
+
+	err = json.Unmarshal(jt, &m)
+	if err != nil {
+		println(err.Error())
+		return
+	}
+	rand.Seed(time.Now().UnixMicro())
+	fmt.Println(m, "|||||", strings.Replace(fmt.Sprint(rand.Perm(6)), " ", "", -1))
+	return
+	a_ln, err := net.Listen("tcp", "127.0.0.1:9091")
+	if err != nil {
+		println("A side listen err:", err.Error())
+		return
+	}
+	go acceptLoop(a_ln, "A")
+	// b_ln, err := net.Listen("tcp", "127.0.0.1:9092")
+	// if err != nil {
+	// 	println("B side listen err:", err.Error())
+	// 	return
+	// }
+	//go acceptLoop(b_ln, "B")
+
+	// a_to_b_conn, err := net.Dial("tcp", "127.0.0.1:9092")
+	// if err != nil {
+	// 	println("A to B dial err:", err.Error())
+	// 	return
+	// }
+	//time.Sleep(time.Second * 2)
+	b_to_a_conn, err := net.Dial("tcp", "127.0.0.1:9091")
+	if err != nil {
+		println("B to A dial err:", err.Error())
+		return
+	}
+	ch := make(chan struct{}, 1)
+	go readLoop(b_to_a_conn, "B", ch)
+	<-ch
+
+	time.Sleep(time.Second * 2)
+
+	// ab := []byte{1, 1}
+	// fmt.Println("A to B writting")
+	// na, erra := a_to_b_conn.Write(ab)
+	// fmt.Println("A to B written:", ab, "| n:", na, "| err:", erra)
+
+	// time.Sleep(time.Second * 2)
+
+	// bb := []byte{2, 2}
+	// fmt.Println("B to A writting")
+	// nb, errb := b_to_a_conn.Write(bb)
+	// fmt.Println("B to A written:", bb, "| n:", nb, "| err:", errb)
+
+	time.Sleep(time.Second * 2)
+	return
+	// flusher := logger.NewFlusher(encode.DebugLevel)
+	// l := flusher.NewLogsContainer("testtag1", "testtag2")
+	// l.Debug("Hey", "Debug")
+	// l.Info("Hey", "Info")
+	// l.Warning("Hey", "Warning")
+	// l.Error("Hey", errors.New("error"))
+	// flusher.Close()
+	// <-flusher.Done()
+	// //time.Sleep(time.Second * 5)
+	// return
 	// create a new category
 	category := Category{
 		ID:   1,
@@ -162,34 +293,29 @@ func main() {
 	postcache := New[Post]()
 	// add post to cache
 	postcache.Set(post.Slug, post)
-	g := `category := Category{
-		ID:   1,
-		Name: "Cat1",
-		Slug: "catslug",
-	}
-	// create cache for Category struct
-	catcache := New[Category]()
-	// add category to cache
-	catcache.Set(category.Slug, category)
+	// g := `category := Category{
+	// 	ID:   1,
+	// 	Name: "Cat1",
+	// 	Slug: "catslug",
+	// }
+	// // create cache for Category struct
+	// catcache := New[Category]()
+	// // add category to cache
+	// catcache.Set(category.Slug, category)
 
-	// create a new post
-	post := Post{
-		ID: 1,
-		Categories: []Category{
-			{ID: 1, Name: "Cat1", Slug: "catslug"},
-		},
-		Title: "posttitle",
-		Text:  "posttext",
-		Slug:  "postslug",
-	}
-	// create cache for Post struct
-	postcache := New[Post]()
-	// add post to cache
-	postcache.Set(post.Slug, post)`
-	jj := 65535
-	buf := []byte{0, 0, 9, 9, 9}
-	binary.LittleEndian.PutUint16(buf[1:], uint16(jj))
-	var bb []byte
-	fmt.Println(postcache.Get("postslug1"), len(g), []byte("["), []byte("]"), []byte(" "), buf, append(buf, bb...), append(buf, ""...), len(buf))
+	// // create a new post
+	// post := Post{
+	// 	ID: 1,
+	// 	Categories: []Category{
+	// 		{ID: 1, Name: "Cat1", Slug: "catslug"},
+	// 	},
+	// 	Title: "posttitle",
+	// 	Text:  "posttext",
+	// 	Slug:  "postslug",
+	// }
+	// // create cache for Post struct
+	// postcache := New[Post]()
+	// // add post to cache
+	// postcache.Set(post.Slug, post)`
 
 }

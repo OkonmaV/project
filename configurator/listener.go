@@ -5,7 +5,8 @@ import (
 	"errors"
 	"net"
 	"project/epolllistener"
-	"project/test/types"
+	"project/logs/logger"
+	"project/types/configuratortypes"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ type listener_info struct {
 
 	subs     subscriptionsier
 	services servicesier
-	l        types.Logger
+	l        logger.Logger
 }
 
 type listenier interface {
@@ -30,7 +31,7 @@ type listenier interface {
 
 // суть разделения на внешний и локальный листенер - юникс по локалке. а так - конфигуратору сейчас до пизды, если к внешнему листнеру подрубается локальный сервис (и я не особо вижу смысл вешать ограничение)
 
-func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l types.Logger) (listenier, error) {
+func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l logger.Logger) (listenier, error) {
 
 	lninfo := &listener_info{allowRemote: allowRemote, subs: subs, services: services, l: l}
 	ln, err := epolllistener.EpollListen(network, address, lninfo)
@@ -79,7 +80,7 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	if err := state.initNewConnection(conn, connLocalhosted, name == ServiceName(types.ConfServiceName)); err != nil {
+	if err := state.initNewConnection(conn, connLocalhosted, name == ServiceName(configuratortypes.ConfServiceName)); err != nil {
 		lninfo.l.Error("HandleNewConn/initNewConnection", errors.New(suckutils.ConcatFour("new conn from service \"", string(name), "\" error: ", err.Error())))
 		conn.Close()
 		return

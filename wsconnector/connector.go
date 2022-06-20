@@ -30,7 +30,7 @@ type WsHandler interface {
 	NewMessage() MessageReader
 
 	UpgradeReqChecker
-	Handle(MessageReader) error
+	Handle(message interface{}) error
 	HandleClose(error)
 }
 

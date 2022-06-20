@@ -5,7 +5,9 @@ import (
 	"errors"
 	"net"
 	"project/connector"
-	"project/test/types"
+	"project/logs/logger"
+
+	"project/types/configuratortypes"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,7 +30,7 @@ type publishers struct {
 	pubupdates chan pubupdate
 
 	configurator *configurator
-	l            types.Logger
+	l            logger.Logger
 }
 
 type Publisher struct {
@@ -37,8 +39,8 @@ type Publisher struct {
 	addresses   []address
 	current_ind int
 	mux         sync.Mutex
-	ctx         context.Context
-	l           types.Logger
+	//ctx         context.Context
+	l logger.Logger
 }
 
 type Publishers_getter interface {
@@ -52,11 +54,11 @@ type Publisher_Sender interface {
 type pubupdate struct {
 	name   ServiceName
 	addr   address
-	status types.ServiceStatus
+	status configuratortypes.ServiceStatus
 }
 
 // call before configurator created
-func newPublishers(ctx context.Context, l types.Logger, servStatus *serviceStatus, configurator *configurator, pubscheckTicktime time.Duration, pubNames []ServiceName) (*publishers, error) {
+func newPublishers(ctx context.Context, l logger.Logger, servStatus *serviceStatus, configurator *configurator, pubscheckTicktime time.Duration, pubNames []ServiceName) (*publishers, error) {
 	p := &publishers{configurator: configurator, l: l, list: make(map[ServiceName]*Publisher, len(pubNames)), pubupdates: make(chan pubupdate, 1)}
 	for _, pubname := range pubNames {
 		if _, err := p.newPublisher(pubname); err != nil {
@@ -68,7 +70,7 @@ func newPublishers(ctx context.Context, l types.Logger, servStatus *serviceStatu
 
 }
 
-func (pubs *publishers) update(pubname ServiceName, netw, addr string, status types.ServiceStatus) {
+func (pubs *publishers) update(pubname ServiceName, netw, addr string, status configuratortypes.ServiceStatus) {
 	pubs.pubupdates <- pubupdate{name: pubname, addr: address{netw: netw, addr: addr}, status: status}
 }
 
@@ -91,7 +93,7 @@ loop:
 					// если нашли в списке адресов
 					if update.addr.netw == pub.addresses[i].netw && update.addr.addr == pub.addresses[i].addr {
 						// если нужно удалять из списка адресов
-						if update.status == types.StatusOff || update.status == types.StatusSuspended {
+						if update.status == configuratortypes.StatusOff || update.status == configuratortypes.StatusSuspended {
 							pub.mux.Lock()
 
 							pub.addresses = append(pub.addresses[:i], pub.addresses[i+1:]...)
@@ -111,7 +113,7 @@ loop:
 							pubs.l.Debug("publishersWorker", suckutils.Concat("pub \"", string(update.name), "\" from ", update.addr.addr, " updated to", update.status.String()))
 							continue loop
 
-						} else if update.status == types.StatusOn { // если нужно добавлять в список адресов = ошибка
+						} else if update.status == configuratortypes.StatusOn { // если нужно добавлять в список адресов = ошибка
 							pubs.l.Error("publishersWorker", errors.New(suckutils.Concat("recieved pubupdate to status_on for already updated status_on for \"", string(update.name), "\" from ", update.addr.addr)))
 							continue loop
 
@@ -124,13 +126,13 @@ loop:
 				// если не нашли в списке адресов
 
 				// если нужно добавлять в список адресов
-				if update.status == types.StatusOn {
+				if update.status == configuratortypes.StatusOn {
 					pub.mux.Lock()
 					pub.addresses = append(pub.addresses, update.addr)
 					pub.mux.Unlock()
 					continue loop
 
-				} else if update.status == types.StatusOff || update.status == types.StatusSuspended { // если нужно удалять из списка адресов = ошибка
+				} else if update.status == configuratortypes.StatusOff || update.status == configuratortypes.StatusSuspended { // если нужно удалять из списка адресов = ошибка
 					pubs.l.Error("publishersWorker", errors.New(suckutils.Concat("recieved pubupdate to status_suspend/off for already updated status_suspend/off for \"", string(update.name), "\" from ", update.addr.addr)))
 					continue loop
 
@@ -144,7 +146,7 @@ loop:
 				pubs.l.Error("publishersWorker", errors.New(suckutils.Concat("recieved update for non-publisher \"", string(update.name), "\", sending unsubscription")))
 
 				pubname_byte := []byte(update.name)
-				message := append(append(make([]byte, 0, 2+len(update.name)), byte(types.OperationCodeUnsubscribeFromServices), byte(len(pubname_byte))), pubname_byte...)
+				message := append(append(make([]byte, 0, 2+len(update.name)), byte(configuratortypes.OperationCodeUnsubscribeFromServices), byte(len(pubname_byte))), pubname_byte...)
 				if err := pubs.configurator.send(connector.FormatBasicMessage(message)); err != nil {
 					pubs.l.Error("publishersWorker/configurator.Send", err)
 				}
@@ -155,10 +157,12 @@ loop:
 			//pubs.rwmux.RLock()
 			pubs.mux.Lock()
 			for pub_name, pub := range pubs.list {
+				pub.mux.Lock()
 				if len(pub.addresses) == 0 {
 					empty_pubs = append(empty_pubs, string(pub_name))
 					empty_pubs_len += len(pub_name)
 				}
+				pub.mux.Unlock()
 			}
 			pubs.mux.Unlock()
 			//pubs.rwmux.RUnlock()
@@ -167,7 +171,7 @@ loop:
 				pubs.l.Warning("publishersWorker", suckutils.ConcatTwo("no publishers with names: ", strings.Join(empty_pubs, ", ")))
 
 				message := make([]byte, 1, 1+empty_pubs_len+len(empty_pubs))
-				message[0] = byte(types.OperationCodeSubscribeToServices)
+				message[0] = byte(configuratortypes.OperationCodeSubscribeToServices)
 				for _, pubname := range empty_pubs {
 					message = append(append(message, byte(len(pubname))), []byte(pubname)...)
 				}
@@ -210,7 +214,7 @@ func (pubs *publishers) newPublisher(name ServiceName) (*Publisher, error) {
 	}
 
 	if _, ok := pubs.list[name]; !ok {
-		p := &Publisher{servicename: name, addresses: make([]address, 0, 1)}
+		p := &Publisher{servicename: name, addresses: make([]address, 0, 1), l: pubs.l.NewSubLogger("Pub", string(name))}
 		pubs.list[name] = p
 		return p, nil
 	} else {
@@ -220,7 +224,7 @@ func (pubs *publishers) newPublisher(name ServiceName) (*Publisher, error) {
 
 // TODO:
 func (pub *Publisher) Send(message []byte) ([]byte, error) {
-	return nil, errors.New("TODO")
+	return nil, errors.New("TODO. Use SendHTTP instead")
 }
 
 func CreateHTTPRequestFrom(method suckhttp.HttpMethod, recievedRequest *suckhttp.Request) (*suckhttp.Request, error) {
@@ -244,7 +248,7 @@ func (pub *Publisher) SendHTTP(request *suckhttp.Request) (response *suckhttp.Re
 	pub.mux.Lock()
 	defer pub.mux.Unlock()
 	if pub.conn != nil {
-		response, err = request.Send(pub.ctx, pub.conn)
+		response, err = request.Send(context.Background(), pub.conn)
 	}
 	if pub.conn == nil || err != nil {
 		if err != nil {
@@ -253,7 +257,7 @@ func (pub *Publisher) SendHTTP(request *suckhttp.Request) (response *suckhttp.Re
 			pub.l.Debug("Conn", "not connected, reconnect")
 		}
 		if err = pub.connect(); err != nil {
-			if response, err = request.Send(pub.ctx, pub.conn); err != nil {
+			if response, err = request.Send(context.Background(), pub.conn); err != nil {
 				return nil, err
 			}
 		}

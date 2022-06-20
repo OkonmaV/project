@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/big-larry/suckutils"
 	"github.com/gobwas/ws"
 	"github.com/gobwas/ws/wsutil"
 	"github.com/mailru/easygo/netpoll"
@@ -152,7 +153,8 @@ func (connector *EpollWSConnector) handle(e netpoll.Event) {
 	message := connector.handler.NewMessage()
 	if err := message.Read(r, h); err != nil {
 		connector.Unlock() //
-		connector.Close(err)
+		connector.Close(errors.New(suckutils.ConcatTwo("message.Read() err: ", err.Error())))
+		return
 	}
 	// payload, _, err := wsutil.ReadData(connector.conn, thisSide)
 	// if err != nil {

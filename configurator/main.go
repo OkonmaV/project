@@ -7,7 +7,8 @@ import (
 	"os/signal"
 	"project/connector"
 	"project/epolllistener"
-	"project/test/logs"
+	"project/logs/encode"
+	"project/logs/logger"
 	"strings"
 	"syscall"
 
@@ -40,18 +41,9 @@ func main() {
 	}
 
 	ctx, cancel := createContextWithInterruptSignal()
-	logsctx, logscancel := context.WithCancel(context.Background())
 
-	l, _ := logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
-	consolelogger := &logs.ConsoleLogger{}
-
-	go func() {
-		for {
-			logspack := <-l.Flush()
-			consolelogger.WriteMany(logspack)
-		}
-	}()
-
+	flsh := logger.NewFlusher(encode.DebugLevel)
+	l := flsh.NewLogsContainer("configurator")
 	connector.SetupEpoll(func(e error) {
 		l.Error("Epoll", e)
 		cancel()
@@ -95,8 +87,8 @@ func main() {
 	if external_ln != nil {
 		external_ln.close()
 	}
-	logscancel()
-	time.Sleep(time.Second * 3) // TODO: ждун в логгере
+	flsh.Close()
+	flsh.DoneWithTimeout(time.Second * 5)
 }
 
 func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {

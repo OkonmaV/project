@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"project/connector"
-	"project/test/types"
+	"project/logs/logger"
+	"project/types/configuratortypes"
+	"project/types/netprotocol"
 	"strconv"
 	"sync"
 
@@ -17,18 +19,18 @@ type subscriptions struct {
 	services    servicesier
 	pubsUpdates chan pubStatusUpdate
 
-	l types.Logger
+	l logger.Logger
 }
 
 type subscriptionsier interface {
-	updatePub([]byte, []byte, types.ServiceStatus, bool) error
+	updatePub([]byte, []byte, configuratortypes.ServiceStatus, bool) error
 	subscribe(*service, ...ServiceName) error
 	unsubscribe(ServiceName, *service) error
 	getSubscribers(ServiceName) []*service
 	getAllPubNames() []ServiceName
 }
 
-func newSubscriptions(ctx context.Context, l types.Logger, pubsUpdatesQueue int, services servicesier, ownSubscriptions ...ServiceName) *subscriptions {
+func newSubscriptions(ctx context.Context, l logger.Logger, pubsUpdatesQueue int, services servicesier, ownSubscriptions ...ServiceName) *subscriptions {
 	if pubsUpdatesQueue == 0 {
 		panic("pubsUpdatesQueue must be > 0")
 	}
@@ -40,7 +42,7 @@ func newSubscriptions(ctx context.Context, l types.Logger, pubsUpdatesQueue int,
 type pubStatusUpdate struct {
 	servicename []byte
 	address     []byte
-	status      types.ServiceStatus
+	status      configuratortypes.ServiceStatus
 	sendToConfs bool
 }
 
@@ -60,13 +62,13 @@ func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 				continue
 			}
 			if subscriptors := subs.getSubscribers(ServiceName(update.servicename)); len(subscriptors) != 0 {
-				payload := types.ConcatPayload(types.FormatOpcodeUpdatePubMessage(update.servicename, update.address, update.status))
-				message := append(append(make([]byte, 0, len(payload)+1), byte(types.OperationCodeUpdatePubs)), payload...)
+				payload := configuratortypes.ConcatPayload(configuratortypes.FormatOpcodeUpdatePubMessage(update.servicename, update.address, update.status))
+				message := append(append(make([]byte, 0, len(payload)+1), byte(configuratortypes.OperationCodeUpdatePubs)), payload...)
 				if update.sendToConfs {
 					sendToMany(connector.FormatBasicMessage(message), subscriptors)
 				} else {
 					for _, subscriptor := range subscriptors {
-						if subscriptor == nil || subscriptor.connector == nil || subscriptor.connector.IsClosed() || subscriptor.name == ServiceName(types.ConfServiceName) {
+						if subscriptor == nil || subscriptor.connector == nil || subscriptor.connector.IsClosed() || subscriptor.name == ServiceName(configuratortypes.ConfServiceName) {
 							continue
 						}
 						if err := subscriptor.connector.Send(connector.FormatBasicMessage(message)); err != nil {
@@ -79,7 +81,7 @@ func (subs *subscriptions) pubsUpdatesSendingWorker(ctx context.Context) {
 	}
 }
 
-func (subs *subscriptions) updatePub(servicename []byte, address []byte, newstatus types.ServiceStatus, sendUpdateToConfs bool) error {
+func (subs *subscriptions) updatePub(servicename []byte, address []byte, newstatus configuratortypes.ServiceStatus, sendUpdateToConfs bool) error {
 	if len(servicename) == 0 || len(address) == 0 {
 		return errors.New("empty/nil servicename/address")
 	}
@@ -98,15 +100,15 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 	if len(pubnames) == 0 {
 		return errors.New("empty pubnames")
 	}
-	sendToConfs := sub.name != ServiceName(types.ConfServiceName)
+	sendToConfs := sub.name != ServiceName(configuratortypes.ConfServiceName)
 
-	formatted_updateinfos := make([][]byte, 0, len(pubnames)+2)                                              // alive local pubs
-	confs_message := append(make([]byte, 0, len(pubnames)*15), byte(types.OperationCodeSubscribeToServices)) // subscription to send to other confs
+	formatted_updateinfos := make([][]byte, 0, len(pubnames)+2)                                                          // alive local pubs
+	confs_message := append(make([]byte, 0, len(pubnames)*15), byte(configuratortypes.OperationCodeSubscribeToServices)) // subscription to send to other confs
 
 	subs.Lock()
 
 	for _, pubname := range pubnames {
-		if sub.name == pubname && sub.name != ServiceName(types.ConfServiceName) { // avoiding self-subscription
+		if sub.name == pubname && sub.name != ServiceName(configuratortypes.ConfServiceName) { // avoiding self-subscription
 			subs.Unlock()
 			return errors.New("service trying subscribe to itself")
 		}
@@ -133,11 +135,11 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 		}
 	sending_pubaddrs_to_sub:
 		if state := subs.services.getServiceState(pubname); state != nil { // getting alive local pubs
-			addrs := state.getAllOutsideAddrsWithStatus(types.StatusOn)
+			addrs := state.getAllOutsideAddrsWithStatus(configuratortypes.StatusOn)
 			if len(addrs) != 0 {
 				for _, addr := range addrs {
 					var concatted_address string
-					if addr.netw == types.NetProtocolTcp {
+					if addr.netw == netprotocol.NetProtocolTcp {
 						if len(addr.remotehost) == 0 {
 							concatted_address = suckutils.ConcatTwo("127.0.0.1:", addr.port)
 						} else {
@@ -147,7 +149,7 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 						concatted_address = addr.port
 					}
 
-					formatted_updateinfos = append(formatted_updateinfos, types.FormatOpcodeUpdatePubMessage(pubname_byte, types.FormatAddress(addr.netw, concatted_address), types.StatusOn))
+					formatted_updateinfos = append(formatted_updateinfos, configuratortypes.FormatOpcodeUpdatePubMessage(pubname_byte, configuratortypes.FormatAddress(addr.netw, concatted_address), configuratortypes.StatusOn))
 				}
 			} else {
 				sub.l.Warning("subs", suckutils.ConcatThree("no alive local services with name \"", string(pubname), "\""))
@@ -158,7 +160,7 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 	subs.Unlock()
 
 	if sendToConfs {
-		if confs_state := subs.services.getServiceState(ServiceName(types.ConfServiceName)); confs_state != nil { // sending subscription to other confs
+		if confs_state := subs.services.getServiceState(ServiceName(configuratortypes.ConfServiceName)); confs_state != nil { // sending subscription to other confs
 			confs := confs_state.getAllServices()
 			if len(confs) != 0 {
 				sendToMany(connector.FormatBasicMessage(confs_message), confs)
@@ -167,9 +169,9 @@ func (subs *subscriptions) subscribe(sub *service, pubnames ...ServiceName) erro
 	}
 
 	if len(formatted_updateinfos) != 0 {
-		updateinfos := types.ConcatPayload(formatted_updateinfos...)
+		updateinfos := configuratortypes.ConcatPayload(formatted_updateinfos...)
 		message := append(make([]byte, 1, len(updateinfos)+1), updateinfos...)
-		message[0] = byte(types.OperationCodeUpdatePubs)
+		message[0] = byte(configuratortypes.OperationCodeUpdatePubs)
 		return sub.connector.Send(connector.FormatBasicMessage(message))
 	}
 	return nil

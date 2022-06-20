@@ -5,7 +5,8 @@ import (
 	"errors"
 	"net"
 	"project/connector"
-	"project/test/types"
+	"project/types/configuratortypes"
+	"project/types/netprotocol"
 	"time"
 
 	"github.com/big-larry/suckutils"
@@ -40,8 +41,8 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 		case <-ticker.C:
 			for i := 0; i < len(buf); i++ {
 				buf[i].statusmux.Lock()
-				if buf[i].status == types.StatusOff {
-					if buf[i].outerAddr.netw != types.NetProtocolTcp {
+				if buf[i].status == configuratortypes.StatusOff {
+					if buf[i].outerAddr.netw != netprotocol.NetProtocolTcp {
 						buf[i].l.Error("Reconnect", errors.New("cant reconnect to non-tcp address"))
 						continue
 					}
@@ -95,7 +96,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 }
 
 func handshake(conn net.Conn) error {
-	if _, err := conn.Write(connector.FormatBasicMessage([]byte(types.ConfServiceName))); err != nil {
+	if _, err := conn.Write(connector.FormatBasicMessage([]byte(configuratortypes.ConfServiceName))); err != nil {
 		return err
 	}
 	buf := make([]byte, 5)
@@ -104,7 +105,7 @@ func handshake(conn net.Conn) error {
 	if err != nil {
 		return errors.New(suckutils.ConcatTwo("err reading configurator's approving, err: ", err.Error()))
 	}
-	if buf[4] == byte(types.OperationCodeOK) {
+	if buf[4] == byte(configuratortypes.OperationCodeOK) {
 		return nil
 	} else {
 		return errors.New("service's approving format not supported or weird")
