@@ -63,6 +63,9 @@ func (apps *applications) newApp(appid protocol.AppID, settings []byte, clients 
 	if int(appid) >= len(apps.list) {
 		return nil, errors.New("weird appID (appID is bigger than num of apps)")
 	}
+	if settings == nil {
+		return nil, errors.New("nil settings")
+	}
 
 	if apps.list[appid].conns == nil {
 		apps.list[appid] = app{
@@ -72,6 +75,7 @@ func (apps *applications) newApp(appid protocol.AppID, settings []byte, clients 
 			clients:     clients,
 			l:           apps.l.NewSubLogger("App", suckutils.ConcatTwo("AppID:", strconv.Itoa(int(appid))), string(appname)),
 		}
+
 		apps.settingslist[appid] = settings
 
 		return &apps.list[appid], nil
@@ -103,11 +107,14 @@ loop:
 					//apps.RUnlock()
 
 					// чешем список подключений
+					//println("===============+===================", len(apps.list[i].conns))
 					for i := 0; i < len(apps.list[i].conns); i++ {
 						// если нашли в списке подключений
+
+						//println("===============+===================", apps.list[i].conns[i].RemoteAddr().String(), update.addr)
 						if apps.list[i].conns[i].RemoteAddr().String() == update.addr {
 							// если нужно отрубать
-							if update.status == configuratortypes.StatusOff {
+							if update.status == configuratortypes.StatusOff || update.status == configuratortypes.StatusSuspended {
 								apps.list[i].Lock()
 								apps.list[i].conns[i].CancelReconnect()
 								apps.list[i].conns[i].Close(errors.New("update from configurator"))
@@ -125,7 +132,7 @@ loop:
 								continue loop
 
 							} else { // если кривой апдейт = ошибка
-								l.Error("Update", errors.New(suckutils.Concat("unknown statuscode: ", strconv.Itoa(int(update.status)), " at update app \"", string(apps.list[i].servicename), "\" from ", update.addr)))
+								l.Error("Update", errors.New(suckutils.Concat("unknown statuscode: \"", strconv.Itoa(int(update.status)), "\" at update app \"", string(apps.list[i].servicename), "\" from ", update.addr)))
 								continue loop
 							}
 						}
@@ -135,10 +142,12 @@ loop:
 
 					// если нужно подрубать
 					if update.status == configuratortypes.StatusOn {
+						apps.list[i].Lock()
 						apps.list[i].connect(update.netw, update.addr)
+						apps.list[i].Unlock()
 						continue loop
 
-					} else if update.status == configuratortypes.StatusOff { // если нужно отрубать = ошибка
+					} else if update.status == configuratortypes.StatusOff || update.status == configuratortypes.StatusSuspended { // если нужно отрубать = ошибка
 						l.Error("Update", errors.New(suckutils.Concat("appupdate to status_off for already updated status_off for \"", string(apps.list[i].servicename), "\" from ", update.addr)))
 						continue loop
 
@@ -161,16 +170,19 @@ loop:
 			}
 
 		case <-ticker.C:
-			empty_appsnames := make([]ServiceName, 0, len(apps.list))
+			empty_appsnames := make([]ServiceName, 0, len(apps.list)-1)
 			empty_appnames_totallen := 0
 			//apps.RLock()
-			for i := 0; i < len(apps.list); i++ {
+			for i := 1; i < len(apps.list); i++ {
 				apps.list[i].RLock()
 				if len(apps.list[i].conns) == 0 {
 					empty_appsnames = append(empty_appsnames, apps.list[i].servicename)
 					empty_appnames_totallen += len(apps.list[i].servicename)
 				}
 				apps.list[i].RUnlock()
+			}
+			if len(empty_appsnames) == 0 {
+				continue loop
 			}
 			//apps.RUnlock()
 			message := make([]byte, 1, empty_appnames_totallen+len(empty_appsnames)+1)
@@ -200,7 +212,7 @@ func (apps *applications) getAllAppNames() []ServiceName {
 	// apps.RLock()
 	// defer apps.RUnlock()
 	res := make([]ServiceName, 0, len(apps.list)-1)
-	for i := 0; i < len(apps.list); i++ {
+	for i := 1; i < len(apps.list); i++ {
 		res = append(res, apps.list[i].servicename)
 	}
 	return res

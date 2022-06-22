@@ -40,11 +40,13 @@ func (s *service) Handle(message connector.MessageReader) error {
 		s.l.Debug("New message", "OperationCodeSubscribeToServices")
 		raw_pubnames := configuratortypes.SeparatePayload(payload[1:])
 		if raw_pubnames == nil {
+			println("THIS1") /////////////////////////////////////////////////////////////
 			return connector.ErrWeirdData
 		}
 		pubnames := make([]ServiceName, 0, len(raw_pubnames))
 		for _, raw_pubname := range raw_pubnames {
 			if len(raw_pubname) == 0 {
+				println("THIS2") /////////////////////////////////////////////////////////////
 				return connector.ErrWeirdData
 			}
 			pubnames = append(pubnames, ServiceName(raw_pubname))
@@ -86,6 +88,7 @@ func (s *service) Handle(message connector.MessageReader) error {
 	case configuratortypes.OperationCodeMyStatusChanged:
 		s.l.Debug("New message", "OperationCodeMyStatusChanged")
 		if len(payload) < 2 {
+			println("THIS3") /////////////////////////////////////////////////////////////
 			return connector.ErrWeirdData
 		}
 		s.changeStatus(configuratortypes.ServiceStatus(payload[1]))
@@ -106,6 +109,7 @@ func (s *service) Handle(message connector.MessageReader) error {
 			return errors.New("not configurator, but sent OperationCodeMyOuterPort")
 		}
 	default:
+		println("THIS4") /////////////////////////////////////////////////////////////
 		return connector.ErrWeirdData
 	}
 	return nil

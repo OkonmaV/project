@@ -48,7 +48,6 @@ func (a *app) SendToAll(message []byte) {
 	}
 }
 
-// app.mutex inside
 func (a *app) connect(netw, addr string) {
 	var recon *connector.EpollReConnector
 
@@ -74,8 +73,6 @@ conn_failed:
 conn_succeeded:
 	a.l.Info("Conn", suckutils.ConcatTwo("Connected to ", addr))
 
-	a.Lock()
-	defer a.Unlock()
 	a.conns = append(a.conns, recon)
 }
 

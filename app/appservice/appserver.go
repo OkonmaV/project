@@ -62,12 +62,14 @@ func (as *appserver) sendWorker(ctx context.Context) {
 		as.RLock()
 		if !as.connAlive {
 			as.l.Debug("sendWorker", "conn is dead, timeout")
-			time.Sleep(time.Second * 2)
+			time.Sleep(time.Second * 5)
+			as.RUnlock()
 			continue
 		}
 		select {
 		case <-ctx.Done():
 			as.l.Debug("sendWorker", "context done, exiting")
+			as.RUnlock()
 			// TODO: дамп очереди?
 			return
 		case message := <-as.sendQueue:

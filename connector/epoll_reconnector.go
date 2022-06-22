@@ -73,7 +73,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 			buf = append(buf, req)
 		case <-ticker.C:
 			for i := 0; i < len(buf); i++ {
-				buf[i].mux.Lock()
+				buf[i].mux.Lock() //////////////
 				if !buf[i].isstopped {
 					if buf[i].connector.IsClosed() {
 						conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
@@ -134,7 +134,8 @@ func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial 
 		msghandler:       messagehandler,
 		doOnDial:         doOnDial,
 		doAfterReconnect: doAfterReconnect,
-		reconAddr:        Addr{netw: conn.RemoteAddr().Network(), address: conn.RemoteAddr().String()}}
+		reconAddr:        Addr{netw: conn.RemoteAddr().Network(), address: conn.RemoteAddr().String()},
+	}
 
 	var err error
 	if recon.connector, err = NewEpollConnector(conn, recon); err != nil {

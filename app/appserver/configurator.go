@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"project/connector"
 	"project/logs/logger"
@@ -181,9 +182,11 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 		return nil
 	case configuratortypes.OperationCodeSetOutsideAddr:
 		if len(payload) < 2 {
+			println("THIS5") ///////////////////////////////////////////////
 			return connector.ErrWeirdData
 		}
 		if len(payload) < 2+int(payload[1]) {
+			println("THIS4") ///////////////////////////////////////////////
 			return connector.ErrWeirdData
 		}
 		if netw, addr, err := configuratortypes.UnformatAddress(payload[2 : 2+int(payload[1])]); err != nil {
@@ -219,6 +222,7 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 				netw, addr, err := configuratortypes.UnformatAddress(raw_addr)
 				if err != nil {
 					c.l.Error("Handle/OperationCodeUpdatePubs/UnformatAddress", err)
+					println("THIS1") ///////////////////////////////////////////////
 					return connector.ErrWeirdData
 				}
 				if netw == netprotocol.NetProtocolNonlocalUnix {
@@ -226,11 +230,15 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 					continue // TODO:
 				}
 				c.apps.update(ServiceName(appname), netw.String(), addr, status)
+				return nil
 			}
 		} else {
+			println("THIS2") ///////////////////////////////////////////////
 			return connector.ErrWeirdData
 		}
 	}
+	println("THIS3") ///////////////////////////////////////////////
+	fmt.Println("-------------------------------THIS3:", payload)
 	return connector.ErrWeirdData
 }
 

@@ -288,6 +288,7 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 				}
 
 				c.publishers.update(ServiceName(pubname), netw.String(), addr, status)
+				return nil
 			}
 		} else {
 			return connector.ErrWeirdData
