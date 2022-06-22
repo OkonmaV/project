@@ -3,6 +3,7 @@ package main
 import (
 	"confdecoder"
 	"context"
+	"encoding/json"
 	"os"
 	"os/signal"
 	"project/app/protocol"
@@ -12,6 +13,8 @@ import (
 	"project/wsconnector"
 	"syscall"
 	"time"
+
+	"github.com/big-larry/suckutils"
 )
 
 type ServiceName string
@@ -75,13 +78,34 @@ func main() {
 
 	servStatus := newServiceStatus()
 
-	apps, startAppsUpdateWorker := newApplications(ctx, l.NewSubLogger("Apps"), nil, pubscheckTicktime, len(pfdapps.Keys))
+	appslist := make([]struct {
+		AppID   protocol.AppID `json:"appid"`
+		AppName string         `json:"appname"`
+	}, len(pfdapps.Keys))
+
+	apps, startAppsUpdateWorker := newApplications(ctx, l.NewSubLogger("Apps"), nil, nil, pubscheckTicktime, len(pfdapps.Keys))
+
 	clients := newClientsConnsList(clientsConnectionsLimit, apps)
 	for i, appname := range pfdapps.Keys {
-		if _, err := apps.newApp(protocol.AppID(i+1), clients, ServiceName(appname)); err != nil {
+		appsettings, err := os.ReadFile(suckutils.ConcatTwo(appname, ".settings"))
+		if err != nil {
+			panic(err) // TODO:???????
+		}
+		appslist = append(appslist, struct {
+			AppID   protocol.AppID `json:"appid"`
+			AppName string         `json:"appname"`
+		}{AppID: protocol.AppID(i + 1), AppName: appname})
+
+		if _, err := apps.newApp(protocol.AppID(i+1), appsettings, clients, ServiceName(appname)); err != nil {
 			panic(err)
 		}
 	}
+	appsIndex, err := json.Marshal(appslist)
+	if err != nil {
+		panic(err)
+	}
+	apps.appsIndex = appsIndex
+
 	ln := newListener(l.NewSubLogger("Listener"), l.NewSubLogger("Client"), servStatus, apps, clients, listenerAcceptThreads)
 
 	configurator := newConfigurator(ctx, l.NewSubLogger("Configurator"), startAppsUpdateWorker, servStatus, apps, ln, servconf.ConfiguratorAddr, thisservicename)

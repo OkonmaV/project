@@ -19,6 +19,9 @@ var errNoAliveConns = errors.New("no alive conns")
 type applications struct {
 	list []app // zero index is always nil
 	//sync.RWMutex
+	settingslist [][]byte // хуй знает какой формат
+	appsIndex    []byte   // json
+
 	appupdates chan appupdate
 
 	configurator *configurator
@@ -33,17 +36,24 @@ type appupdate struct {
 }
 
 // call before configurator created
-func newApplications(ctx context.Context, l logger.Logger, configurator *configurator, pubscheckTicktime time.Duration, size int) (*applications, func()) {
-	a := &applications{configurator: configurator, l: l, list: make([]app, size+1), appupdates: make(chan appupdate, 1)}
+func newApplications(ctx context.Context, l logger.Logger, appsIndex []byte, configurator *configurator, pubscheckTicktime time.Duration, size int) (*applications, func()) {
+	a := &applications{
+		configurator: configurator,
+		l:            l,
+		list:         make([]app, size+1),
+		settingslist: make([][]byte, size+1),
+		appupdates:   make(chan appupdate, 1),
+		appsIndex:    appsIndex,
+	}
 
-	updateWorkerStart := make(chan struct{}, 0)
+	updateWorkerStart := make(chan struct{})
 
 	go a.appsUpdateWorker(ctx, l.NewSubLogger("AppsUpdateWorker"), updateWorkerStart, pubscheckTicktime)
 	return a, func() { close(updateWorkerStart) }
 
 }
 
-func (apps *applications) newApp(appid protocol.AppID, clients *clientsConnsList, appname ServiceName) (*app, error) {
+func (apps *applications) newApp(appid protocol.AppID, settings []byte, clients *clientsConnsList, appname ServiceName) (*app, error) {
 	// apps.Lock()
 	// defer apps.Unlock()
 
@@ -54,13 +64,16 @@ func (apps *applications) newApp(appid protocol.AppID, clients *clientsConnsList
 		return nil, errors.New("weird appID (appID is bigger than num of apps)")
 	}
 
-	if apps.list[appid].conns != nil {
+	if apps.list[appid].conns == nil {
 		apps.list[appid] = app{
 			servicename: appname,
 			appid:       appid,
 			conns:       make([]*connector.EpollReConnector, 0, 1),
 			clients:     clients,
-			l:           apps.l.NewSubLogger("App", suckutils.ConcatTwo("AppID:", strconv.Itoa(int(appid))), string(appname))}
+			l:           apps.l.NewSubLogger("App", suckutils.ConcatTwo("AppID:", strconv.Itoa(int(appid))), string(appname)),
+		}
+		apps.settingslist[appid] = settings
+
 		return &apps.list[appid], nil
 	} else {
 		return nil, errors.New("app is already created")
@@ -198,6 +211,20 @@ func (apps *applications) Get(appid protocol.AppID) (*app, error) {
 		return nil, errors.New(suckutils.ConcatThree("impossible appid (must be 0<connuid<=len(apps.list)): \"", strconv.Itoa(int(appid)), "\""))
 	}
 	return &apps.list[appid], nil
+}
+
+func (apps *applications) GetSettings(appid protocol.AppID) ([]byte, error) {
+	if appid == 0 || int(appid) >= len(apps.list) {
+		return nil, errors.New(suckutils.ConcatThree("impossible appid (must be 0<connuid<=len(apps.list)): \"", strconv.Itoa(int(appid)), "\""))
+	}
+	return apps.settingslist[appid], nil
+}
+
+func (apps *applications) CheckAvailable(appid protocol.AppID) bool {
+	if appid == 0 || int(appid) >= len(apps.list) {
+		return false
+	}
+	return true
 }
 
 func (apps *applications) SendToAll(message []byte) {

@@ -106,6 +106,9 @@ func (cl *client) Handle(msg interface{}) error {
 	ts := time.Now().UnixNano()
 
 	asmessage := msg.(*protocol.AppServerMessage)
+	if asmessage.Type == protocol.TypeSettingsReq {
+
+	}
 	app, err := cl.apps.Get(asmessage.ApplicationID)
 	if err != nil {
 		// TODO: send UpdateSettings?

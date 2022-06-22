@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
-	"project/app/protocol"
 	"strings"
 	"time"
 )
@@ -148,29 +147,30 @@ type ssdfg struct {
 type ht string
 
 func main() {
-	ti := time.Now()
-	fmt.Println(ti.UTC(), "||||||", ti, "|||||||||||", ti.UnixNano())
+	ti, err := json.Marshal(map[string]int{"Uid1": 1, "Uid2": 2})
+	ti2, err2 := json.Marshal([]ssdfg{ssdfg{Num: 4}, ssdfg{Num: 4}})
+	fmt.Println(string(ti), err, string(ti2), err2)
 	return
 
-	connuid := uint32(50)
-	appid := uint16(15)
-	headers := []byte{21, 22, 23, 24, 25}
-	body := []byte{31, 32, 33, 34, 35}
-	client_encoded_message, err1 := protocol.EncodeClientMessage(protocol.TypeText, protocol.AppID(appid), headers, body)
-	client_decoded_message, err2 := protocol.DecodeClientMessage(client_encoded_message)
-	fmt.Println(1, client_decoded_message, err1, err2)
-	appserv_decoded_message, err3 := protocol.DecodeClientMessageToAppServerMessage(client_encoded_message)
-	fmt.Println(2, appserv_decoded_message, err3, client_encoded_message)
-	appservclient_encoded_message := appserv_decoded_message.EncodeToClientMessage()
-	clientappserv_decoded_message, err4 := protocol.DecodeClientMessage(appservclient_encoded_message)
-	fmt.Println(3, clientappserv_decoded_message, err4, appservclient_encoded_message)
-	appserv_decoded_message.ConnectionUID = protocol.ConnUID(connuid)
-	appservapp_encoded_message, _ := appserv_decoded_message.EncodeToAppMessage()
-	appappserv_decoded_message, err5 := protocol.DecodeAppMessage(appservapp_encoded_message)
-	fmt.Println(4, appappserv_decoded_message, err5)
-	appservapp_encoded_message2, err6 := appappserv_decoded_message.Encode()
-	appappserv_decoded_message2, err7 := protocol.DecodeAppMessage(appservapp_encoded_message2)
-	fmt.Println(5, appappserv_decoded_message2, err6, err7)
+	// connuid := uint32(50)
+	// appid := uint16(15)
+	// headers := []byte{21, 22, 23, 24, 25}
+	// body := []byte{31, 32, 33, 34, 35}
+	// client_encoded_message, err1 := protocol.EncodeClientMessage(protocol.TypeText, protocol.AppID(appid), headers, body)
+	// client_decoded_message, err2 := protocol.DecodeClientMessage(client_encoded_message)
+	// fmt.Println(1, client_decoded_message, err1, err2)
+	// appserv_decoded_message, err3 := protocol.DecodeClientMessageToAppServerMessage(client_encoded_message)
+	// fmt.Println(2, appserv_decoded_message, err3, client_encoded_message)
+	// appservclient_encoded_message := appserv_decoded_message.EncodeToClientMessage()
+	// clientappserv_decoded_message, err4 := protocol.DecodeClientMessage(appservclient_encoded_message)
+	// fmt.Println(3, clientappserv_decoded_message, err4, appservclient_encoded_message)
+	// appserv_decoded_message.ConnectionUID = protocol.ConnUID(connuid)
+	// appservapp_encoded_message, _ := appserv_decoded_message.EncodeToAppMessage()
+	// appappserv_decoded_message, err5 := protocol.DecodeAppMessage(appservapp_encoded_message)
+	// fmt.Println(4, appappserv_decoded_message, err5)
+	// appservapp_encoded_message2, err6 := appappserv_decoded_message.Encode()
+	// appappserv_decoded_message2, err7 := protocol.DecodeAppMessage(appservapp_encoded_message2)
+	// fmt.Println(5, appappserv_decoded_message2, err6, err7)
 
 	return
 	pfd, err := confdecoder.ParseFile("config.txt")
