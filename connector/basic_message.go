@@ -23,7 +23,7 @@ func (msg *BasicMessage) Read(conn net.Conn) error {
 	if err != nil {
 		return err
 	}
-	if uint32(n) != 4 {
+	if n != 4 {
 		return errReadedLess
 	}
 	msglength := binary.LittleEndian.Uint32(buf)

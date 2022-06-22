@@ -1,19 +1,18 @@
 package main
 
 import (
+	"confdecoder"
 	"context"
 	"os"
 	"os/signal"
+	"project/connector"
+	"project/epolllistener"
+	"project/logs/encode"
+	"project/logs/logger"
 	"strings"
 	"syscall"
 
-	"project/test/connector"
-	"project/test/epolllistener"
-	"project/test/logs"
-
 	"time"
-
-	"github.com/BurntSushi/toml"
 )
 
 type config struct {
@@ -33,27 +32,18 @@ var thisConfOuterPort []byte
 // TODO: решить гемор с обменом со вторым конфигуратором данными о третьих конфигураторах, и как на это будет реагировать ридсеттингс
 func main() {
 	conf := &config{}
-	_, err := toml.DecodeFile("config.toml", conf)
+	err := confdecoder.DecodeFile("config.txt", conf)
 	if err != nil {
-		panic("read toml err: " + err.Error())
+		panic("read config file err: " + err.Error())
 	}
 	if (conf.ListenLocal == "" && conf.ListenExternal == "") || conf.Settings == "" {
-		panic("some fields in conf.toml are empty or not specified")
+		panic("some fields in config file are empty or not specified")
 	}
 
 	ctx, cancel := createContextWithInterruptSignal()
-	logsctx, logscancel := context.WithCancel(context.Background())
 
-	l, _ := logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
-	consolelogger := &logs.ConsoleLogger{}
-
-	go func() {
-		for {
-			logspack := <-l.Flush()
-			consolelogger.WriteMany(logspack)
-		}
-	}()
-
+	flsh := logger.NewFlusher(encode.DebugLevel)
+	l := flsh.NewLogsContainer("configurator")
 	connector.SetupEpoll(func(e error) {
 		l.Error("Epoll", e)
 		cancel()
@@ -88,8 +78,7 @@ func main() {
 	}
 
 	if local_ln, err = newListener((conf.ListenLocal)[:strings.Index(conf.ListenLocal, ":")], (conf.ListenLocal)[strings.Index(conf.ListenLocal, ":")+1:], allow_remote_on_local_ln, subs, servs, l); err != nil {
-		l.Error("newListener local", err)
-		cancel()
+		panic("newListener local: " + err.Error())
 	}
 
 	<-ctx.Done()
@@ -98,8 +87,8 @@ func main() {
 	if external_ln != nil {
 		external_ln.close()
 	}
-	logscancel()
-	time.Sleep(time.Second * 3) // TODO: ждун в логгере
+	flsh.Close()
+	flsh.DoneWithTimeout(time.Second * 5)
 }
 
 func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {

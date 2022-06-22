@@ -14,8 +14,8 @@ const (
 	OperationCodeUnsubscribeFromServices OperationCode = 3
 	// []byte{opcode, len(pubname), pubname, len(pubname), pubname, ...}
 	OperationCodeSubscribeToServices OperationCode = 4
-	// pubinfo := []byte{statuscode, len(addr), addr, pubname},
 	// message := []byte{opcode, len(pubinfo), pubinfo, len(pubinfo), pubinfo, ...}
+	// pubinfo := []byte{statuscode, len(addr), addr, pubname},
 	OperationCodeUpdatePubs OperationCode = 6
 	// []byte{opcode}
 	OperationCodeGiveMeOuterAddr OperationCode = 8

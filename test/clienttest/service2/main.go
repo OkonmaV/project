@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"project/test/httpservice"
-	"project/test/types"
+	"project/httpservice"
+	"project/logs/logger"
 
 	"github.com/big-larry/suckhttp"
 )
@@ -25,19 +25,20 @@ func (c *config) CreateHandler(ctx context.Context, pubs_getter httpservice.Publ
 	return s, nil
 }
 
-func (s *service) Handle(req *suckhttp.Request, l types.Logger) (*suckhttp.Response, error) {
-	if rereq, err := httpservice.CreateHTTPRequestFrom(suckhttp.POST, req); err != nil {
-		panic(err.Error())
-	} else {
-		rereq.Body = append(rereq.Body, []byte(" UPDATED BY "+thisServiceName)...)
-		resp, err := s.pub_service.SendHTTP(rereq)
-		if err != nil {
-			println(err.Error())
-		} else {
-			return resp, nil
-		}
-		return nil, err
-	}
+func (s *service) Handle(req *suckhttp.Request, l logger.Logger) (*suckhttp.Response, error) {
+	// if rereq, err := httpservice.CreateHTTPRequestFrom(suckhttp.POST, req); err != nil {
+	// 	panic(err.Error())
+	// } else {
+	// 	rereq.Body = append(rereq.Body, []byte(" UPDATED BY "+thisServiceName)...)
+	// 	resp, err := s.pub_service.SendHTTP(rereq)
+	// 	if err != nil {
+	// 		println(err.Error())
+	// 	} else {
+	// 		return resp, nil
+	// 	}
+	// 	return nil, err
+	// }
+	return nil, nil
 }
 
 func main() {

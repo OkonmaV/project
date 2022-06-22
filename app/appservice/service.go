@@ -1,14 +1,14 @@
-package wsservice
+package appservice
 
 import (
 	"confdecoder"
 	"context"
-	"net"
 	"os"
 	"os/signal"
+	"project/app/protocol"
+	"project/connector"
 	"project/logs/encode"
 	"project/logs/logger"
-	"project/wsconnector"
 	"syscall"
 	"time"
 )
@@ -16,22 +16,11 @@ import (
 type ServiceName string
 
 type Servicier interface {
-	CreateService(ctx context.Context, pubs_getter Publishers_getter) (WSService, error)
-}
-
-type WSService interface {
-	CreateNewWsHandler(l logger.Logger) Handler
+	CreateHandler(ctx context.Context, l logger.Logger, sender Sender, pubs_getter Publishers_getter) (Handler, error)
 }
 
 type Handler interface {
-	HandleNewConnection(WSconn) error
-	wsconnector.WsHandler
-}
-
-type WSconn interface {
-	wsconnector.Sender
-	wsconnector.Informer
-	wsconnector.Closer
+	Handle(*protocol.AppMessage) error
 }
 
 type closer interface {
@@ -43,25 +32,21 @@ type file_config struct {
 }
 
 const pubscheckTicktime time.Duration = time.Second * 5
+const sendQueueSize = 5
 
-// TODO: исправить жопу с логами
 // TODO: придумать шото для неторчащих наружу сервисов
-// TODO: конфигурировать кол-во горутин-хендлеров конфигуратором
-// TODO: вынести фейковый конфигуратор в отдельную либу
 
-func InitNewService(servicename ServiceName, config Servicier, lnthreads, handlethreads int, publishers_names ...ServiceName) {
-	initNewService(true, servicename, config, lnthreads, handlethreads, publishers_names...)
+func InitNewService(servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
+	initNewService(true, servicename, config, handlethreads, publishers_names...)
 }
-
-// you can specify listenport in config.txt as ListenPort
-func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, lnthreads, handlethreads int, publishers_names ...ServiceName) {
+func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
 	if len(publishers_names) > 0 {
 		panic("cant use publishers without configurator")
 	}
-	initNewService(false, servicename, config, lnthreads, handlethreads, publishers_names...)
+	initNewService(false, servicename, config, handlethreads, publishers_names...)
 }
 
-func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, lnthreads, handlethreads int, publishers_names ...ServiceName) {
+func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
 	servconf := &file_config{}
 	pfd, err := confdecoder.ParseFile("config.txt")
 	if err != nil {
@@ -82,8 +67,16 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 
 	servStatus := newServiceStatus()
 
+	connector.SetupEpoll(func(e error) {
+		l.Error("epoll OnWaitError", e)
+		cancel()
+	})
+	if err := connector.SetupGopoolHandling(handlethreads, 1, handlethreads); err != nil {
+		panic(err)
+	}
+
 	var pubs *publishers
-	//var err error
+
 	if len(publishers_names) != 0 {
 		if pubs, err = newPublishers(ctx, l.NewSubLogger("Publishers"), servStatus, nil, pubscheckTicktime, publishers_names); err != nil {
 			panic(err)
@@ -91,40 +84,16 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	} else {
 		servStatus.setPubsStatus(true)
 	}
-	srvc, err := config.CreateService(ctx, pubs)
+	appserv := newAppService(ctx, l.NewSubLogger("AppServer"), sendQueueSize, nil)
+
+	handler, err := config.CreateHandler(ctx, l.NewSubLogger("Handler"), appserv, pubs)
 	if err != nil {
 		panic(err)
 	}
 
-	if err := wsconnector.SetupEpoll(func(e error) {
-		l.Error("epoll OnWaitError", e)
-		cancel()
-	}); err != nil {
-		panic(err)
-	}
-	if err := wsconnector.SetupGopoolHandling(handlethreads, 1, handlethreads); err != nil {
-		panic(err)
-	}
+	appserv.handlefunc = handler.Handle
 
-	l_lstnr := l.NewSubLogger("Listener")
-	ln := newListener(l_lstnr, servStatus, lnthreads, func(conn net.Conn) error {
-		wsdata := srvc.CreateNewWsHandler(l.NewSubLogger("Conn"))
-		connector, err := wsconnector.NewWSConnector(conn, wsdata)
-		if err != nil {
-			return err
-		}
-
-		if err = wsdata.HandleNewConnection(connector); err != nil {
-			l_lstnr.Debug("HandleWSCreating", err.Error())
-			return err
-		}
-		if err := connector.StartServing(); err != nil {
-			l_lstnr.Debug("StartServing", err.Error())
-			connector.ClearFromCache()
-			return err
-		}
-		return nil
-	})
+	ln := newListener(ctx, l.NewSubLogger("Listener"), appserv, servStatus)
 
 	var configurator *configurator
 
@@ -134,11 +103,7 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 			pubs.configurator = configurator
 		}
 	} else {
-		foo := &struct{ ListenPort int }{}
-		if err := pfd.DecodeTo(foo); err != nil {
-			panic("decoding config.txt err: " + err.Error())
-		}
-		if configurator = newFakeConfigurator(ctx, foo.ListenPort, l.NewSubLogger("FakeConfigurator"), servStatus, ln); configurator == nil {
+		if configurator = newFakeConfigurator(ctx, l.NewSubLogger("FakeConfigurator"), servStatus, ln); configurator == nil {
 			cancel()
 		}
 	}
@@ -155,10 +120,9 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
-
 	ln.close()
 
-	if closehandler, ok := srvc.(closer); ok {
+	if closehandler, ok := handler.(closer); ok {
 		if err = closehandler.Close(); err != nil {
 			l.Error("CloseFunc", err)
 		}

@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"os"
-	"project/test/connector"
-	"project/test/types"
+	"project/connector"
+	"project/logs/logger"
+	"project/types/configuratortypes"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +27,7 @@ type servicesier interface {
 	getServiceState(ServiceName) service_stateier
 }
 
-func newServices(ctx context.Context, l types.Logger, settingspath string, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
+func newServices(ctx context.Context, l logger.Logger, settingspath string, settingsCheckTicktime time.Duration, subs subscriptionsier) servicesier {
 	servs := &services{list: make(map[ServiceName]*service_state), subs: subs}
 	go servs.serveSettings(ctx, l, settingspath, settingsCheckTicktime)
 	return servs
@@ -39,7 +39,7 @@ func (s *services) getServiceState(name ServiceName) service_stateier {
 	return s.list[name]
 }
 
-func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspath string, ticktime time.Duration) {
+func (s *services) serveSettings(ctx context.Context, l logger.Logger, settingspath string, ticktime time.Duration) {
 	filestat, err := os.Stat(settingspath)
 	if err != nil {
 		panic("[os.stat] error: " + err.Error())
@@ -73,14 +73,7 @@ func (s *services) serveSettings(ctx context.Context, l types.Logger, settingspa
 }
 
 // TODO: сервисы из мапы сейчас не трутся (возможна ситуация наличия в мапе сервиса с нулем разрешенных для запуска инстансов)
-func (s *services) readSettings(l types.Logger, settingspath string) error {
-
-	defer func() { // FOR TESTING
-		s.rwmux.RLock()
-		fmt.Println("SERVICES AFTER READSETTINGS: ", s.list)
-		s.rwmux.RUnlock()
-	}()
-
+func (s *services) readSettings(l logger.Logger, settingspath string) error {
 	data, err := os.ReadFile(settingspath)
 	if err != nil {
 		return err
@@ -152,7 +145,7 @@ func (s *services) readSettings(l types.Logger, settingspath string) error {
 			newserv := newService(settings_name, *settings_addrs[i], l, s.subs)
 			state.connections = append(state.connections, newserv)
 			state.rwmux.Unlock()
-			if newserv.name == ServiceName(types.ConfServiceName) {
+			if newserv.name == ServiceName(configuratortypes.ConfServiceName) {
 				reconnectReq <- newserv
 			}
 		}
@@ -170,7 +163,7 @@ type service_state struct {
 }
 
 type service_stateier interface {
-	getAllOutsideAddrsWithStatus(types.ServiceStatus) []*Address
+	getAllOutsideAddrsWithStatus(configuratortypes.ServiceStatus) []*Address
 	getAllServices() []*service
 	initNewConnection(conn net.Conn, isLocalhosted bool, isConf bool) error
 }
@@ -179,7 +172,7 @@ func newServiceState(conns_cap int) *service_state {
 	return &service_state{connections: make([]*service, 0, conns_cap)}
 }
 
-func (state *service_state) getAllOutsideAddrsWithStatus(status types.ServiceStatus) []*Address {
+func (state *service_state) getAllOutsideAddrsWithStatus(status configuratortypes.ServiceStatus) []*Address {
 	if state == nil {
 		return nil
 	}
@@ -210,17 +203,15 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 		return errors.New("unknown service") // да, неочевидно
 	}
 
-	// if isConf && isLocalhosted {
-	// 	return errors.New(suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
-	// }
+	if isConf && isLocalhosted {
+		return errors.New(suckutils.ConcatThree("localhosted conf trying to connect from: ", conn.RemoteAddr().String(), ", conn denied"))
+	}
 
 	state.rwmux.Lock()
 	defer state.rwmux.Unlock()
 
 	var conn_host string
 	if !isLocalhosted {
-		println(conn.RemoteAddr().String())
-		time.Sleep(time.Second * 2)
 		conn_host = (conn.RemoteAddr().String())[:strings.Index(conn.RemoteAddr().String(), ":")]
 	}
 
@@ -229,7 +220,7 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 		var con connector.Conn
 		var err error
 
-		if state.connections[i].status == types.StatusOff {
+		if state.connections[i].status == configuratortypes.StatusOff {
 			if !isLocalhosted {
 				if state.connections[i].outerAddr.remotehost != conn_host {
 					goto failure
@@ -253,13 +244,13 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 		}
 		state.connections[i].connector = con
 		if isConf {
-			state.connections[i].status = types.StatusOn
+			state.connections[i].status = configuratortypes.StatusOn
 		} else {
-			state.connections[i].status = types.StatusSuspended
+			state.connections[i].status = configuratortypes.StatusSuspended
 		}
 		state.connections[i].l.Debug("Connection", "service approved, serving started")
 		state.connections[i].statusmux.Unlock()
-		if err := con.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeOK)})); err != nil {
+		if err := con.Send(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeOK)})); err != nil {
 			state.connections[i].connector.Close(err)
 			return err
 		}
@@ -273,37 +264,37 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 	// TODO: !!!!!!!!!!!!!!!! если не нашли конфигуратор в стейте, то добавляем его туда. Проблема: откуда взять логгер и подписки
 	// if isConf {
 	// 	state.connections = append(state.connections, newService(
-	// 		ServiceName(types.ConfServiceName),
-	// 		Address{netw: types.NetProtocolTcp, remotehost: conn_host},
+	// 		ServiceName(configuratortypes.ConfServiceName),
+	// 		Address{netw: configuratortypes.NetProtocolTcp, remotehost: conn_host},
 	// 		*loggs,
 	// 	))
 	// }
-	conn.Write(connector.FormatBasicMessage([]byte{byte(types.OperationCodeNOTOK)}))
+	conn.Write(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeNOTOK)}))
 	return errors.New("no free conns for this service available") // TODO: где-то имя сервиса в логи вписать
 }
 
 type service struct {
 	name      ServiceName
 	outerAddr Address // адрес на котором сервис будет торчать наружу
-	status    types.ServiceStatus
+	status    configuratortypes.ServiceStatus
 	statusmux sync.RWMutex
 	connector connector.Conn
-	l         types.Logger
+	l         logger.Logger
 
 	subs subscriptionsier
 }
 
-func (s *service) isStatus(status types.ServiceStatus) bool {
+func (s *service) isStatus(status configuratortypes.ServiceStatus) bool {
 	s.statusmux.RLock()
 	defer s.statusmux.RUnlock()
 	return s.status == status
 }
 
-func newService(name ServiceName, outerAddr Address, l types.Logger, subs subscriptionsier) *service {
+func newService(name ServiceName, outerAddr Address, l logger.Logger, subs subscriptionsier) *service {
 	return &service{name: name, outerAddr: outerAddr, l: l, subs: subs}
 }
 
-func (s *service) changeStatus(newStatus types.ServiceStatus) {
+func (s *service) changeStatus(newStatus configuratortypes.ServiceStatus) {
 	s.statusmux.Lock()
 	defer s.statusmux.Unlock()
 
@@ -312,21 +303,21 @@ func (s *service) changeStatus(newStatus types.ServiceStatus) {
 		return
 	}
 
-	if s.status == types.StatusOn || newStatus == types.StatusOn { // иначе уведомлять о смене сорта нерабочести не нужно(eg: с выкл на суспенд)
+	if s.status == configuratortypes.StatusOn || newStatus == configuratortypes.StatusOn { // иначе уведомлять о смене сорта нерабочести не нужно(eg: с выкл на суспенд)
 		var addr string
 		if len(s.outerAddr.remotehost) == 0 {
 			addr = suckutils.ConcatTwo("127.0.0.1:", s.outerAddr.port)
 		} else {
 			addr = suckutils.ConcatThree(s.outerAddr.remotehost, ":", s.outerAddr.port)
 		}
-		s.subs.updatePub([]byte(s.name), types.FormatAddress(s.outerAddr.netw, addr), newStatus, true)
+		s.subs.updatePub([]byte(s.name), configuratortypes.FormatAddress(s.outerAddr.netw, addr), newStatus, true)
 	}
 	s.status = newStatus
 	s.l.Debug("status", suckutils.ConcatThree("updated to \"", newStatus.String(), "\""))
 }
 
 func sendUpdateToOuterConf(serv *service) error {
-	message := append(make([]byte, 0, 15), byte(types.OperationCodeSubscribeToServices))
+	message := append(make([]byte, 0, 15), byte(configuratortypes.OperationCodeSubscribeToServices))
 	if pubnames := serv.subs.getAllPubNames(); len(pubnames) != 0 { // шлем подписку на тошо у нас в пабах есть
 		for _, pub_name := range pubnames {
 			pub_name_byte := []byte(pub_name)
@@ -336,5 +327,5 @@ func sendUpdateToOuterConf(serv *service) error {
 			return err
 		}
 	}
-	return serv.connector.Send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(thisConfOuterPort)+1), byte(types.OperationCodeMyOuterPort)), thisConfOuterPort...)))
+	return serv.connector.Send(connector.FormatBasicMessage(append(append(make([]byte, 0, len(thisConfOuterPort)+1), byte(configuratortypes.OperationCodeMyOuterPort)), thisConfOuterPort...)))
 }

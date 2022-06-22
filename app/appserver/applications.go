@@ -35,11 +35,7 @@ type appupdate struct {
 // call before configurator created
 func newApplications(ctx context.Context, l logger.Logger, configurator *configurator, pubscheckTicktime time.Duration, size int) (*applications, func()) {
 	a := &applications{configurator: configurator, l: l, list: make([]app, size+1), appupdates: make(chan appupdate, 1)}
-	for _, info := range appsinfo {
-		if _, err := a.newApp(info.id, clients, info.name); err != nil {
-			return nil, nil, err
-		}
-	}
+
 	updateWorkerStart := make(chan struct{}, 0)
 
 	go a.appsUpdateWorker(ctx, l.NewSubLogger("AppsUpdateWorker"), updateWorkerStart, pubscheckTicktime)
@@ -202,4 +198,12 @@ func (apps *applications) Get(appid protocol.AppID) (*app, error) {
 		return nil, errors.New(suckutils.ConcatThree("impossible appid (must be 0<connuid<=len(apps.list)): \"", strconv.Itoa(int(appid)), "\""))
 	}
 	return &apps.list[appid], nil
+}
+
+func (apps *applications) SendToAll(message []byte) {
+	// apps.RLock()
+	// defer apps.RUnlock()
+	for i := 0; i < len(apps.list); i++ {
+		apps.list[i].SendToAll(message)
+	}
 }

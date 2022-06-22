@@ -2,7 +2,6 @@ package main
 
 import (
 	"confdecoder"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -149,27 +148,15 @@ type ssdfg struct {
 type ht string
 
 func main() {
-	foo := []byte{10, 10, 10, 10}
-	fooo := []byte{0, 10, 10, 10}
-	a := binary.BigEndian.Uint32(foo)
-	aa := binary.BigEndian.Uint32(fooo)
-	b := 0x10ffffff
-	println(b)
-	println(b & 0x010000ff)
-	println(0x01000000)
-	println(0x020000ff>>24, 0x020000ff)
-	println(a)
-	println(a>>8, aa)
-	fff := []byte{0, 0, 0, 0}
-	binary.BigEndian.PutUint32(fff, 16777215)
-	fmt.Println(fff)
+	ti := time.Now()
+	fmt.Println(ti.UTC(), "||||||", ti, "|||||||||||", ti.UnixNano())
 	return
 
 	connuid := uint32(50)
 	appid := uint16(15)
 	headers := []byte{21, 22, 23, 24, 25}
 	body := []byte{31, 32, 33, 34, 35}
-	client_encoded_message, err1 := protocol.EncodeClientMessage(protocol.TypeText, appid, headers, body)
+	client_encoded_message, err1 := protocol.EncodeClientMessage(protocol.TypeText, protocol.AppID(appid), headers, body)
 	client_decoded_message, err2 := protocol.DecodeClientMessage(client_encoded_message)
 	fmt.Println(1, client_decoded_message, err1, err2)
 	appserv_decoded_message, err3 := protocol.DecodeClientMessageToAppServerMessage(client_encoded_message)
@@ -177,7 +164,7 @@ func main() {
 	appservclient_encoded_message := appserv_decoded_message.EncodeToClientMessage()
 	clientappserv_decoded_message, err4 := protocol.DecodeClientMessage(appservclient_encoded_message)
 	fmt.Println(3, clientappserv_decoded_message, err4, appservclient_encoded_message)
-	appserv_decoded_message.ConnUID = connuid
+	appserv_decoded_message.ConnectionUID = protocol.ConnUID(connuid)
 	appservapp_encoded_message, _ := appserv_decoded_message.EncodeToAppMessage()
 	appappserv_decoded_message, err5 := protocol.DecodeAppMessage(appservapp_encoded_message)
 	fmt.Println(4, appappserv_decoded_message, err5)

@@ -7,8 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"project/connector"
-	"project/test/logs"
-	"project/test/types"
+	"project/logs/encode"
+	"project/logs/logger"
+
 	"syscall"
 	"time"
 
@@ -31,25 +32,25 @@ type config_toml struct {
 
 type HTTPService interface {
 	// nil response = 500
-	Handle(request *suckhttp.Request, logger types.Logger) (*suckhttp.Response, error)
+	Handle(request *suckhttp.Request, logger logger.Logger) (*suckhttp.Response, error)
 }
 
 const pubscheckTicktime time.Duration = time.Second * 5
 
-// TODO: исправить жопу с логами
+// TODO: ПЕРЕЕХАТЬ КОНФИГУРАТОРА НА НОН-ЕПУЛ КОННЕКТОР
 // TODO: придумать шото для неторчащих наружу сервисов
 
-func InitNewService(servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
-	initNewService(true, servicename, config, keepConnAlive, threads, publishers_names...)
+func InitNewService(servicename ServiceName, config Servicier, keepConnAlive bool, handlethreads int, publishers_names ...ServiceName) {
+	initNewService(true, servicename, config, keepConnAlive, handlethreads, publishers_names...)
 }
-func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
+func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, keepConnAlive bool, handlethreads int, publishers_names ...ServiceName) {
 	if len(publishers_names) > 0 {
 		panic("cant use publishers without configurator")
 	}
-	initNewService(false, servicename, config, keepConnAlive, threads, publishers_names...)
+	initNewService(false, servicename, config, keepConnAlive, handlethreads, publishers_names...)
 }
 
-func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, keepConnAlive bool, threads int, publishers_names ...ServiceName) {
+func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, keepConnAlive bool, handlethreads int, publishers_names ...ServiceName) {
 	servconf := &config_toml{}
 	if err := confdecoder.DecodeFile("config.txt", servconf, config); err != nil {
 		panic("reading/decoding config.txt err: " + err.Error())
@@ -59,23 +60,22 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	}
 
 	ctx, cancel := createContextWithInterruptSignal()
-	logsctx, logscancel := context.WithCancel(context.Background())
 
-	l, _ := logs.NewLoggerContainer(logsctx, logs.DebugLevel, 10, time.Second*2)
-	consolelogger := &logs.ConsoleLogger{}
-	go func() {
-		for {
-			logspack := <-l.Flush()
-			consolelogger.WriteMany(logspack)
-		}
-	}()
+	logsflusher := logger.NewFlusher(encode.DebugLevel)
+	l := logsflusher.NewLogsContainer(string(servicename))
 
 	servStatus := newServiceStatus()
 
-	connector.SetupEpoll(func(e error) {
+	if err := connector.SetupEpoll(func(e error) {
 		l.Error("epoll OnWaitError", e)
 		cancel()
-	})
+	}); err != nil {
+		panic(err)
+	}
+	// Connector here is only needed for configurator
+	// if err := connector.SetupGopoolHandling(handlethreads, 1, handlethreads); err != nil {
+	// 	panic(err)
+	// }
 
 	var pubs *publishers
 	var err error
@@ -91,7 +91,7 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 		panic(err)
 	}
 
-	ln := newListener(ctx, l, servStatus, threads, keepConnAlive, func(conn net.Conn) error {
+	ln := newListener(ctx, l, servStatus, handlethreads, keepConnAlive, func(conn net.Conn) error {
 		request, err := suckhttp.ReadRequest(ctx, conn, time.Minute)
 		if err != nil {
 			return err
@@ -141,8 +141,8 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 			l.Error("CloseFunc", err)
 		}
 	}
-	time.Sleep(time.Second * 2) /////////////////////////////////////////
-	logscancel()
+	logsflusher.Close()
+	<-logsflusher.Done()
 }
 
 func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {

@@ -5,7 +5,10 @@ import (
 	"errors"
 	"net"
 	"project/connector"
-	"project/test/types"
+	"project/logs/logger"
+	"project/types/configuratortypes"
+	"project/types/netprotocol"
+
 	"strconv"
 	"strings"
 	"time"
@@ -22,10 +25,10 @@ type configurator struct {
 	servStatus *serviceStatus
 
 	terminationByConfigurator chan struct{}
-	l                         types.Logger
+	l                         logger.Logger
 }
 
-func newFakeConfigurator(ctx context.Context, l types.Logger, servStatus *serviceStatus, listener *listener) *configurator {
+func newFakeConfigurator(ctx context.Context, l logger.Logger, servStatus *serviceStatus, listener *listener) *configurator {
 	connector.InitReconnection(ctx, time.Second*5, 1, 1)
 	c := &configurator{
 		l:          l,
@@ -49,7 +52,7 @@ func newFakeConfigurator(ctx context.Context, l types.Logger, servStatus *servic
 		return nil
 	}
 
-	if c.conn, err = connector.NewEpollReConnector(conn, c, nil, nil, "", ""); err != nil {
+	if c.conn, err = connector.NewEpollReConnector(conn, c, nil, nil); err != nil {
 		c.l.Error("NewEpollReConnector", err)
 		return nil
 	}
@@ -58,8 +61,8 @@ func newFakeConfigurator(ctx context.Context, l types.Logger, servStatus *servic
 		p := 9010
 		for {
 			time.Sleep(time.Millisecond * 50)
-			addr := types.FormatAddress(types.NetProtocolTcp, "127.0.0.1:"+strconv.Itoa(p+1))
-			if err := c.Handle(&connector.BasicMessage{Payload: append(append(make([]byte, 0, len(addr)+2), byte(types.OperationCodeSetOutsideAddr), byte(len(addr))), addr...)}); err != nil {
+			addr := configuratortypes.FormatAddress(netprotocol.NetProtocolTcp, "127.0.0.1:"+strconv.Itoa(p+1))
+			if err := c.Handle(&connector.BasicMessage{Payload: append(append(make([]byte, 0, len(addr)+2), byte(configuratortypes.OperationCodeSetOutsideAddr), byte(len(addr))), addr...)}); err != nil {
 				c.l.Error("FakeConfiguratorsMessageHandle", err)
 				p++
 				continue
@@ -73,7 +76,7 @@ func newFakeConfigurator(ctx context.Context, l types.Logger, servStatus *servic
 	return c
 }
 
-func newConfigurator(ctx context.Context, l types.Logger, servStatus *serviceStatus, pubs *publishers, listener *listener, configuratoraddr string, thisServiceName ServiceName, reconnectTimeout time.Duration) *configurator {
+func newConfigurator(ctx context.Context, l logger.Logger, servStatus *serviceStatus, pubs *publishers, listener *listener, configuratoraddr string, thisServiceName ServiceName, reconnectTimeout time.Duration) *configurator {
 
 	c := &configurator{
 		thisServiceName:           thisServiceName,
@@ -98,7 +101,7 @@ func newConfigurator(ctx context.Context, l types.Logger, servStatus *serviceSta
 				l.Error("handshake", err)
 				goto timeout
 			}
-			if c.conn, err = connector.NewEpollReConnector(conn, c, c.handshake, c.afterConnProc, "", ""); err != nil {
+			if c.conn, err = connector.NewEpollReConnector(conn, c, c.handshake, c.afterConnProc); err != nil {
 				l.Error("NewEpollReConnector", err)
 				goto timeout
 			}
@@ -133,9 +136,9 @@ func (c *configurator) handshake(conn net.Conn) error {
 		return errors.New(suckutils.ConcatTwo("err reading configurator's approving, err: ", err.Error()))
 	}
 	if n == 5 {
-		if buf[4] == byte(types.OperationCodeOK) {
+		if buf[4] == byte(configuratortypes.OperationCodeOK) {
 			return nil
-		} else if buf[4] == byte(types.OperationCodeNOTOK) {
+		} else if buf[4] == byte(configuratortypes.OperationCodeNOTOK) {
 			if c.conn != nil {
 				go c.conn.CancelReconnect() // горутина пушто этот хэндшейк под залоченным мьютексом выполняется
 			}
@@ -148,18 +151,18 @@ func (c *configurator) handshake(conn net.Conn) error {
 
 func (c *configurator) afterConnProc() error {
 
-	myStatus := byte(types.StatusSuspended)
+	myStatus := byte(configuratortypes.StatusSuspended)
 	if c.servStatus.onAir() {
-		myStatus = byte(types.StatusOn)
+		myStatus = byte(configuratortypes.StatusOn)
 	}
-	if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), myStatus})); err != nil {
+	if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeMyStatusChanged), myStatus})); err != nil {
 		return err
 	}
 
 	if c.publishers != nil {
 		pubnames := c.publishers.GetAllPubNames()
 		if len(pubnames) != 0 {
-			message := append(make([]byte, 0, len(pubnames)*15), byte(types.OperationCodeSubscribeToServices))
+			message := append(make([]byte, 0, len(pubnames)*15), byte(configuratortypes.OperationCodeSubscribeToServices))
 			for _, pub_name := range pubnames {
 				pub_name_byte := []byte(pub_name)
 				message = append(append(message, byte(len(pub_name_byte))), pub_name_byte...)
@@ -170,7 +173,7 @@ func (c *configurator) afterConnProc() error {
 		}
 	}
 
-	if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeGiveMeOuterAddr)})); err != nil {
+	if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeGiveMeOuterAddr)})); err != nil {
 		return err
 	}
 	return nil
@@ -195,12 +198,12 @@ func (c *configurator) send(message []byte) error {
 
 func (c *configurator) onSuspend(reason string) {
 	c.l.Warning("OwnStatus", suckutils.ConcatTwo("suspended, reason: ", reason))
-	c.send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusSuspended)}))
+	c.send(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeMyStatusChanged), byte(configuratortypes.StatusSuspended)}))
 }
 
 func (c *configurator) onUnSuspend() {
 	c.l.Warning("OwnStatus", "unsuspended")
-	c.send(connector.FormatBasicMessage([]byte{byte(types.OperationCodeMyStatusChanged), byte(types.StatusOn)}))
+	c.send(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeMyStatusChanged), byte(configuratortypes.StatusOn)}))
 }
 
 func (c *configurator) NewMessage() connector.MessageReader {
@@ -212,24 +215,24 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 	if len(payload) == 0 {
 		return connector.ErrEmptyPayload
 	}
-	switch types.OperationCode(payload[0]) {
-	case types.OperationCodePing:
+	switch configuratortypes.OperationCode(payload[0]) {
+	case configuratortypes.OperationCodePing:
 		return nil
-	case types.OperationCodeMyStatusChanged:
+	case configuratortypes.OperationCodeMyStatusChanged:
 		return nil
-	case types.OperationCodeImSupended:
+	case configuratortypes.OperationCodeImSupended:
 		return nil
-	case types.OperationCodeSetOutsideAddr:
+	case configuratortypes.OperationCodeSetOutsideAddr:
 		if len(payload) < 2 {
 			return connector.ErrWeirdData
 		}
 		if len(payload) < 2+int(payload[1]) {
 			return connector.ErrWeirdData
 		}
-		if netw, addr, err := types.UnformatAddress(payload[2 : 2+int(payload[1])]); err != nil {
+		if netw, addr, err := configuratortypes.UnformatAddress(payload[2 : 2+int(payload[1])]); err != nil {
 			return err
 		} else {
-			if netw == types.NetProtocolNil {
+			if netw == netprotocol.NetProtocolNil {
 				c.listener.stop()
 				c.servStatus.setListenerStatus(true)
 				return nil
@@ -248,20 +251,20 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 			}
 			return err
 		}
-	case types.OperationCodeUpdatePubs:
-		updates := types.SeparatePayload(payload[1:])
+	case configuratortypes.OperationCodeUpdatePubs:
+		updates := configuratortypes.SeparatePayload(payload[1:])
 		if len(updates) != 0 {
 			for _, update := range updates {
-				pubname, raw_addr, status, err := types.UnformatOpcodeUpdatePubMessage(update)
+				pubname, raw_addr, status, err := configuratortypes.UnformatOpcodeUpdatePubMessage(update)
 				if err != nil {
 					return err
 				}
-				netw, addr, err := types.UnformatAddress(raw_addr)
+				netw, addr, err := configuratortypes.UnformatAddress(raw_addr)
 				if err != nil {
 					c.l.Error("Handle/OperationCodeUpdatePubs/UnformatAddress", err)
 					return connector.ErrWeirdData
 				}
-				if netw == types.NetProtocolNonlocalUnix {
+				if netw == netprotocol.NetProtocolNonlocalUnix {
 					continue // TODO:
 				}
 

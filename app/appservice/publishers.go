@@ -1,4 +1,4 @@
-package wsservice
+package appservice
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"net"
 	"project/connector"
 	"project/logs/logger"
-
 	"project/types/configuratortypes"
+
 	"strconv"
 	"strings"
 	"sync"
@@ -39,8 +39,7 @@ type Publisher struct {
 	addresses   []address
 	current_ind int
 	mux         sync.Mutex
-	//ctx         context.Context
-	l logger.Logger
+	l           logger.Logger
 }
 
 type Publishers_getter interface {
@@ -100,7 +99,7 @@ loop:
 							if pub.conn != nil {
 								if pub.conn.RemoteAddr().String() == update.addr.addr {
 									pub.conn.Close()
-									pubs.l.Debug("publishersWorker", suckutils.ConcatFour("due to update closed conn to \"", string(update.name), "\" from ", update.addr.addr))
+									pubs.l.Debug("publishersWorker", suckutils.ConcatFour("due to update, closed conn to \"", string(update.name), "\" from ", update.addr.addr))
 								}
 							}
 
@@ -113,11 +112,11 @@ loop:
 							pubs.l.Debug("publishersWorker", suckutils.Concat("pub \"", string(update.name), "\" from ", update.addr.addr, " updated to", update.status.String()))
 							continue loop
 
-						} else if update.status == configuratortypes.StatusOn { // если нужно добавлять в список адресов = ошибка
+						} else if update.status == configuratortypes.StatusOn { // если нужно добавлять в список адресов = ошибка, но может ложно стрельнуть при старте сервиса, когда при подключении к конфигуратору запрос на апдейт помимо хендшейка может отправить эта горутина по тикеру
 							pubs.l.Error("publishersWorker", errors.New(suckutils.Concat("recieved pubupdate to status_on for already updated status_on for \"", string(update.name), "\" from ", update.addr.addr)))
 							continue loop
 
-						} else { // если кривой апдейт = ошибка
+						} else { // если кривой апдейт
 							pubs.l.Error("publishersWorker", errors.New(suckutils.Concat("unknown statuscode: ", strconv.Itoa(int(update.status)), "at update pub \"", string(update.name), "\" from ", update.addr.addr)))
 							continue loop
 						}
@@ -129,6 +128,7 @@ loop:
 				if update.status == configuratortypes.StatusOn {
 					pub.mux.Lock()
 					pub.addresses = append(pub.addresses, update.addr)
+					pubs.l.Debug("publishersWorker", suckutils.Concat("added new addr ", update.addr.netw, ":", update.addr.addr, " for pub ", string(pub.servicename)))
 					pub.mux.Unlock()
 					continue loop
 
@@ -146,7 +146,7 @@ loop:
 				pubs.l.Error("publishersWorker", errors.New(suckutils.ConcatThree("recieved update for non-publisher \"", string(update.name), "\", sending unsubscription")))
 
 				pubname_byte := []byte(update.name)
-				message := append(append(make([]byte, 0, 2+len(pubname_byte)), byte(configuratortypes.OperationCodeUnsubscribeFromServices), byte(len(pubname_byte))), pubname_byte...)
+				message := append(append(make([]byte, 0, 2+len(update.name)), byte(configuratortypes.OperationCodeUnsubscribeFromServices), byte(len(pubname_byte))), pubname_byte...)
 				if err := pubs.configurator.send(connector.FormatBasicMessage(message)); err != nil {
 					pubs.l.Error("publishersWorker/configurator.Send", err)
 				}
@@ -169,10 +169,10 @@ loop:
 			if len(empty_pubs) != 0 {
 				servStatus.setPubsStatus(false)
 				pubs.l.Warning("publishersWorker", suckutils.ConcatTwo("no publishers with names: ", strings.Join(empty_pubs, ", ")))
-
 				message := make([]byte, 1, 1+empty_pubs_len+len(empty_pubs))
 				message[0] = byte(configuratortypes.OperationCodeSubscribeToServices)
 				for _, pubname := range empty_pubs {
+					//check pubname len?
 					message = append(append(message, byte(len(pubname))), []byte(pubname)...)
 				}
 				if err := pubs.configurator.send(connector.FormatBasicMessage(message)); err != nil {
@@ -214,7 +214,7 @@ func (pubs *publishers) newPublisher(name ServiceName) (*Publisher, error) {
 	}
 
 	if _, ok := pubs.list[name]; !ok {
-		p := &Publisher{servicename: name, addresses: make([]address, 0, 1), l: pubs.l.NewSubLogger("Pub", string(name))}
+		p := &Publisher{servicename: name, addresses: make([]address, 0, 1), l: pubs.l}
 		pubs.list[name] = p
 		return p, nil
 	} else {
@@ -222,13 +222,29 @@ func (pubs *publishers) newPublisher(name ServiceName) (*Publisher, error) {
 	}
 }
 
-// TODO:
-func (pub *Publisher) Send(message []byte) ([]byte, error) {
-	return nil, errors.New("TODO. Use SendHTTP instead")
+// TODO: responce?
+func (pub *Publisher) Send(message []byte) (err error) {
+	if pub.conn != nil {
+		_, err = pub.conn.Write(message)
+	}
+	if pub.conn == nil || err != nil {
+		if err != nil {
+			pub.l.Error("Send", err)
+		} else {
+			pub.l.Debug("Conn", "not connected, reconnect")
+		}
+		if err = pub.connect(); err == nil {
+			_, err = pub.conn.Write(message)
+			return err
+		} else {
+			return err
+		}
+	}
+	return nil
 }
 
-func CreateHTTPRequestFrom(method suckhttp.HttpMethod, recievedRequest *suckhttp.Request) (*suckhttp.Request, error) {
-	req, err := suckhttp.NewRequest(method, "")
+func CreateHTTPRequestFrom(method suckhttp.HttpMethod, uri string, recievedRequest *suckhttp.Request) (*suckhttp.Request, error) {
+	req, err := suckhttp.NewRequest(method, uri)
 	if err != nil {
 		return nil, err
 	}
@@ -256,17 +272,20 @@ func (pub *Publisher) SendHTTP(request *suckhttp.Request) (response *suckhttp.Re
 		} else {
 			pub.l.Debug("Conn", "not connected, reconnect")
 		}
-		if err = pub.connect(); err != nil {
+		if err = pub.connect(); err == nil {
+
 			if response, err = request.Send(context.Background(), pub.conn); err != nil {
 				return nil, err
 			}
+		} else {
+			return nil, err
 		}
 	}
 	return response, nil
 }
 
-// no mutex inside, it must be outside
-func (pub *Publisher) connect() (err error) {
+// no mutex inside
+func (pub *Publisher) connect() error {
 	if pub.conn != nil {
 		pub.conn.Close()
 		pub.conn = nil
@@ -276,6 +295,7 @@ func (pub *Publisher) connect() (err error) {
 		if pub.current_ind == len(pub.addresses) {
 			pub.current_ind = 0
 		}
+		var err error
 		if pub.conn, err = net.DialTimeout(pub.addresses[pub.current_ind].netw, pub.addresses[pub.current_ind].addr, time.Second); err != nil {
 			pub.l.Error("connect/Dial", err)
 			pub.current_ind++

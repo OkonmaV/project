@@ -4,8 +4,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"net"
-	"project/test/epolllistener"
-	"project/test/types"
+	"project/epolllistener"
+	"project/logs/logger"
+	"project/types/configuratortypes"
 	"strings"
 	"time"
 
@@ -21,7 +22,7 @@ type listener_info struct {
 
 	subs     subscriptionsier
 	services servicesier
-	l        types.Logger
+	l        logger.Logger
 }
 
 type listenier interface {
@@ -30,7 +31,7 @@ type listenier interface {
 
 // суть разделения на внешний и локальный листенер - юникс по локалке. а так - конфигуратору сейчас до пизды, если к внешнему листнеру подрубается локальный сервис (и я не особо вижу смысл вешать ограничение)
 
-func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l types.Logger) (listenier, error) {
+func newListener(network, address string, allowRemote bool, subs subscriptionsier, services servicesier, l logger.Logger) (listenier, error) {
 
 	lninfo := &listener_info{allowRemote: allowRemote, subs: subs, services: services, l: l}
 	ln, err := epolllistener.EpollListen(network, address, lninfo)
@@ -49,14 +50,14 @@ func newListener(network, address string, allowRemote bool, subs subscriptionsie
 // for listener's interface
 func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 	lninfo.l.Debug("HandleNewConn", suckutils.ConcatTwo("new conn from ", conn.RemoteAddr().String()))
-	var connLocalhosted bool = true
-	// if connLocalhosted = isConnLocalhost(conn); !connLocalhosted && !lninfo.allowRemote {
-	// 	lninfo.l.Warning("HandleNewConn", suckutils.Concat("new remote conn to local-only listener from: ", conn.RemoteAddr().String(), ", conn denied"))
-	// 	conn.Close()
-	// 	return
-	// }
+	var connLocalhosted bool
+	if connLocalhosted = isConnLocalhost(conn); !connLocalhosted && !lninfo.allowRemote {
+		lninfo.l.Warning("HandleNewConn", suckutils.Concat("new remote conn to local-only listener from: ", conn.RemoteAddr().String(), ", conn denied"))
+		conn.Close()
+		return
+	}
 
-	conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
 	buf := make([]byte, 4)
 	_, err := conn.Read(buf)
 	if err != nil {
@@ -79,7 +80,7 @@ func (lninfo *listener_info) HandleNewConn(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	if err := state.initNewConnection(conn, connLocalhosted, name == ServiceName(types.ConfServiceName)); err != nil {
+	if err := state.initNewConnection(conn, connLocalhosted, name == ServiceName(configuratortypes.ConfServiceName)); err != nil {
 		lninfo.l.Error("HandleNewConn/initNewConnection", errors.New(suckutils.ConcatFour("new conn from service \"", string(name), "\" error: ", err.Error())))
 		conn.Close()
 		return

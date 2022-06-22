@@ -5,7 +5,8 @@ import (
 	"errors"
 	"net"
 	"os"
-	"project/test/types"
+	"project/logs/logger"
+
 	"sync"
 	"time"
 
@@ -21,7 +22,7 @@ type listener struct {
 
 	servStatus *serviceStatus
 	//configurator *configurator // если раскомменчивать - не забыть раскомментить строку в service.go после вызова newConfigurator()
-	l types.Logger
+	l logger.Logger
 
 	ctx context.Context
 
@@ -34,7 +35,7 @@ type handlefunc func(conn net.Conn) error
 const handlerCallTimeout time.Duration = time.Second * 5
 const handlerCallMaxExceededTimeouts = 3
 
-func newListener(ctx context.Context, l types.Logger, servStatus *serviceStatus /* configurator *configurator,*/, threads int, keepAlive bool, handler handlefunc) *listener {
+func newListener(ctx context.Context, l logger.Logger, servStatus *serviceStatus /* configurator *configurator,*/, threads int, keepAlive bool, handler handlefunc) *listener {
 	if threads < 1 {
 		panic("threads num cant be less than 1")
 	}
@@ -126,7 +127,7 @@ func (listener *listener) acceptWorker() {
 			var i time.Duration
 			timer.Reset(handlerCallTimeout)
 			select {
-			case <-time.After(handlerCallTimeout):
+			case <-timer.C:
 				if i += 1; i > handlerCallMaxExceededTimeouts {
 					listener.l.Warning("acceptWorker", suckutils.ConcatThree("exceeded max timeout, no free handlingWorker available for ", (handlerCallTimeout*i).String(), ", close connection"))
 					conn.Close()

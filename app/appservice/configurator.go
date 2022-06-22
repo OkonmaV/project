@@ -1,15 +1,14 @@
-package wsservice
+package appservice
 
 import (
 	"context"
 	"errors"
 	"net"
-
 	"project/connector"
 	"project/logs/logger"
+
 	"project/types/configuratortypes"
 	"project/types/netprotocol"
-
 	"strconv"
 	"strings"
 	"time"
@@ -29,7 +28,7 @@ type configurator struct {
 	l                         logger.Logger
 }
 
-func newFakeConfigurator(ctx context.Context, listenport int, l logger.Logger, servStatus *serviceStatus, listener *listener) *configurator {
+func newFakeConfigurator(ctx context.Context, l logger.Logger, servStatus *serviceStatus, listener *listener) *configurator {
 	connector.InitReconnection(ctx, time.Second*5, 1, 1)
 	c := &configurator{
 		l:          l,
@@ -57,27 +56,21 @@ func newFakeConfigurator(ctx context.Context, listenport int, l logger.Logger, s
 		c.l.Error("NewEpollReConnector", err)
 		return nil
 	}
-	var randport bool
-	if listenport == 0 {
-		randport = true
-		listenport = 9010
-	}
+
 	go func() {
+		p := 9010
 		for {
 			time.Sleep(time.Millisecond * 50)
-			addr := configuratortypes.FormatAddress(netprotocol.NetProtocolTcp, "127.0.0.1:"+strconv.Itoa(listenport))
+			addr := configuratortypes.FormatAddress(netprotocol.NetProtocolTcp, "127.0.0.1:"+strconv.Itoa(p+1))
 			if err := c.Handle(&connector.BasicMessage{Payload: append(append(make([]byte, 0, len(addr)+2), byte(configuratortypes.OperationCodeSetOutsideAddr), byte(len(addr))), addr...)}); err != nil {
 				c.l.Error("FakeConfiguratorsMessageHandle", err)
-				if randport {
-					listenport++
-				} else {
-					panic(err)
-				}
+				p++
 				continue
 			}
 			if c.servStatus.isListenerOK() {
 				return
 			}
+
 		}
 	}()
 	return c
@@ -122,7 +115,6 @@ func newConfigurator(ctx context.Context, l logger.Logger, servStatus *serviceSt
 				l.Error("afterConnProc", err)
 				goto timeout
 			}
-			c.l.Debug("Conn", "First connection was successful")
 			break
 		timeout:
 			l.Debug("First connection", "failed, timeout")
@@ -145,7 +137,6 @@ func (c *configurator) handshake(conn net.Conn) error {
 	}
 	if n == 5 {
 		if buf[4] == byte(configuratortypes.OperationCodeOK) {
-			c.l.Debug("Conn", "handshake passed")
 			return nil
 		} else if buf[4] == byte(configuratortypes.OperationCodeNOTOK) {
 			if c.conn != nil {
@@ -185,7 +176,6 @@ func (c *configurator) afterConnProc() error {
 	if err := c.conn.Send(connector.FormatBasicMessage([]byte{byte(configuratortypes.OperationCodeGiveMeOuterAddr)})); err != nil {
 		return err
 	}
-	c.l.Debug("Conn", "afterConnProc passed")
 	return nil
 }
 
@@ -225,7 +215,6 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 	if len(payload) == 0 {
 		return connector.ErrEmptyPayload
 	}
-	c.l.Debug("Handle/NewMessage", configuratortypes.OperationCode(payload[0]).String()) ////////////////////////////////////////
 	switch configuratortypes.OperationCode(payload[0]) {
 	case configuratortypes.OperationCodePing:
 		return nil
@@ -289,6 +278,7 @@ func (c *configurator) Handle(message connector.MessageReader) error {
 
 				c.publishers.update(ServiceName(pubname), netw.String(), addr, status)
 			}
+			return nil
 		} else {
 			return connector.ErrWeirdData
 		}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"errors"
 	"project/app/protocol"
 	"project/logs/logger"
@@ -80,7 +81,7 @@ func (cc *clientsConnsList) handleCloseClientConn(connuid protocol.ConnUID) erro
 }
 
 // returns nil client on not found
-func (cc *clientsConnsList) Get(connuid protocol.ConnUID, generation byte) (*client, error) {
+func (cc *clientsConnsList) get(connuid protocol.ConnUID, generation byte) (*client, error) {
 	if connuid == 0 || int(connuid) >= len(cc.conns) {
 		return nil, errors.New(suckutils.ConcatThree("impossible connuid (must be 0<connuid<=len(cc.conns)): \"", strconv.Itoa(int(connuid)), "\""))
 	}
@@ -100,23 +101,37 @@ func (cc *clientsConnsList) Get(connuid protocol.ConnUID, generation byte) (*cli
 // wsservice.Handler {wsconnector.WsHandler} interface implementation
 func (cl *client) Handle(msg interface{}) error {
 	//cl.l.Info("NEW MESSAGE", fmt.Sprint(msg))
-	asmessage, err := protocol.DecodeClientMessageToAppServerMessage(msg.(wsconnector.BasicMessage).Payload)
-	if err != nil {
-		return err
-	}
+
+	cl.Lock()
+	ts := time.Now().UnixNano()
+
+	asmessage := msg.(*protocol.AppServerMessage)
 	app, err := cl.apps.Get(asmessage.ApplicationID)
 	if err != nil {
 		// TODO: send UpdateSettings?
 		cl.l.Error("Handle/Message.ApplicationID", err)
+		cl.Unlock()
 		return nil
 	}
+
+	ts_message := make([]byte, 9)
+	ts_message[0] = byte(protocol.TypeTimestamp)
+	binary.BigEndian.PutUint64(ts_message[1:], uint64(ts))
+	if err := cl.conn.Send(ts_message); err != nil {
+		cl.l.Error("Send", err)
+		cl.Unlock()
+		return err
+	}
+	cl.Unlock()
+
+	asmessage.Timestamp = ts
 	asmessage.ConnectionUID = cl.connuid
 	asmessage.Generation = cl.curr_gen
 	appmessage, err := asmessage.EncodeToAppMessage()
 	if err != nil {
-		cl.l.Error("Handle/EncodeToAppMessage", err)
-		return err
+		panic(err)
 	}
+
 	app.SendToAll(appmessage)
 	// TODO: успешность отправки сообщить клиенту?
 	return nil
@@ -133,14 +148,12 @@ func (cl *client) send(message []byte) error {
 	}
 }
 
-func (cl *client) NewMessage() wsconnector.MessageReader {
-	return wsconnector.NewBasicMessage()
-}
-
 // wsservice.Handler {wsconnector.WsHandler} interface implementation
 func (cl *client) HandleClose(err error) {
 	cl.l.Debug("Conn", suckutils.ConcatTwo("closed, reason: ", err.Error()))
 	// TODO: send disconnection? но ому конкретно? можно всем
+	msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: cl.connuid, Generation: cl.curr_gen, Timestamp: time.Now().UnixNano()}).EncodeToAppMessage()
+	cl.apps.SendToAll(msg)
 	if cl.closehandler != nil {
 		if err := cl.closehandler(); err != nil {
 			cl.l.Error("Conn", errors.New(suckutils.ConcatTwo("error on closehandler, err: ", err.Error())))
@@ -166,4 +179,8 @@ func (cl *client) CheckHeader(key []byte, value []byte) wsconnector.StatusCode {
 // wsservice.Handler {wsconnector.WsHandler {wsconnector.UpgradeReqChecker}} interface implementation
 func (cl *client) CheckBeforeUpgrade() wsconnector.StatusCode {
 	return 200
+}
+
+func (cl *client) NewMessage() wsconnector.MessageReader {
+	return &protocol.AppServerMessage{}
 }

@@ -24,11 +24,10 @@ type app struct {
 
 // sends only to the first successful sending, ignores other conns
 func (a *app) SendToOne(message []byte) error {
-	formatted_message := connector.FormatBasicMessage(message)
 	a.RLock()
 	defer a.RUnlock()
 	for _, conn := range a.conns {
-		if err := conn.Send(formatted_message); err != nil {
+		if err := conn.Send(message); err != nil {
 			a.l.Error("Send", err)
 			continue
 		}
@@ -38,11 +37,10 @@ func (a *app) SendToOne(message []byte) error {
 }
 
 func (a *app) SendToAll(message []byte) {
-	formatted_message := connector.FormatBasicMessage(message)
 	a.RLock()
 	defer a.RUnlock()
 	for _, conn := range a.conns {
-		if err := conn.Send(formatted_message); err != nil {
+		if err := conn.Send(message); err != nil {
 			a.l.Error("Send", err)
 			continue
 		}
@@ -95,7 +93,7 @@ func (a *app) Handle(msg connector.MessageReader) error {
 	if err != nil {
 		return err
 	}
-	cl, err := a.clients.Get(appservmessage.ConnectionUID, appservmessage.Generation)
+	cl, err := a.clients.get(appservmessage.ConnectionUID, appservmessage.Generation)
 	if err != nil {
 		// TODO: send error?
 		a.l.Error("Handle/GetClient", err)

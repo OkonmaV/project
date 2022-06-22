@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"project/test/httpservice"
-	"project/test/types"
+	"project/httpservice"
+	"project/logs/logger"
 
 	"github.com/big-larry/suckhttp"
 )
@@ -24,7 +24,7 @@ func (c *config) CreateHandler(ctx context.Context, pubs_getter httpservice.Publ
 	return s, nil
 }
 
-func (s *service) Handle(req *suckhttp.Request, l types.Logger) (*suckhttp.Response, error) {
+func (s *service) Handle(req *suckhttp.Request, l logger.Logger) (*suckhttp.Response, error) {
 	println("new message ", string(req.Body), " from ", req.GetHeader("From"))
 	return suckhttp.NewResponse(200, "OK").SetBody([]byte("recieved")), nil
 }

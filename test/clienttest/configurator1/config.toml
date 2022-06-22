@@ -1,3 +1,0 @@
-ListenLocal = "unix:/tmp/conftest1.sock"
-ListenExternal = "tcp:127.0.0.1:8099"
-Settings = "settings.conf"
