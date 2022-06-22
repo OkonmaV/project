@@ -116,7 +116,7 @@ func (c *configurator) afterConnProc() error {
 	}
 
 	if c.apps != nil {
-		appsnames := c.apps.GetAllAppNames()
+		appsnames := c.apps.getAllAppNames()
 		if len(appsnames) != 0 {
 			message := append(make([]byte, 0, len(appsnames)*15), byte(configuratortypes.OperationCodeSubscribeToServices))
 			for _, pub_name := range appsnames {

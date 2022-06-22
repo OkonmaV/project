@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"project/app/protocol"
 	"project/logs/logger"
@@ -107,9 +108,41 @@ func (cl *client) Handle(msg interface{}) error {
 
 	asmessage := msg.(*protocol.AppServerMessage)
 	if asmessage.Type == protocol.TypeSettingsReq {
+		if asmessage.ApplicationID == 0 {
+			hdrs, _ := json.Marshal(struct {
+				C string `json:"content-type"`
+			}{C: "appsindex"})
 
+			clmsg, _ := protocol.EncodeClientMessage(protocol.TypeSettingsReq, 0, ts, hdrs, cl.apps.appsIndex)
+
+			err := cl.conn.Send(clmsg)
+			if err != nil {
+				cl.l.Error("Send", err)
+			}
+			cl.Unlock()
+			return err
+		} else {
+			if body, err := cl.apps.getSettings(asmessage.ApplicationID); err != nil {
+				cl.l.Error("GetSettings", err)
+				cl.Unlock()
+				return err
+			} else {
+				hdrs, _ := json.Marshal(struct {
+					C string `json:"content-type"`
+				}{C: "appsettings"})
+
+				clmsg, _ := protocol.EncodeClientMessage(protocol.TypeSettingsReq, 0, ts, hdrs, body)
+
+				err := cl.conn.Send(clmsg)
+				if err != nil {
+					cl.l.Error("Send", err)
+				}
+				cl.Unlock()
+				return err
+			}
+		}
 	}
-	app, err := cl.apps.Get(asmessage.ApplicationID)
+	app, err := cl.apps.get(asmessage.ApplicationID)
 	if err != nil {
 		// TODO: send UpdateSettings?
 		cl.l.Error("Handle/Message.ApplicationID", err)

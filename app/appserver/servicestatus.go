@@ -60,8 +60,8 @@ func (s *serviceStatus) setOnUnSuspendFunc(function func()) {
 	}
 }
 
-func (s *serviceStatus) isListenerOK() bool {
-	s.RLock()
-	defer s.RUnlock()
-	return s.listenerOK
-}
+// func (s *serviceStatus) isListenerOK() bool {
+// 	s.RLock()
+// 	defer s.RUnlock()
+// 	return s.listenerOK
+// }

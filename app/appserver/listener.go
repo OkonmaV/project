@@ -214,11 +214,11 @@ loop:
 	listener.l.Debug("listener", "succesfully closed")
 }
 
-func (listener *listener) onAir() bool {
-	listener.RLock()
-	defer listener.RUnlock()
-	return listener.listener != nil
-}
+// func (listener *listener) onAir() bool {
+// 	listener.RLock()
+// 	defer listener.RUnlock()
+// 	return listener.listener != nil
+// }
 
 func (listener *listener) Addr() (string, string) {
 	if listener == nil {

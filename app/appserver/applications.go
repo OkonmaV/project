@@ -164,13 +164,13 @@ loop:
 			empty_appsnames := make([]ServiceName, 0, len(apps.list))
 			empty_appnames_totallen := 0
 			//apps.RLock()
-			for _, app := range apps.list {
-				app.RLock()
-				if len(app.conns) == 0 {
-					empty_appsnames = append(empty_appsnames, app.servicename)
-					empty_appnames_totallen += len(app.servicename)
+			for i := 0; i < len(apps.list); i++ {
+				apps.list[i].RLock()
+				if len(apps.list[i].conns) == 0 {
+					empty_appsnames = append(empty_appsnames, apps.list[i].servicename)
+					empty_appnames_totallen += len(apps.list[i].servicename)
 				}
-				app.RUnlock()
+				apps.list[i].RUnlock()
 			}
 			//apps.RUnlock()
 			message := make([]byte, 1, empty_appnames_totallen+len(empty_appsnames)+1)
@@ -196,24 +196,24 @@ loop:
 // 	return res
 // }
 
-func (apps *applications) GetAllAppNames() []ServiceName {
+func (apps *applications) getAllAppNames() []ServiceName {
 	// apps.RLock()
 	// defer apps.RUnlock()
 	res := make([]ServiceName, 0, len(apps.list)-1)
-	for _, app := range apps.list {
-		res = append(res, app.servicename)
+	for i := 0; i < len(apps.list); i++ {
+		res = append(res, apps.list[i].servicename)
 	}
 	return res
 }
 
-func (apps *applications) Get(appid protocol.AppID) (*app, error) {
+func (apps *applications) get(appid protocol.AppID) (*app, error) {
 	if appid == 0 || int(appid) >= len(apps.list) {
 		return nil, errors.New(suckutils.ConcatThree("impossible appid (must be 0<connuid<=len(apps.list)): \"", strconv.Itoa(int(appid)), "\""))
 	}
 	return &apps.list[appid], nil
 }
 
-func (apps *applications) GetSettings(appid protocol.AppID) ([]byte, error) {
+func (apps *applications) getSettings(appid protocol.AppID) ([]byte, error) {
 	if appid == 0 || int(appid) >= len(apps.list) {
 		return nil, errors.New(suckutils.ConcatThree("impossible appid (must be 0<connuid<=len(apps.list)): \"", strconv.Itoa(int(appid)), "\""))
 	}
