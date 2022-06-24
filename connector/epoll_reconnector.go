@@ -56,6 +56,8 @@ func InitReconnection(ctx context.Context, ticktime time.Duration, targetbufsize
 	}
 	if reconnectReq == nil {
 		reconnectReq = make(chan *EpollReConnector, queuesize)
+	} else {
+		panic("reconnection re-init")
 	}
 	go serveReconnects(ctx, ticktime, targetbufsize)
 }
@@ -73,46 +75,51 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 			buf = append(buf, req)
 		case <-ticker.C:
 			for i := 0; i < len(buf); i++ {
-				buf[i].mux.Lock() //////////////
-				if !buf[i].isstopped {
-					if buf[i].connector.IsClosed() {
-						conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
-						if err != nil {
-							buf[i].mux.Unlock()
-							continue // не логается
-						}
-						if buf[i].doOnDial != nil {
-							if err := buf[i].doOnDial(conn); err != nil {
+				if buf[i] != nil { //////////// КОСТЫЛЬ TODO: убрать
+
+					buf[i].mux.Lock()
+					if !buf[i].isstopped {
+						if buf[i].connector.IsClosed() {
+							conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
+							if err != nil {
+								buf[i].mux.Unlock()
+								continue // не логается
+							}
+							if buf[i].doOnDial != nil {
+								if err := buf[i].doOnDial(conn); err != nil {
+									conn.Close()
+									buf[i].mux.Unlock()
+									continue
+								}
+							}
+							conn.SetReadDeadline(time.Time{}) //TODO: нужно ли обнулять conn.readtimeout после doOnDial() ??
+
+							newcon, err := NewEpollConnector(conn, buf[i])
+							if err != nil {
 								conn.Close()
 								buf[i].mux.Unlock()
-								continue
+								continue // не логается
 							}
-						}
-						conn.SetReadDeadline(time.Time{}) //TODO: нужно ли обнулять conn.readtimeout после doOnDial() ??
 
-						newcon, err := NewEpollConnector(conn, buf[i])
-						if err != nil {
-							buf[i].mux.Unlock()
-							continue // не логается
-						}
-
-						if err = newcon.StartServing(); err != nil {
-							newcon.ClearFromCache()
-							buf[i].mux.Unlock()
-							continue // не логается
-						}
-						buf[i].connector = newcon
-
-						if buf[i].doAfterReconnect != nil {
-							if err := buf[i].doAfterReconnect(); err != nil {
-								buf[i].connector.Close(err)
+							if err = newcon.StartServing(); err != nil {
+								newcon.ClearFromCache()
+								conn.Close()
 								buf[i].mux.Unlock()
-								continue
+								continue // не логается
+							}
+							buf[i].connector = newcon
+
+							if buf[i].doAfterReconnect != nil {
+								if err := buf[i].doAfterReconnect(); err != nil {
+									buf[i].connector.Close(err)
+									buf[i].mux.Unlock()
+									continue
+								}
 							}
 						}
 					}
+					buf[i].mux.Unlock()
 				}
-				buf[i].mux.Unlock()
 				buf = append(buf[:i], buf[i+1:]...) // трем из буфера
 
 				i--
@@ -128,7 +135,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 
 func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial func(net.Conn) error, doAfterReconnect func() error) (*EpollReConnector, error) {
 	if reconnectReq == nil {
-		panic("init reconnector first")
+		panic("init reconnection first")
 	}
 	recon := &EpollReConnector{
 		msghandler:       messagehandler,
@@ -151,7 +158,8 @@ func DialWithReconnect(netw string, addr string, messagehandler MessageHandler, 
 		reconAddr:        Addr{netw: netw, address: addr},
 		msghandler:       messagehandler,
 		doOnDial:         doOnDial,
-		doAfterReconnect: doAfterReconnect}
+		doAfterReconnect: doAfterReconnect,
+	}
 	reconnectReq <- reconn
 	return reconn
 }
