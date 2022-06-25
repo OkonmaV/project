@@ -93,15 +93,15 @@ func (listener *listener) acceptWorker() {
 			continue
 		}
 		println("WAITING HERE1") /////////////////////////////////
-		listener.appserv.RLock()
-		println("ACCEPT PASS2") /////////////////////////////////
-		if listener.appserv.connAlive {
-			listener.appserv.RUnlock()
-			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("conn with appserver is alive, reset accept from: ", conn.RemoteAddr().String()))
-			conn.Close()
-			continue
-		}
-		listener.appserv.RUnlock()
+		// listener.appserv.RLock()
+		// println("ACCEPT PASS2") /////////////////////////////////
+		// if listener.appserv.connAlive {
+		// 	listener.appserv.RUnlock()
+		// 	listener.l.Warning("acceptWorker", suckutils.ConcatTwo("conn with appserver is alive, reset accept from: ", conn.RemoteAddr().String()))
+		// 	conn.Close()
+		// 	continue
+		// }
+		// listener.appserv.RUnlock()
 		println("ACCEPT PASS3") /////////////////////////////////
 		if !listener.servStatus.onAir() {
 			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("suspended, discard handling conn from ", conn.RemoteAddr().String()))
