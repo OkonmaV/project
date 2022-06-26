@@ -147,9 +147,16 @@ type ssdfg struct {
 type ht string
 
 func main() {
-	ti, err := json.Marshal(map[string]int{"Uid1": 1, "Uid2": 2})
-	ti2, err2 := json.Marshal([]ssdfg{ssdfg{Num: 4}, ssdfg{Num: 4}})
-	fmt.Println(string(ti), err, string(ti2), err2)
+	targetbufsize := 5
+	buf := make([]int, 0, 10)
+	buf = append(buf, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+	fmt.Println("before: ", buf, cap(buf))
+	if cap(buf) > targetbufsize && len(buf) <= targetbufsize { // при переполнении буфера снова его уменьшаем, если к этому моменту разберемся с реконнектами // защиту от переполнения буфера ставить нельзя, иначе куда оверфловнутые реконнекты пихать
+		// newbuf := make([]int, len(buf), targetbufsize)
+		// copy(newbuf, buf)
+		buf = buf[0:]
+	}
+	fmt.Println("after: ", buf, cap(buf))
 	return
 
 	// connuid := uint32(50)

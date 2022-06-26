@@ -84,17 +84,20 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 		return
 	}
 
-	if connector.IsClosed() {
+	connector.mux.Lock() //
+
+	if connector.isclosed {
 		return
 	}
+
 	var err error
 	message := connector.msghandler.NewMessage()
-	connector.mux.Lock() //
 	if err = message.Read(connector.conn); err != nil {
 		connector.mux.Unlock() //
 		connector.Close(err)
 		return
 	}
+
 	connector.mux.Unlock() //
 
 	if pool != nil {
@@ -112,11 +115,13 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 
 func (connector *EpollConnector) Send(message []byte) error {
 
-	if connector.IsClosed() {
-		return ErrClosedConnector
-	}
 	//connector.conn.SetWriteDeadline(time.Now().Add(time.Second))
 	connector.mux.Lock()
+
+	if connector.isclosed {
+		return ErrClosedConnector
+	}
+
 	defer connector.mux.Unlock()
 	_, err := connector.conn.Write(message)
 	//fmt.Println("CONNECTOR MESSAGE SEND: ", message, " LEN: ", len(message)) ////////////////////////////////////

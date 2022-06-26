@@ -83,7 +83,6 @@ func (listener *listener) acceptWorker() {
 	defer close(listener.acceptWorkerDone)
 	for {
 		conn, err := listener.listener.Accept()
-		println("ACCEPT PASS1", err == nil) /////////////////////////////////
 		if err != nil {
 			if listener.cancelAccept {
 				listener.l.Debug("acceptWorker", "cancelAccept recieved, stop accept loop")
@@ -92,23 +91,22 @@ func (listener *listener) acceptWorker() {
 			listener.l.Error("acceptWorker/Accept", err)
 			continue
 		}
-		println("WAITING HERE1") /////////////////////////////////
-		// listener.appserv.RLock()
-		// println("ACCEPT PASS2") /////////////////////////////////
-		// if listener.appserv.connAlive {
-		// 	listener.appserv.RUnlock()
-		// 	listener.l.Warning("acceptWorker", suckutils.ConcatTwo("conn with appserver is alive, reset accept from: ", conn.RemoteAddr().String()))
-		// 	conn.Close()
-		// 	continue
-		// }
-		// listener.appserv.RUnlock()
-		println("ACCEPT PASS3") /////////////////////////////////
+
+		listener.appserv.RLock()
+		if listener.appserv.connAlive {
+			//listener.appserv.RUnlock()
+			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("conn with appserver is alive, but accepted new one from: ", conn.RemoteAddr().String()))
+			//conn.Close()
+			//continue
+		}
+		listener.appserv.RUnlock()
+
 		if !listener.servStatus.onAir() {
-			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("suspended, discard handling conn from ", conn.RemoteAddr().String()))
+			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("service suspended, discard handling conn from ", conn.RemoteAddr().String()))
 			conn.Close()
 			continue
 		}
-		println("ACCEPT PASS4") /////////////////////////////////
+
 		con, err := connector.NewEpollConnector(conn, listener.appserv)
 		if err != nil {
 			listener.l.Error("acceptWorker/NewEpollConnector", err)
@@ -121,14 +119,14 @@ func (listener *listener) acceptWorker() {
 			con.ClearFromCache()
 			continue
 		}
-		println("ACCEPT PASS5") /////////////////////////////////
+
 		listener.appserv.Lock()
-		println("ACCEPT PASS6") /////////////////////////////////
+
 		listener.appserv.conn = con
 		listener.appserv.connAlive = true
 		listener.l.Debug("acceptWorker", suckutils.ConcatTwo("connected from: ", conn.RemoteAddr().String()))
 		listener.appserv.Unlock()
-		println("ACCEPT PASS7") /////////////////////////////////
+
 	}
 }
 
@@ -154,7 +152,6 @@ func (listener *listener) stop() {
 	listener.servStatus.setListenerStatus(false)
 	listener.Unlock()
 	listener.l.Debug("listener", "stopped")
-	//listener.wg.Wait()
 }
 
 // calling close() we r closing listener forever (no further listen() calls) and waiting for all reqests to be handled
@@ -164,7 +161,6 @@ func (listener *listener) close() {
 		panic("listener.close() called on nil listener")
 	}
 	listener.stop()
-	println("STOPPED") ///////////////////////////////
 	listener.Lock()
 
 	listener.l.Debug("listener", "succesfully closed")

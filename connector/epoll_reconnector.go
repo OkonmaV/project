@@ -75,57 +75,57 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 			buf = append(buf, req)
 		case <-ticker.C:
 			for i := 0; i < len(buf); i++ {
-				if buf[i] != nil { //////////// КОСТЫЛЬ TODO: убрать
+				//if buf[i] != nil { //////////// КОСТЫЛЬ TODO: убрать
 
-					buf[i].mux.Lock()
-					if !buf[i].isstopped {
-						if buf[i].connector.IsClosed() {
-							conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
-							if err != nil {
-								buf[i].mux.Unlock()
-								continue // не логается
-							}
-							if buf[i].doOnDial != nil {
-								if err := buf[i].doOnDial(conn); err != nil {
-									conn.Close()
-									buf[i].mux.Unlock()
-									continue
-								}
-							}
-							conn.SetReadDeadline(time.Time{}) //TODO: нужно ли обнулять conn.readtimeout после doOnDial() ??
-
-							newcon, err := NewEpollConnector(conn, buf[i])
-							if err != nil {
+				buf[i].mux.Lock()
+				if !buf[i].isstopped {
+					if buf[i].connector.IsClosed() {
+						conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
+						if err != nil {
+							buf[i].mux.Unlock()
+							continue // не логается
+						}
+						if buf[i].doOnDial != nil {
+							if err := buf[i].doOnDial(conn); err != nil {
 								conn.Close()
 								buf[i].mux.Unlock()
-								continue // не логается
+								continue
 							}
+						}
+						conn.SetReadDeadline(time.Time{}) //TODO: нужно ли обнулять conn.readtimeout после doOnDial() ??
 
-							if err = newcon.StartServing(); err != nil {
-								newcon.ClearFromCache()
-								conn.Close()
+						newcon, err := NewEpollConnector(conn, buf[i])
+						if err != nil {
+							conn.Close()
+							buf[i].mux.Unlock()
+							continue // не логается
+						}
+
+						if err = newcon.StartServing(); err != nil {
+							newcon.ClearFromCache()
+							conn.Close()
+							buf[i].mux.Unlock()
+							continue // не логается
+						}
+						buf[i].connector = newcon
+
+						if buf[i].doAfterReconnect != nil {
+							if err := buf[i].doAfterReconnect(); err != nil {
+								buf[i].connector.Close(err)
 								buf[i].mux.Unlock()
-								continue // не логается
-							}
-							buf[i].connector = newcon
-
-							if buf[i].doAfterReconnect != nil {
-								if err := buf[i].doAfterReconnect(); err != nil {
-									buf[i].connector.Close(err)
-									buf[i].mux.Unlock()
-									continue
-								}
+								continue
 							}
 						}
 					}
-					buf[i].mux.Unlock()
 				}
+				buf[i].mux.Unlock()
+				//}
 				buf = append(buf[:i], buf[i+1:]...) // трем из буфера
 
 				i--
 			}
 			if cap(buf) > targetbufsize && len(buf) <= targetbufsize { // при переполнении буфера снова его уменьшаем, если к этому моменту разберемся с реконнектами // защиту от переполнения буфера ставить нельзя, иначе куда оверфловнутые реконнекты пихать
-				newbuf := make([]*EpollReConnector, targetbufsize)
+				newbuf := make([]*EpollReConnector, len(buf), targetbufsize)
 				copy(newbuf, buf)
 				buf = newbuf
 			}
@@ -137,6 +137,7 @@ func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial 
 	if reconnectReq == nil {
 		panic("init reconnection first")
 	}
+
 	recon := &EpollReConnector{
 		msghandler:       messagehandler,
 		doOnDial:         doOnDial,
@@ -153,6 +154,9 @@ func NewEpollReConnector(conn net.Conn, messagehandler MessageHandler, doOnDial 
 }
 
 func DialWithReconnect(netw string, addr string, messagehandler MessageHandler, doOnDial func(net.Conn) error, doAfterReconnect func() error) *EpollReConnector {
+	if reconnectReq == nil {
+		panic("init reconnection first")
+	}
 	reconn := &EpollReConnector{
 		connector:        &EpollConnector{isclosed: true},
 		reconAddr:        Addr{netw: netw, address: addr},
@@ -179,16 +183,13 @@ func (reconnector *EpollReConnector) Send(message []byte) error {
 	return reconnector.connector.Send(message)
 }
 
-// doesnt stop reconnection
+// doesn't stop reconnection
 func (reconnector *EpollReConnector) Close(reason error) {
 	reconnector.mux.Lock()
 	defer reconnector.mux.Unlock()
 
-	//reconnector.isstopped = true
+	reconnector.connector.Close(reason)
 
-	if !reconnector.connector.IsClosed() {
-		reconnector.connector.Close(reason)
-	}
 }
 
 // call in HandleClose() will cause deadlock

@@ -6,8 +6,11 @@ import (
 	"project/app/protocol"
 	"project/connector"
 	"project/logs/logger"
+	"strconv"
 	"sync"
 	"time"
+
+	"github.com/big-larry/suckutils"
 )
 
 type Sender interface {
@@ -17,18 +20,24 @@ type Sender interface {
 type appserver struct {
 	conn       *connector.EpollConnector
 	handlefunc handleFunc
-	sendQueue  chan []byte
-	l          logger.Logger
+
+	sendQueue    chan []byte
+	backingQueue chan []byte
+
+	l logger.Logger
 
 	connAlive bool
 	sync.RWMutex
 }
 
+const backingQueue_size = 1
+
 func newAppService(ctx context.Context, l logger.Logger, sendqueueSize int, handlefunc handleFunc) *appserver {
 	as := &appserver{
-		handlefunc: handlefunc,
-		sendQueue:  make(chan []byte, sendqueueSize),
-		l:          l,
+		handlefunc:   handlefunc,
+		sendQueue:    make(chan []byte, sendqueueSize),
+		backingQueue: make(chan []byte, backingQueue_size),
+		l:            l,
 	}
 	go as.sendWorker(ctx)
 
@@ -58,31 +67,58 @@ func (as *appserver) Send(message []byte) error {
 }
 
 func (as *appserver) sendWorker(ctx context.Context) {
+send_loop:
 	for {
-		as.RLock()
-		if !as.connAlive {
-			as.l.Debug("sendWorker", "conn is dead, timeout")
-			time.Sleep(time.Second * 5)
-			as.RUnlock()
-			continue
-		}
 		select {
-		case <-ctx.Done():
-			as.l.Debug("sendWorker", "context done, exiting")
-			as.RUnlock()
-			// TODO: дамп очереди?
-			return
-		case message := <-as.sendQueue:
+		case message := <-as.backingQueue:
 			if err := as.conn.Send(message); err != nil {
 				as.l.Error("sendWorker/Send", err)
-				// TODO: куда девать достанный из канала message?
+				as.backingQueue <- message
+
+				as.RLock()
+				if !as.connAlive {
+					as.l.Debug("sendWorker", "conn to appserver is dead, timeout")
+					as.RUnlock()
+					time.Sleep(time.Second * 5)
+					continue send_loop
+				}
+				as.RUnlock()
+			}
+		case <-ctx.Done():
+			break send_loop
+		default:
+			select {
+			case message := <-as.sendQueue:
+				if err := as.conn.Send(message); err != nil {
+					as.l.Error("sendWorker/Send", err)
+					as.backingQueue <- message
+				}
+			case <-ctx.Done():
+				break send_loop
 			}
 		}
-		as.RUnlock()
 	}
+	as.l.Debug("sendWorker", "context done, send loop terminated")
+
+	//TODO: queue dump?
+	var unsended_messages int
+	for range as.backingQueue {
+		unsended_messages++
+	}
+
+	for range as.sendQueue {
+		unsended_messages++
+	}
+	as.l.Debug("sendWorker", suckutils.ConcatTwo("exiting, unsended messages: ", strconv.Itoa(unsended_messages)))
 }
 
 func (as *appserver) HandleClose(reason error) {
+	if reason != nil {
+		as.l.Warning("Conn", suckutils.ConcatTwo("closed, reason: ", reason.Error()))
+	} else {
+		as.l.Warning("Conn", "closed, no reason specified")
+	}
+
 	as.Lock()
 	defer as.Unlock()
 	as.connAlive = false

@@ -95,5 +95,5 @@ func (s *service) adduser(wsc *wsconn) {
 }
 
 func main() {
-	wsservice.InitNewService(thisServiceName, &config{}, 1)
+	wsservice.InitNewService(thisServiceName, &config{}, 5, 5)
 }

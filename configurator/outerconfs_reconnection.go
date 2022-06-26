@@ -87,7 +87,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 				i--
 			}
 			if cap(buf) > targetbufsize && len(buf) <= targetbufsize { // при переполнении буфера снова его уменьшаем, если к этому моменту разберемся с реконнектами
-				newbuf := make([]*service, targetbufsize)
+				newbuf := make([]*service, len(buf), targetbufsize)
 				copy(newbuf, buf)
 				buf = newbuf
 			}

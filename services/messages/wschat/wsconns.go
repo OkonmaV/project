@@ -7,6 +7,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"os"
+	"project/logs/logger"
 	"project/services/messages/messagestypes"
 
 	"project/wsconnector"
@@ -81,7 +82,7 @@ type wsconn struct {
 	conn   wsconnector.Sender
 
 	srvc *service
-	l    types.Logger
+	l    logger.Logger
 }
 
 // wsservice.Handler interface implementation
