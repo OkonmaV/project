@@ -26,7 +26,7 @@ func initReconnection(ctx context.Context, ticktime time.Duration, targetbufsize
 	go serveReconnects(ctx, ticktime, targetbufsize)
 }
 
-// библиотечный реконнектор использовать нельзя, ибо та херь при одновременном реконнекте с двух сторон нас либо мягко задедлочит, либо получатся два разных но работающих подключения (шо весело, конечно)
+// библиотечный реконнектор использовать нельзя, ибо он при одновременном реконнекте с двух сторон нас либо мягко задедлочит, либо получатся два разных но работающих подключения (шо весело, конечно)
 // ONLY FOR OTHER CONFIGURATORS RECONNECTION
 func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize int) {
 	buf := make([]*service, 0, targetbufsize)

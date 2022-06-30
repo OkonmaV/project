@@ -13,9 +13,9 @@ import (
 )
 
 type listener struct {
-	listener      net.Listener
-	connsToHandle chan net.Conn
-	activeWorkers chan struct{}
+	listener              net.Listener
+	acceptedConnsToHandle chan net.Conn
+	activeWorkers         chan struct{}
 
 	clients *clientsConnsList
 	apps    *applications
@@ -27,7 +27,7 @@ type listener struct {
 
 	//ctx context.Context
 
-	cancelAccept     bool
+	cancelAccept     chan struct{}
 	acceptWorkerDone chan struct{}
 	sync.RWMutex
 }
@@ -39,13 +39,13 @@ func newListener(l logger.Logger, clients_l logger.Logger, servStatus *serviceSt
 		panic("threads num cant be less than 1")
 	}
 	return &listener{
-		connsToHandle: make(chan net.Conn, 1),
-		activeWorkers: make(chan struct{}, threads),
-		clients:       clients,
-		servStatus:    servStatus,
-		apps:          apps,
-		l:             l,
-		clients_l:     clients_l,
+		acceptedConnsToHandle: make(chan net.Conn, 1),
+		activeWorkers:         make(chan struct{}, threads),
+		clients:               clients,
+		servStatus:            servStatus,
+		apps:                  apps,
+		l:                     l,
+		clients_l:             clients_l,
 	}
 }
 
@@ -73,7 +73,7 @@ loop:
 	for {
 		select {
 		case listener.activeWorkers <- struct{}{}:
-			go listener.handlingWorker()
+			go listener.acceptHandlingWorker()
 			continue loop
 		default:
 			break loop
@@ -90,8 +90,9 @@ loop:
 		goto failure
 	}
 
-	listener.cancelAccept = false
+	listener.cancelAccept = make(chan struct{})
 	listener.acceptWorkerDone = make(chan struct{})
+
 	go listener.acceptWorker()
 
 	listener.servStatus.setListenerStatus(true)
@@ -107,36 +108,40 @@ func (listener *listener) acceptWorker() {
 
 	timer := time.NewTimer(handlerCallTimeout)
 	for {
-		conn, err := listener.listener.Accept()
-		if err != nil {
-			if listener.cancelAccept {
-				listener.l.Debug("acceptWorker", "cancelAccept recieved, stop accept loop")
-				timer.Stop()
-				return
+		select {
+		case <-listener.cancelAccept:
+			listener.l.Debug("acceptWorker", "cancelAccept recieved, stop accept loop")
+			timer.Stop()
+			return
+		default:
+			conn, err := listener.listener.Accept()
+			if err != nil {
+				listener.l.Error("acceptWorker/Accept", err)
+				continue
 			}
-			listener.l.Error("acceptWorker/Accept", err)
-			continue
-		}
-		if !listener.servStatus.onAir() {
-			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("suspended, discard handling conn from ", conn.RemoteAddr().String()))
-			conn.Close()
-			continue
-		}
-	loop:
-		for {
-			timer.Reset(handlerCallTimeout)
-			select {
-			case <-time.After(handlerCallTimeout):
-				listener.l.Warning("acceptWorker", suckutils.ConcatTwo("exceeded timeout, no free handlingWorker available for ", handlerCallTimeout.String()))
-			case listener.connsToHandle <- conn:
-				break loop
+			listener.l.Debug("acceptWorker/Accept", suckutils.ConcatTwo("accepced conn from: ", conn.RemoteAddr().String()))
+			// if !listener.servStatus.onAir() { // на суспенд сервиса пока влияет только листнер, поэтому смысла не имеет
+			// 	listener.l.Warning("acceptWorker", suckutils.ConcatTwo("suspended, discard handling conn from ", conn.RemoteAddr().String()))
+			// 	conn.Close()
+			// 	continue
+			// }
+		loop:
+			for {
+				timer.Reset(handlerCallTimeout)
+				select {
+				case <-time.After(handlerCallTimeout):
+					listener.l.Warning("acceptWorker", suckutils.ConcatTwo("exceeded timeout, no free acceptHandlingWorker available for ", handlerCallTimeout.String()))
+				case listener.acceptedConnsToHandle <- conn:
+					break loop
+				}
 			}
 		}
 	}
 }
 
-func (listener *listener) handlingWorker() {
-	for conn := range listener.connsToHandle {
+func (listener *listener) acceptHandlingWorker() {
+	for conn := range listener.acceptedConnsToHandle {
+
 		newclient, err := listener.clients.newClient()
 		if err != nil {
 			listener.l.Error("handlingWorker/newClient", err)
@@ -145,13 +150,13 @@ func (listener *listener) handlingWorker() {
 		}
 		newclient.apps = listener.apps
 		newclient.l = listener.clients_l.NewSubLogger(suckutils.ConcatTwo("ConnUID:", strconv.Itoa(int(newclient.connuid))), suckutils.ConcatTwo("Gen:", strconv.Itoa(int(newclient.curr_gen))))
-		newclient.closehandler = func() error { return listener.clients.handleCloseClientConn(newclient.connuid) }
+		newclient.closehandler = func() error { return listener.clients.remove(newclient.connuid) }
 
 		connector, err := wsconnector.NewWSConnector(conn, newclient)
 		if err != nil {
 			listener.l.Error("handlingWorker/NewWSConnector", err)
 
-			listener.clients.handleCloseClientConn(newclient.connuid)
+			listener.clients.remove(newclient.connuid)
 			conn.Close()
 			continue
 		}
@@ -159,10 +164,12 @@ func (listener *listener) handlingWorker() {
 			listener.l.Error("StartServing", err)
 
 			connector.ClearFromCache()
-			listener.clients.handleCloseClientConn(newclient.connuid)
+			listener.clients.remove(newclient.connuid)
 			conn.Close()
 			continue
 		}
+		newclient.conn = connector
+		listener.l.Debug("acceptWorker/Accept", suckutils.ConcatTwo("successfully upgraded to conn from: ", conn.RemoteAddr().String()))
 	}
 	<-listener.activeWorkers
 }
@@ -179,10 +186,12 @@ func (listener *listener) stop() {
 		return
 	}
 
-	listener.cancelAccept = true
+	close(listener.cancelAccept)
+
 	if err := listener.listener.Close(); err != nil {
 		listener.l.Error("listener.stop()/listener.Close()", err)
 	}
+
 	<-listener.acceptWorkerDone
 
 	listener.listener = nil
@@ -200,7 +209,7 @@ func (listener *listener) close() {
 	}
 	listener.stop()
 	listener.Lock()
-	close(listener.connsToHandle)
+	close(listener.acceptedConnsToHandle)
 	timeout := time.NewTimer(time.Second * 10).C
 loop:
 	for i := 0; i < cap(listener.activeWorkers); i++ {
@@ -208,17 +217,11 @@ loop:
 		case listener.activeWorkers <- struct{}{}:
 			continue loop
 		case <-timeout:
-			listener.l.Debug("listener", "closed on timeout 10s")
+			listener.l.Debug("listener", "closed on timeout 10s (waited for acceptHandlingWorkers)")
 		}
 	}
 	listener.l.Debug("listener", "succesfully closed")
 }
-
-// func (listener *listener) onAir() bool {
-// 	listener.RLock()
-// 	defer listener.RUnlock()
-// 	return listener.listener != nil
-// }
 
 func (listener *listener) Addr() (string, string) {
 	if listener == nil {

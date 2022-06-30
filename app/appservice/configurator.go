@@ -210,7 +210,7 @@ func (c *configurator) NewMessage() connector.MessageReader {
 	return connector.NewBasicMessage()
 }
 
-func (c *configurator) Handle(message connector.MessageReader) error {
+func (c *configurator) Handle(message interface{}) error {
 	payload := message.(*connector.BasicMessage).Payload
 	if len(payload) == 0 {
 		return connector.ErrEmptyPayload

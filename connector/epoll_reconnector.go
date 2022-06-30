@@ -36,8 +36,8 @@ func (reconnector *EpollReConnector) NewMessage() MessageReader {
 	return reconnector.msghandler.NewMessage()
 }
 
-func (reconnector *EpollReConnector) Handle(msg MessageReader) error {
-	return reconnector.msghandler.Handle(msg)
+func (reconnector *EpollReConnector) Handle(message interface{}) error {
+	return reconnector.msghandler.Handle(message)
 }
 
 func (reconnector *EpollReConnector) HandleClose(reason error) {

@@ -308,7 +308,7 @@ func DecodeAppMessageToAppServerMessage(rawmessage []byte) (*AppServerMessage, e
 	return &AppServerMessage{
 		Type:           MessageType(rawmessage[0]),
 		Generation:     rawmessage[2],
-		ConnectionUID:  ConnUID(byteOrder.Uint32(rawmessage[2:6]) >> 8),
+		ConnectionUID:  ConnUID(byteOrder.Uint32(rawmessage[2:6]) & 16777215), // 16777215 = {0,255,255,255}
 		Timestamp:      int64(byteOrder.Uint64(rawmessage[6:14])),
 		RawMessageData: rawmessage[6:],
 	}, nil

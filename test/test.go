@@ -2,6 +2,7 @@ package main
 
 import (
 	"confdecoder"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -147,16 +148,12 @@ type ssdfg struct {
 type ht string
 
 func main() {
-	targetbufsize := 5
-	buf := make([]int, 0, 10)
-	buf = append(buf, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
-	fmt.Println("before: ", buf, cap(buf))
-	if cap(buf) > targetbufsize && len(buf) <= targetbufsize { // при переполнении буфера снова его уменьшаем, если к этому моменту разберемся с реконнектами // защиту от переполнения буфера ставить нельзя, иначе куда оверфловнутые реконнекты пихать
-		// newbuf := make([]int, len(buf), targetbufsize)
-		// copy(newbuf, buf)
-		buf = buf[0:]
-	}
-	fmt.Println("after: ", buf, cap(buf))
+	buf := []byte{7, 5, 5, 5}
+	buf2 := []byte{0, 5, 5, 5}
+	buf3 := []byte{7, 0, 0, 0}
+	fmt.Println(binary.BigEndian.Uint32(buf2), binary.BigEndian.Uint32(buf))
+	fmt.Println(binary.BigEndian.Uint32(buf) & 16777215)
+	fmt.Println(binary.BigEndian.Uint32(buf3)>>24, binary.BigEndian.Uint32(buf)>>24)
 	return
 
 	// connuid := uint32(50)

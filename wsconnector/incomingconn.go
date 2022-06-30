@@ -189,7 +189,7 @@ func (connector *EpollWSConnector) Send(message []byte) error {
 	//connector.conn.SetWriteDeadline(time.Now().Add(time.Second))
 	connector.Lock()
 	defer connector.Unlock()
-	return wsutil.WriteMessage(connector.conn, thisSide, ws.OpText, message)
+	return wsutil.WriteMessage(connector.conn, thisSide, ws.OpBinary, message)
 }
 
 func (connector *EpollWSConnector) Close(reason error) { // TODO: можно добавить отправку OpClose перед закрытием соединения

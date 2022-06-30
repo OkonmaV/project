@@ -120,17 +120,13 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
-	println("THIS1") ///////////////////////////////////////////////
 	ln.close()
-	println("THIS2") ///////////////////////////////////////////////
 	if closehandler, ok := handler.(closer); ok {
 		if err = closehandler.Close(); err != nil {
 			l.Error("CloseFunc", err)
 		}
 	}
-	println("THIS3") ///////////////////////////////////////////////
 	logsflusher.Close()
-	println("THIS4") ///////////////////////////////////////////////
 	<-logsflusher.Done()
 }
 
@@ -145,5 +141,3 @@ func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {
 	}()
 	return ctx, cancel
 }
-
-//func handler(ctx context.Context, conn net.Conn) error

@@ -35,7 +35,7 @@ func (s *serviceStatus) setListenerStatus(ok bool) {
 			s.onUnSuspend()
 		}
 	}
-
+	s.listenerOK = ok
 }
 
 func (s *serviceStatus) setOnSuspendFunc(function func(reason string)) {

@@ -50,8 +50,8 @@ func (*appserver) NewMessage() connector.MessageReader {
 	return &protocol.AppMessage{}
 }
 
-func (as *appserver) Handle(msg connector.MessageReader) error {
-	if err := as.handlefunc(msg.(*protocol.AppMessage)); err != nil {
+func (as *appserver) Handle(message interface{}) error {
+	if err := as.handlefunc(message.(*protocol.AppMessage)); err != nil {
 		as.l.Error("Handle", err)
 	}
 	return nil
@@ -71,6 +71,7 @@ send_loop:
 	for {
 		select {
 		case message := <-as.backingQueue:
+			as.l.Debug("sendWorker", "retrying to send a message")
 			if err := as.conn.Send(message); err != nil {
 				as.l.Error("sendWorker/Send", err)
 				as.backingQueue <- message
@@ -89,6 +90,7 @@ send_loop:
 		default:
 			select {
 			case message := <-as.sendQueue:
+				as.l.Debug("sendWorker", "sending a message")
 				if err := as.conn.Send(message); err != nil {
 					as.l.Error("sendWorker/Send", err)
 					as.backingQueue <- message

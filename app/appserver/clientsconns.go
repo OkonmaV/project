@@ -69,7 +69,7 @@ func (cc *clientsConnsList) newClient() (*client, error) {
 	return nil, errors.New("no free permitted connections")
 }
 
-func (cc *clientsConnsList) handleCloseClientConn(connuid protocol.ConnUID) error {
+func (cc *clientsConnsList) remove(connuid protocol.ConnUID) error {
 	cc.Lock()
 	defer cc.Unlock()
 	if connuid == 0 || int(connuid) >= len(cc.conns) {
@@ -188,7 +188,7 @@ func (cl *client) send(message []byte) error {
 func (cl *client) HandleClose(err error) {
 	cl.l.Debug("Conn", suckutils.ConcatTwo("closed, reason: ", err.Error()))
 	// TODO: send disconnection? но ому конкретно? можно всем
-	msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: cl.connuid, Generation: cl.curr_gen, Timestamp: time.Now().UnixNano()}).EncodeToAppMessage()
+	msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: cl.connuid, Generation: cl.curr_gen, Timestamp: time.Now().UnixNano(), RawMessageData: make([]byte, 6)}).EncodeToAppMessage()
 	cl.apps.SendToAll(msg)
 	if cl.closehandler != nil {
 		if err := cl.closehandler(); err != nil {

@@ -19,7 +19,7 @@ var errNoAliveConns = errors.New("no alive conns")
 type applications struct {
 	list []app // zero index is always nil
 	//sync.RWMutex
-	settingslist [][]byte // хуй знает какой формат
+	settingslist [][]byte // хз какой формат
 	appsIndex    []byte   // json
 
 	appupdates chan appupdate

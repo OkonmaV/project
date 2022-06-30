@@ -103,31 +103,49 @@ type message struct {
 const thisServiceName appservice.ServiceName = "app.chat"
 
 func (c *config) CreateHandler(ctx context.Context, l logger.Logger, appserv appservice.Sender, pubs_getter appservice.Publishers_getter) (appservice.Handler, error) {
+	users := make(map[userID]*user)
+	users["123"] = &user{
+		connUIDS: make([]protocol.ConnUID, 0),
+	}
+	users["124"] = &user{
+		connUIDS: make([]protocol.ConnUID, 0),
+	}
+	ch := &chats{chatrooms: make(map[chatID]*chatroom)}
+	if cid, err := ch.Create([]userID{"123", "124"}); err != nil {
+		panic(err)
+	} else {
+		l.Info("chatID", string(cid))
+		ch.chatrooms["1234"] = ch.chatrooms[cid]
+	}
 	return &service{
-		users:   make(map[userID]*user),
-		chats:   &chats{chatrooms: make(map[chatID]*chatroom)},
-		appserv: appserv,
-		l:       l,
+		users:       users,
+		chats:       ch,
+		connections: make(map[protocol.ConnUID]*user),
+		appserv:     appserv,
+		l:           l,
 	}, nil
 }
 
 type headers struct {
 	UserID     userID `json:"appuid"`
 	ChatID     chatID `json:"chatid"`
-	LastUpdate int64  `json:"timestamp"` // ??????????????????????????
+	LastUpdate int64  `json:"timestamp"` // ??????????????????????????переименовать
 }
 
 func (s *service) Handle(msg *protocol.AppMessage) error {
+	s.l.Debug("Handle", suckutils.ConcatTwo("recieved message from ", suckutils.Itoa(uint32(msg.ConnectionUID))))
 	hdrs := headers{}
-	err := json.Unmarshal(msg.Headers, &hdrs)
-	if err != nil {
-		s.l.Error("Unmarshal headers", err)
-		return nil
+	if len(msg.Headers) > 0 {
+		err := json.Unmarshal(msg.Headers, &hdrs)
+		if err != nil {
+			s.l.Error("Unmarshal headers", err)
+			return nil
+		}
 	}
 	switch msg.Type {
 	case protocol.TypeRegistration:
 		uid := s.newUser()
-		if err = s.addConnUID(uid, msg.ConnectionUID); err != nil {
+		if err := s.addConnUID(uid, msg.ConnectionUID); err != nil {
 			s.l.Error("Handle/addConnUID", err)
 			return nil
 		}
@@ -204,7 +222,10 @@ func (s *service) Handle(msg *protocol.AppMessage) error {
 				} else {
 					s.l.Error("Handle", errors.New("unknown userid in chatroom"))
 				}
+				s.Unlock()
 			}
+		} else {
+			s.l.Debug("Handle/GetUsers", "no chatroom with such chatid")
 		}
 		s.l.Debug("Handle/Text", suckutils.Concat("user ", string(hdrs.UserID), " writed to chat ", string(hdrs.ChatID), " this: ", string(msg.Body)))
 	case protocol.TypeDisconnection:

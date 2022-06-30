@@ -20,7 +20,7 @@ type MessageReader interface {
 // for user's implementation
 type MessageHandler interface {
 	NewMessage() MessageReader
-	Handle(MessageReader) error
+	Handle(message interface{}) error
 	HandleClose(error)
 }
 

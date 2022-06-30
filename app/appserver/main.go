@@ -138,5 +138,3 @@ func createContextWithInterruptSignal() (context.Context, context.CancelFunc) {
 	}()
 	return ctx, cancel
 }
-
-//func handler(ctx context.Context, conn net.Conn) error
