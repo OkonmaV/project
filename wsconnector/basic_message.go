@@ -12,7 +12,7 @@ func NewBasicMessage() MessageReader {
 	return &BasicMessage{}
 }
 
-func (m BasicMessage) Read(r io.Reader, h ws.Header) error {
+func (m BasicMessage) ReadWS(r io.Reader, h ws.Header) error {
 	m.Payload = make([]byte, h.Length)
 	_, err := io.ReadFull(r, m.Payload)
 	return err

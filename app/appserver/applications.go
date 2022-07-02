@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+
 	"project/app/protocol"
 	"project/connector"
 	"project/logs/logger"
@@ -13,6 +14,12 @@ import (
 
 	"github.com/big-larry/suckutils"
 )
+
+// TODO: при обычном коннекторе (не реконнекторе, как здесь), когда мы получаем обновление от конфигуратора о нерабочем статусе
+// паблишера (суспенд/офф) мы удаляем его из списка подключений. Но, так как здесь реконнектор - мы этого не делаем, так как реконнектор все равно переподрубится
+// при поднятии паблишера. Если тереть из app{}, то при реконнете, то подключения будет два, и одно из них отсутствует в app{}
+// Тогда, если паблишер переехал на другой адрес, то у нас мертвый реконнектор в app{} + мертвый груз в буфере реконнектора ждет диал (отлетает по таймауту).
+// Че делать? (новый статускод? отказ от реконнектора в нынешнем виде?)
 
 var errNoAliveConns = errors.New("no alive conns")
 
@@ -107,24 +114,23 @@ loop:
 					//apps.RUnlock()
 
 					// чешем список подключений
-					//println("===============+===================", len(apps.list[i].conns))
-					for i := 0; i < len(apps.list[i].conns); i++ {
+					for k := 0; k < len(apps.list[i].conns); k++ {
 						// если нашли в списке подключений
-
-						//println("===============+===================", apps.list[i].conns[i].RemoteAddr().String(), update.addr)
-						if apps.list[i].conns[i].RemoteAddr().String() == update.addr {
+						if apps.list[i].conns[k].RemoteAddr().String() == update.addr {
 							// если нужно отрубать
 							if update.status == configuratortypes.StatusOff || update.status == configuratortypes.StatusSuspended {
-								apps.list[i].Lock()
-								apps.list[i].conns[i].CancelReconnect()
-								apps.list[i].conns[i].Close(errors.New("update from configurator"))
-								//apps.list[i].conns = append(apps.list[i].conns[:i], apps.list[i].conns[i+1:]...)
-								apps.list[i].conns = apps.list[i].conns[:i+copy(apps.list[i].conns[i:], apps.list[i].conns[i+1:])]
-								l.Debug("Update", suckutils.ConcatFour("due to update, closed conn to \"", string(apps.list[i].servicename), "\" from ", update.addr))
+								// СМОТРИ TODO: В НАЧАЛЕ ФАЙЛА
 
-								apps.list[i].Unlock()
+								// apps.list[i].Lock()
+								// apps.list[i].conns[k].CancelReconnect()
+								// apps.list[i].conns[k].Close(errors.New("update from configurator"))
+								// //apps.list[i].conns = append(apps.list[i].conns[:k], apps.list[i].conns[k+1:]...)
+								// apps.list[i].conns = apps.list[i].conns[:k+copy(apps.list[i].conns[k:], apps.list[i].conns[k+1:])]
+								// l.Debug("Update", suckutils.ConcatFour("due to update, closed conn to \"", string(apps.list[i].servicename), "\" from ", update.addr))
 
-								l.Debug("Update", suckutils.Concat("app \"", string(apps.list[i].servicename), "\" from ", update.addr, " updated to", update.status.String()))
+								// apps.list[i].Unlock()
+
+								l.Debug("Update", suckutils.Concat("app \"", string(apps.list[i].servicename), "\" from ", update.addr, " updated to ", update.status.String()))
 								continue loop
 
 							} else if update.status == configuratortypes.StatusOn { // если нужно подрубать = ошибка

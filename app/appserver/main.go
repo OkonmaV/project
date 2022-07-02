@@ -4,6 +4,7 @@ import (
 	"confdecoder"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/signal"
 	"project/app/protocol"
@@ -32,7 +33,7 @@ const listenerAcceptThreads = 2
 
 // TODO: конфигурировать кол-во горутин-хендлеров конфигуратором
 
-const thisservicename ServiceName = "applicationservice"
+const thisservicename ServiceName = "applicationserver"
 
 func main() {
 	servconf := &file_config{}
@@ -82,7 +83,7 @@ func main() {
 		AppID   protocol.AppID `json:"appid"`
 		AppName string         `json:"appname"`
 	}, len(pfdapps.Keys))
-
+	fmt.Println("KEYS LEN", len(pfdapps.Keys))
 	apps, startAppsUpdateWorker := newApplications(ctx, l.NewSubLogger("Apps"), nil, nil, pubscheckTicktime, len(pfdapps.Keys))
 
 	clients := newClientsConnsList(clientsConnectionsLimit, apps)
@@ -91,10 +92,10 @@ func main() {
 		if err != nil {
 			panic(err) // TODO:???????
 		}
-		appslist = append(appslist, struct {
+		appslist[i] = struct {
 			AppID   protocol.AppID `json:"appid"`
 			AppName string         `json:"appname"`
-		}{AppID: protocol.AppID(i + 1), AppName: appname})
+		}{AppID: protocol.AppID(i + 1), AppName: appname}
 
 		if _, err := apps.newApp(protocol.AppID(i+1), appsettings, clients, ServiceName(appname)); err != nil {
 			panic(err)

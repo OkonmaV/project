@@ -100,7 +100,7 @@ func (c *chats) Write(chatid chatID, userid userID, msgtype messagestypes.Messag
 		c.Unlock()
 
 		cr.Lock()
-		cr.messages = append(cr.messages, message{UserID: userid, ChatID: chatid, MessageType: msgtype, Timestamp: timestamp})
+		cr.messages = append(cr.messages, message{UserID: userid, ChatID: chatid, MessageType: msgtype, Timestamp: timestamp, Message: msg})
 		cr.Unlock()
 		return nil
 	} else {

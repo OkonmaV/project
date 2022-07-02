@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"project/app/protocol"
 	"project/logs/logger"
 	"project/wsconnector"
@@ -36,7 +37,7 @@ const connslist_max_freeconnuid_scan_iterations = 2
 const connslist_freeconnuid_scan_timeout = time.Second * 2
 
 func newClientsConnsList(size int, apps *applications) *clientsConnsList {
-	if size == 0 || size+1 > protocol.Max_ConnUID {
+	if size == 0 || size+1 > protocol.AppServer_MaxConnUID {
 		panic("clients list impossible size (must be 0<size<protocol.Max_ConnUID-1)")
 	}
 	cc := &clientsConnsList{conns: make([]client, size+1)}
@@ -49,22 +50,24 @@ func newClientsConnsList(size int, apps *applications) *clientsConnsList {
 
 func (cc *clientsConnsList) newClient() (*client, error) {
 	cc.Lock()
-	for iter := 1; iter <= connslist_max_freeconnuid_scan_iterations; iter++ {
+	defer cc.Unlock()
+	for iter := 0; iter < connslist_max_freeconnuid_scan_iterations; iter++ {
 		for i := 1; i < len(cc.conns); i++ {
 			cc.conns[i].Lock()
 			if cc.conns[i].conn == nil {
 				cc.conns[i].conn = &wsconnector.EpollWSConnector{}
 				cc.conns[i].curr_gen++
+
 				cc.conns[i].Unlock()
+
 				return &cc.conns[i], nil
 			}
 			cc.conns[i].Unlock()
 		}
 		cc.Unlock()
-		if iter != connslist_max_freeconnuid_scan_iterations {
-			time.Sleep(connslist_freeconnuid_scan_timeout) // иначе connuid не освободится из-за мьютекса
-			cc.Lock()
-		}
+		time.Sleep(connslist_freeconnuid_scan_timeout) // иначе connuid не освободится из-за мьютекса
+		cc.Lock()
+
 	}
 	return nil, errors.New("no free permitted connections")
 }
@@ -87,16 +90,19 @@ func (cc *clientsConnsList) get(connuid protocol.ConnUID, generation byte) (*cli
 		return nil, errors.New(suckutils.ConcatThree("impossible connuid (must be 0<connuid<=len(cc.conns)): \"", strconv.Itoa(int(connuid)), "\""))
 	}
 	cc.RLock()
+	defer cc.RUnlock()
+
 	cc.conns[connuid].Lock()
+	defer cc.conns[connuid].Unlock()
+
 	if cc.conns[connuid].conn != nil {
-		cc.conns[connuid].Unlock()
 		if cc.conns[connuid].curr_gen == generation {
 			return &cc.conns[connuid], nil
 		}
-		return nil, nil
+		fmt.Println("---------CURR GEN:", cc.conns[connuid].curr_gen, ", NEEDED:", generation) /////////////////////////////////////
+		return nil, errors.New("client not found, generation mismatch")
 	}
-	cc.conns[connuid].Unlock()
-	return nil, nil
+	return nil, errors.New("client not found, such connuid is dead")
 }
 
 // wsservice.Handler {wsconnector.WsHandler} interface implementation
@@ -174,10 +180,14 @@ func (cl *client) Handle(msg interface{}) error {
 }
 
 func (cl *client) send(message []byte) error {
+	if len(message) < protocol.Client_message_head_len && len(message) != 9 {
+		return errors.New("message len does not satisfy neither client message min len nor timestamp message len")
+	}
 	cl.Lock()
 	defer cl.Unlock()
 
 	if cl.conn != nil {
+		cl.l.Debug("Send", suckutils.ConcatTwo("message of type ", protocol.MessageType(message[0]).String()))
 		return cl.conn.Send(message)
 	} else {
 		return wsconnector.ErrNilConn

@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"project/app/protocol"
 	"project/connector"
@@ -40,6 +41,7 @@ func (a *app) SendToAll(message []byte) {
 	a.RLock()
 	defer a.RUnlock()
 	for _, conn := range a.conns {
+		fmt.Println("sending to app: ", message, " ///string hdrs&body: ", string(message[protocol.App_message_head_len:])) /////////////////////////////////////////////////////////////
 		if err := conn.Send(message); err != nil {
 			a.l.Error("Send", err)
 			continue
@@ -82,35 +84,33 @@ func (a *app) doAfterReconnect() error {
 }
 
 func (a *app) NewMessage() connector.MessageReader {
-	return &protocol.AppMessage{}
+	return &protocol.AppServerMessage{}
 }
 
 func (a *app) Handle(message interface{}) error {
-	a.l.Debug("Handle", "message recieved")
 
-	appmessage := message.(*protocol.AppMessage)
-	cl, err := a.clients.get(appmessage.ConnectionUID&16777215, byte(uint32(appmessage.ConnectionUID)>>24))
+	appservmessage := message.(*protocol.AppServerMessage)
+	a.l.Debug("Handle", suckutils.ConcatTwo("recieved message, messagetype: ", appservmessage.Type.String()))
+	fmt.Println("----------------CONNUID:", appservmessage.ConnectionUID, ", GEN:", appservmessage.Generation) /////////////////////////////////////////////////////
+	cl, err := a.clients.get(appservmessage.ConnectionUID, appservmessage.Generation)
 	if err != nil {
 		// TODO: send error?
 		a.l.Error("Handle/GetClient", err)
+		msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: appservmessage.ConnectionUID, Generation: appservmessage.Generation, Timestamp: time.Now().UnixNano(), RawMessageData: make([]byte, 6)}).EncodeToAppMessage()
+		a.SendToAll(msg)
 		return nil
 	}
 
-	if cl != nil {
-		if appmessage.Timestamp == 0 {
-			appmessage.Timestamp = time.Now().UnixNano() // TODO: Придумать поведение на случай сообщения без таймстампа
-		}
-		clmessage, _ := protocol.EncodeClientMessage(appmessage.Type, a.appid, appmessage.Timestamp, appmessage.Headers, appmessage.Body)
-
-		if err = cl.send(clmessage); err != nil {
-			a.l.Error("Handle/Send", err)
-			return nil
-		}
-	} else {
-		a.l.Error("Handle/getclient", errors.New("connuid+generation not found, sending disconnection of such client"))
-		msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: cl.connuid, Generation: cl.curr_gen, Timestamp: time.Now().UnixNano(), RawMessageData: make([]byte, 6)}).EncodeToAppMessage()
-		a.SendToAll(msg)
+	if appservmessage.Timestamp == 0 {
+		appservmessage.Timestamp = time.Now().UnixNano() // TODO: Придумать поведение на случай сообщения без таймстампа
 	}
+	appservmessage.ApplicationID = a.appid
+
+	if err = cl.send(appservmessage.EncodeToClientMessage()); err != nil {
+		a.l.Error("Handle/Send", err)
+		return nil
+	}
+
 	return nil
 }
 

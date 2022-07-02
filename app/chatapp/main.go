@@ -98,6 +98,7 @@ type message struct {
 	ChatID      chatID                           `json:"chatid"`
 	MessageType messagestypes.MessageContentType `json:"msgtype"`
 	Timestamp   int64                            `json:"timestamp"`
+	Message     []byte                           `json:"message,omitempty"`
 }
 
 const thisServiceName appservice.ServiceName = "app.chat"
@@ -114,7 +115,7 @@ func (c *config) CreateHandler(ctx context.Context, l logger.Logger, appserv app
 	if cid, err := ch.Create([]userID{"123", "124"}); err != nil {
 		panic(err)
 	} else {
-		l.Info("chatID", string(cid))
+		l.Info("hardcode-created chatID", string(cid))
 		ch.chatrooms["1234"] = ch.chatrooms[cid]
 	}
 	return &service{
@@ -133,7 +134,7 @@ type headers struct {
 }
 
 func (s *service) Handle(msg *protocol.AppMessage) error {
-	s.l.Debug("Handle", suckutils.ConcatTwo("recieved message from ", suckutils.Itoa(uint32(msg.ConnectionUID))))
+	s.l.Debug("Handle", suckutils.Concat("recieved message from ", suckutils.Itoa(uint32(msg.ConnectionUID)), ", messagetype: ", msg.Type.String()))
 	hdrs := headers{}
 	if len(msg.Headers) > 0 {
 		err := json.Unmarshal(msg.Headers, &hdrs)

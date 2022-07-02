@@ -140,36 +140,42 @@ func (listener *listener) acceptWorker() {
 }
 
 func (listener *listener) acceptHandlingWorker() {
+	listener.l.Debug("acceptHandlingWorker", "started")
 	for conn := range listener.acceptedConnsToHandle {
-
+		println("-----------------THIS1")
 		newclient, err := listener.clients.newClient()
 		if err != nil {
-			listener.l.Error("handlingWorker/newClient", err)
+			listener.l.Error("acceptHandlingWorker/newClient", err)
 			conn.Close() // TODO: вернуть клиенту ошибку?
 			continue
 		}
+		println("-----------------THIS2")
 		newclient.apps = listener.apps
 		newclient.l = listener.clients_l.NewSubLogger(suckutils.ConcatTwo("ConnUID:", strconv.Itoa(int(newclient.connuid))), suckutils.ConcatTwo("Gen:", strconv.Itoa(int(newclient.curr_gen))))
 		newclient.closehandler = func() error { return listener.clients.remove(newclient.connuid) }
-
-		connector, err := wsconnector.NewWSConnector(conn, newclient)
+		println("-----------------THIS3")
+		connector, err := wsconnector.NewWSConnectorWithUpgrade(conn, newclient)
 		if err != nil {
-			listener.l.Error("handlingWorker/NewWSConnector", err)
-
+			listener.l.Error("acceptHandlingWorker/NewWSConnector", err)
+			println("-----------------THIS4")
 			listener.clients.remove(newclient.connuid)
 			conn.Close()
 			continue
 		}
+		println("-----------------THIS5")
+
+		newclient.conn = connector
 		if err := connector.StartServing(); err != nil {
 			listener.l.Error("StartServing", err)
 
 			connector.ClearFromCache()
+			println("-----------------THIS6")
 			listener.clients.remove(newclient.connuid)
 			conn.Close()
 			continue
 		}
-		newclient.conn = connector
-		listener.l.Debug("acceptWorker/Accept", suckutils.ConcatTwo("successfully upgraded to conn from: ", conn.RemoteAddr().String()))
+
+		listener.l.Debug("acceptHandlingWorker/Accept", suckutils.ConcatTwo("successfully upgraded to conn from: ", conn.RemoteAddr().String()))
 	}
 	<-listener.activeWorkers
 }
@@ -218,6 +224,7 @@ loop:
 			continue loop
 		case <-timeout:
 			listener.l.Debug("listener", "closed on timeout 10s (waited for acceptHandlingWorkers)")
+			return
 		}
 	}
 	listener.l.Debug("listener", "succesfully closed")

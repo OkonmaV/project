@@ -1,6 +1,7 @@
 package wsconnector
 
 import (
+	"context"
 	"errors"
 	"net"
 	"project/test/gopool"
@@ -91,12 +92,34 @@ func createUpgrader(v UpgradeReqChecker) ws.Upgrader {
 }
 
 // upgrades connection and adds it to epoll
-func NewWSConnector(conn net.Conn, handler WsHandler) (*EpollWSConnector, error) {
+func NewWSConnectorWithUpgrade(conn net.Conn, handler WsHandler) (*EpollWSConnector, error) {
 	if conn == nil {
 		return nil, ErrNilConn
 	}
+	// upgrade сам отправляет респонс
+	if upgrReqChecker, ok := handler.(UpgradeReqChecker); ok {
+		if _, err := createUpgrader(upgrReqChecker).Upgrade(conn); err != nil {
+			return nil, err
+		}
+	} else {
+		if _, err := ws.DefaultUpgrader.Upgrade(conn); err != nil {
+			return nil, err
+		}
+	}
 
-	if _, err := createUpgrader(handler).Upgrade(conn); err != nil { // upgrade сам отправляет респонс
+	desc, err := netpoll.HandleRead(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	connector := &EpollWSConnector{conn: conn, desc: desc, handler: handler}
+
+	return connector, nil
+}
+
+func Dial(ctx context.Context, urlstr string, handler WsHandler) (*EpollWSConnector, error) {
+	conn, _, _, err := ws.Dialer{Timeout: time.Second * 5}.Dial(ctx, urlstr)
+	if err != nil {
 		return nil, err
 	}
 
@@ -151,7 +174,7 @@ func (connector *EpollWSConnector) handle(e netpoll.Event) {
 	}
 	//time.Sleep(time.Second)
 	message := connector.handler.NewMessage()
-	if err := message.Read(r, h); err != nil {
+	if err := message.ReadWS(r, h); err != nil {
 		connector.Unlock() //
 		connector.Close(errors.New(suckutils.ConcatTwo("message.Read() err: ", err.Error())))
 		return

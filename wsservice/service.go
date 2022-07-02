@@ -109,7 +109,7 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	l_lstnr := l.NewSubLogger("Listener")
 	ln := newListener(l_lstnr, servStatus, lnthreads, func(conn net.Conn) error {
 		wsdata := srvc.CreateNewWsHandler(l.NewSubLogger("Conn"))
-		connector, err := wsconnector.NewWSConnector(conn, wsdata)
+		connector, err := wsconnector.NewWSConnectorWithUpgrade(conn, wsdata)
 		if err != nil {
 			return err
 		}

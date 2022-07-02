@@ -50,6 +50,8 @@ func (reconnector *EpollReConnector) HandleClose(reason error) {
 
 var reconnectReq chan *EpollReConnector
 
+const reconnection_dial_timeout = time.Millisecond * 500
+
 func InitReconnection(ctx context.Context, ticktime time.Duration, targetbufsize int, queuesize int) {
 	if targetbufsize == 0 || queuesize == 0 {
 		panic("target buffer size / queue size must be > 0")
@@ -80,7 +82,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 				buf[i].mux.Lock()
 				if !buf[i].isstopped {
 					if buf[i].connector.IsClosed() {
-						conn, err := net.Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
+						conn, err := (&net.Dialer{Timeout: reconnection_dial_timeout}).Dial(buf[i].reconAddr.netw, buf[i].reconAddr.address)
 						if err != nil {
 							buf[i].mux.Unlock()
 							continue // не логается
