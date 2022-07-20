@@ -5,6 +5,7 @@ import (
 )
 
 type MessageType byte
+type ErrorCode byte
 type AppID uint16
 type ConnUID uint32
 
@@ -21,6 +22,21 @@ const (
 	TypeCreate        MessageType = 8
 	TypeUpdate        MessageType = 9
 	TypeSettingsReq   MessageType = 10
+
+	TypeOK MessageType = 15 // я хуй знает как назвать
+
+	TypeRedirection  MessageType = 11
+	TypeToken        MessageType = 12
+	TypeGrant        MessageType = 16
+	TypeAuthData     MessageType = 13
+	TypeIntroduction MessageType = 14
+)
+
+const (
+	ErrCodeNil                 ErrorCode = 0
+	ErrCodeNotFound            ErrorCode = 1
+	ErrCodeBadRequest          ErrorCode = 2
+	ErrCodeInternalServerError ErrorCode = 3
 )
 
 func (mt MessageType) String() string {
@@ -45,8 +61,46 @@ func (mt MessageType) String() string {
 		return "Update"
 	case TypeSettingsReq:
 		return "SettingsReq"
+	case TypeRedirection:
+		return "Redirection"
+	case TypeToken:
+		return "Token"
+	case TypeAuthData:
+		return "AuthData"
+	case TypeIntroduction:
+		return "Introduction"
+	case TypeOK:
+		return "OK"
+	case TypeGrant:
+		return "Grant"
 	}
 	return "Unknown"
+}
+
+func (ec ErrorCode) String() string {
+	switch ec {
+	case ErrCodeNotFound:
+		return "NotFound"
+	case ErrCodeBadRequest:
+		return "BadRequest"
+	case ErrCodeNil:
+		return "Nil"
+	case ErrCodeInternalServerError:
+		return "InternalServerError"
+	}
+	return "Unknown"
+}
+
+type IdentityServerMessage_Headers struct {
+	Grant string `json:"grant,omitempty"`
+
+	App_Id     string `json:"appid,omitempty"`
+	App_Secret string `json:"appsecret,omitempty"`
+
+	Access_Token  string `json:"a_token,omitempty"`
+	Refresh_Token string `json:"r_token,omitempty"`
+
+	AuthCode string `json:"code,omitempty"`
 }
 
 // Протокол:

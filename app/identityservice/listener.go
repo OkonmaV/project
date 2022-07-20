@@ -1,4 +1,4 @@
-package appservice
+package identityserver
 
 import (
 	"context"
@@ -24,6 +24,9 @@ type listener struct {
 	acceptWorkerDone chan struct{}
 	sync.RWMutex
 }
+
+// const handlerCallTimeout time.Duration = time.Second * 5
+// const handlerCallMaxExceededTimeouts = 3
 
 func newListener(ctx context.Context, l logger.Logger, appserv *appserver, servStatus *serviceStatus) *listener {
 	return &listener{
@@ -162,11 +165,11 @@ func (listener *listener) close() {
 	listener.l.Debug("listener", "succesfully closed")
 }
 
-// func (listener *listener) onAir() bool {
-// 	listener.RLock()
-// 	defer listener.RUnlock()
-// 	return listener.listener != nil
-// }
+func (listener *listener) onAir() bool {
+	listener.RLock()
+	defer listener.RUnlock()
+	return listener.listener != nil
+}
 
 func (listener *listener) Addr() (string, string) {
 	if listener == nil {

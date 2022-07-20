@@ -2,7 +2,7 @@ package main
 
 import (
 	"errors"
-	"fmt"
+
 	"net"
 	"project/app/protocol"
 	"project/connector"
@@ -25,6 +25,12 @@ type app struct {
 
 // sends only to the first successful sending, ignores other conns
 func (a *app) SendToOne(message []byte) error {
+	if len(message) < protocol.App_message_head_len && len(message) != 9 {
+		return errors.New("message len does not satisfy neither app message min len nor timestamp message len")
+	}
+
+	a.l.Debug("Send", suckutils.ConcatTwo("message of type ", protocol.MessageType(message[0]).String()))
+
 	a.RLock()
 	defer a.RUnlock()
 	for _, conn := range a.conns {
@@ -38,10 +44,16 @@ func (a *app) SendToOne(message []byte) error {
 }
 
 func (a *app) SendToAll(message []byte) {
+	if len(message) < protocol.App_message_head_len && len(message) != 9 {
+		a.l.Error("Send", errors.New("message len does not satisfy neither app message min len nor timestamp message len"))
+		return
+	}
+	a.l.Debug("Send", suckutils.ConcatTwo("message of type ", protocol.MessageType(message[0]).String()))
+
 	a.RLock()
 	defer a.RUnlock()
+
 	for _, conn := range a.conns {
-		fmt.Println("sending to app: ", message, " ///string hdrs&body: ", string(message[protocol.App_message_head_len:])) /////////////////////////////////////////////////////////////
 		if err := conn.Send(message); err != nil {
 			a.l.Error("Send", err)
 			continue
@@ -91,7 +103,6 @@ func (a *app) Handle(message interface{}) error {
 
 	appservmessage := message.(*protocol.AppServerMessage)
 	a.l.Debug("Handle", suckutils.ConcatTwo("recieved message, messagetype: ", appservmessage.Type.String()))
-	fmt.Println("----------------CONNUID:", appservmessage.ConnectionUID, ", GEN:", appservmessage.Generation) /////////////////////////////////////////////////////
 	cl, err := a.clients.get(appservmessage.ConnectionUID, appservmessage.Generation)
 	if err != nil {
 		// TODO: send error?

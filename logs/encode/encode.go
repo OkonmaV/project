@@ -14,6 +14,7 @@ const (
 )
 
 const TagsMaxLength = 65535
+const time_layout = " [01/02 15:04:05.999999] "
 
 var byteOrder binary.ByteOrder = binary.LittleEndian
 
@@ -44,8 +45,13 @@ func encode(tags []byte, logstr string, newtags ...string) []byte {
 	tslist := make([][]byte, 0, len(newtags))
 	for _, tg := range newtags {
 		if len(tg) > 0 {
-			tb := make([]byte, 0, len(tg)+3)
-			tb = append(append(append(tb, TagStartSep), tg...), TagEndSep, TagDelim)
+			tb := make([]byte, len(tg)+3)
+
+			n := copy(tb[1:], tg)
+			tb[0] = TagStartSep
+			tb[n+1] = TagEndSep
+			tb[n+2] = TagDelim
+
 			tagslen += len(tb)
 			tslist = append(tslist, tb)
 		}
@@ -53,8 +59,8 @@ func encode(tags []byte, logstr string, newtags ...string) []byte {
 	if tagslen > TagsMaxLength {
 		panic("tags length is out of range (lib logs/encode), last tag:" + newtags[len(newtags)-1])
 	}
-	log := make([]byte, 0, tagslen+len(logstr))
-	log = append(log, tgs...)
+	log := make([]byte, len(tgs), tagslen+len(logstr))
+	copy(log, tgs)
 	for _, t := range tslist {
 		log = append(log, t...)
 	}
@@ -67,7 +73,7 @@ func DecodeToString(log []byte) string {
 	if len(log) < 11 {
 		panic("logs/encode/DecodeToString() recieved log with len less than 11") // TODO:?
 	}
-	return suckutils.Concat(string(TagStartSep), LogType(log[0]).String(), string(TagEndSep), " ", string(TagStartSep), time.UnixMicro(int64(byteOrder.Uint64(log[1:9]))).String(), string(TagEndSep), " ", string(log[11:]))
+	return suckutils.Concat(string(TagStartSep), LogType(log[0]).String(), string(TagEndSep), time.UnixMicro(int64(byteOrder.Uint64(log[1:9]))).Format(time_layout), string(log[11:]))
 }
 
 func PrintLog(log []byte) {

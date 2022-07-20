@@ -153,11 +153,13 @@ func (connector *EpollWSConnector) handle(e netpoll.Event) {
 		return
 	}
 
-	if connector.IsClosed() {
+	connector.Lock() //
+
+	if connector.isclosed {
+		connector.Unlock() //
 		return
 	}
 
-	connector.Lock()                                                //
 	connector.conn.SetReadDeadline(time.Now().Add(time.Second * 5)) // TODO: for test???
 	h, r, err := wsutil.NextReader(connector.conn, thisSide)
 	if err != nil {

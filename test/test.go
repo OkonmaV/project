@@ -2,7 +2,6 @@ package main
 
 import (
 	"confdecoder"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -145,15 +144,19 @@ type ssdfg struct {
 	Num int
 }
 
-type ht string
+func (s *ssdfg) gh() {
+	s.Uid = "fhd"
+}
 
 func main() {
-	buf := []byte{7, 5, 5, 5}
-	buf2 := []byte{0, 5, 5, 5}
-	buf3 := []byte{7, 0, 0, 0}
-	fmt.Println(binary.BigEndian.Uint32(buf2), binary.BigEndian.Uint32(buf))
-	fmt.Println(binary.BigEndian.Uint32(buf) & 16777215)
-	fmt.Println(binary.BigEndian.Uint32(buf3)>>24, binary.BigEndian.Uint32(buf)>>24)
+	tb := make([]byte, 5+3)
+
+	n := copy(tb[1:], []byte{51, 52, 53, 54, 55})
+	tb[0] = 1
+	tb[n+1] = 2
+	tb[n+2] = 3
+	fmt.Println(tb)
+
 	return
 
 	// connuid := uint32(50)

@@ -87,6 +87,7 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 	connector.mux.Lock() //
 
 	if connector.isclosed {
+		connector.mux.Unlock() //
 		return
 	}
 

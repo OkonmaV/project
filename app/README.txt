@@ -23,3 +23,9 @@
 Протокол:
     client <--> appserver : 1 byte msgtype, 1 byte reserved, 2 bytes appID, 8 bytes timestamp, 2 bytes headers len, 4 bytes body len, дальше хедеры и тело
     appserver <--> app : 1 byte msgtype, 1 byte reserved, 4 bytes connUID, 8 bytes timestamp, 2 bytes headers len, 4 bytes body len, дальше хедеры и тело
+
+Auth:
+(is - identity server)
+    1) client шлет пользовательские логин-пароль в is, is возвращает (краткосрочный одноразовый) грант
+    2) client шлет грант в app, app шлет грант + is_appid + is_app_secret(id и secret, которые is выдал app'у) в is
+    3) is шлет токены + client_id app'у в ответ, app шлет токен клиенту

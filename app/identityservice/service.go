@@ -1,4 +1,4 @@
-package appservice
+package identityserver
 
 import (
 	"confdecoder"
@@ -13,14 +13,24 @@ import (
 	"time"
 )
 
-type ServiceName string
-
 type Servicier interface {
-	CreateHandler(ctx context.Context, l logger.Logger, sender Sender, outer_conns OuterConns_getter) (Handler, error)
+	CreateHandler(ctx context.Context, l logger.Logger, sender Sender, pubs_getter Publishers_getter) (Handler, error)
 }
 
 type Handler interface {
-	Handle(message *protocol.AppMessage) error
+	appHandler
+	clientHandler
+}
+
+type appHandler interface {
+	Handle_Token(appid, grant, secret string) (accessttoken, refreshtoken, clientid string, errCode protocol.ErrorCode)
+	Handle_AppAuth(appname, appid string) (errCode protocol.ErrorCode)
+	Handle_AppRegistration(appname string) (appid, secret string, errCode protocol.ErrorCode)
+}
+
+type clientHandler interface {
+	Handle_ClientAuth(appid, login, password string) (grant string, errCode protocol.ErrorCode)
+	Handle_ClientRegistration(login, password string) (errCode protocol.ErrorCode)
 }
 
 type closer interface {
@@ -31,24 +41,24 @@ type file_config struct {
 	ConfiguratorAddr string
 }
 
+type ServiceName string
+
 const pubscheckTicktime time.Duration = time.Second * 5
 const sendQueueSize = 5
 
-var thisservicename ServiceName
-
 // TODO: придумать шото для неторчащих наружу сервисов
 
-func InitNewService(servicename ServiceName, config Servicier, handlethreads int, publishers_names []ServiceName, identity_servers_names []ServiceName) {
-	initNewService(true, servicename, config, handlethreads, publishers_names, identity_servers_names)
+func InitNewService(servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
+	initNewService(true, servicename, config, handlethreads, publishers_names...)
 }
-func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, handlethreads int, publishers_names []ServiceName, identity_servers_names []ServiceName) {
+func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
 	if len(publishers_names) > 0 {
 		panic("cant use publishers without configurator")
 	}
-	initNewService(false, servicename, config, handlethreads, publishers_names, identity_servers_names)
+	initNewService(false, servicename, config, handlethreads, publishers_names...)
 }
 
-func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, handlethreads int, publishers_names []ServiceName, identity_servers_names []ServiceName) {
+func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
 	servconf := &file_config{}
 	pfd, err := confdecoder.ParseFile("config.txt")
 	if err != nil {
@@ -61,8 +71,6 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	if configurator_enabled && servconf.ConfiguratorAddr == "" {
 		panic("ConfiguratorAddr in config.toml not specified")
 	}
-
-	thisservicename = servicename
 
 	ctx, cancel := createContextWithInterruptSignal()
 
@@ -82,7 +90,7 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	var pubs *publishers
 
 	if len(publishers_names) != 0 {
-		if pubs, err = newPublishers(ctx, l.NewSubLogger("Publishers"), servStatus, nil, pubscheckTicktime, publishers_names, identity_servers_names); err != nil {
+		if pubs, err = newPublishers(ctx, l.NewSubLogger("Publishers"), servStatus, nil, pubscheckTicktime, publishers_names); err != nil {
 			panic(err)
 		}
 	} else {

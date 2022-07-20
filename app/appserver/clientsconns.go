@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
+
 	"project/app/protocol"
 	"project/logs/logger"
 	"project/wsconnector"
@@ -99,7 +99,6 @@ func (cc *clientsConnsList) get(connuid protocol.ConnUID, generation byte) (*cli
 		if cc.conns[connuid].curr_gen == generation {
 			return &cc.conns[connuid], nil
 		}
-		fmt.Println("---------CURR GEN:", cc.conns[connuid].curr_gen, ", NEEDED:", generation) /////////////////////////////////////
 		return nil, errors.New("client not found, generation mismatch")
 	}
 	return nil, errors.New("client not found, such connuid is dead")

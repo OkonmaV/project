@@ -4,7 +4,7 @@ import (
 	"confdecoder"
 	"context"
 	"encoding/json"
-	"fmt"
+
 	"os"
 	"os/signal"
 	"project/app/protocol"
@@ -83,7 +83,6 @@ func main() {
 		AppID   protocol.AppID `json:"appid"`
 		AppName string         `json:"appname"`
 	}, len(pfdapps.Keys))
-	fmt.Println("KEYS LEN", len(pfdapps.Keys))
 	apps, startAppsUpdateWorker := newApplications(ctx, l.NewSubLogger("Apps"), nil, nil, pubscheckTicktime, len(pfdapps.Keys))
 
 	clients := newClientsConnsList(clientsConnectionsLimit, apps)
