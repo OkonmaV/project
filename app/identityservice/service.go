@@ -14,23 +14,23 @@ import (
 )
 
 type Servicier interface {
-	CreateHandler(ctx context.Context, l logger.Logger, sender Sender, pubs_getter Publishers_getter) (Handler, error)
+	CreateHandler(ctx context.Context, l logger.Logger, pubs_getter Publishers_getter) (Handler, error)
 }
 
 type Handler interface {
-	appHandler
-	clientHandler
+	appReqHandler
+	userReqHandler
 }
 
-type appHandler interface {
-	Handle_Token(appid, grant, secret string) (accessttoken, refreshtoken, clientid string, errCode protocol.ErrorCode)
+type appReqHandler interface {
+	Handle_Token_Request(client_id, secret, code, redirect_uri string) (accessttoken, refreshtoken, userid string, expires int64, errCode protocol.ErrorCode)
 	Handle_AppAuth(appname, appid string) (errCode protocol.ErrorCode)
 	Handle_AppRegistration(appname string) (appid, secret string, errCode protocol.ErrorCode)
 }
 
-type clientHandler interface {
-	Handle_ClientAuth(appid, login, password string) (grant string, errCode protocol.ErrorCode)
-	Handle_ClientRegistration(login, password string) (errCode protocol.ErrorCode)
+type userReqHandler interface {
+	Handle_Auth_Request(login, password string, client_id string, redirect_uri string, scope []string) (grant_code string, errCode protocol.ErrorCode)
+	Handle_UserRegistration_Request(login, password string) (errCode protocol.ErrorCode)
 }
 
 type closer interface {
@@ -44,7 +44,6 @@ type file_config struct {
 type ServiceName string
 
 const pubscheckTicktime time.Duration = time.Second * 5
-const sendQueueSize = 5
 
 // TODO: придумать шото для неторчащих наружу сервисов
 
@@ -96,16 +95,13 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 	} else {
 		servStatus.setPubsStatus(true)
 	}
-	appserv := newAppService(ctx, l.NewSubLogger("AppServer"), sendQueueSize, nil)
 
-	handler, err := config.CreateHandler(ctx, l.NewSubLogger("Handler"), appserv, pubs)
+	handler, err := config.CreateHandler(ctx, l.NewSubLogger("Handler"), pubs)
 	if err != nil {
 		panic(err)
 	}
 
-	appserv.handlefunc = handler.Handle
-
-	ln := newListener(ctx, l.NewSubLogger("Listener"), appserv, servStatus)
+	ln := newListener(ctx, l.NewSubLogger("Listener"), l, handler, servStatus)
 
 	var configurator *configurator
 

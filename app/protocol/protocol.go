@@ -4,12 +4,41 @@ import (
 	"encoding/binary"
 )
 
-type MessageType byte
-type ErrorCode byte
 type AppID uint16
 type ConnUID uint32
 
 var byteOrder = binary.BigEndian
+
+type ErrorCode byte
+
+const (
+	ErrCodeNil                 ErrorCode = 0
+	ErrCodeNotFound            ErrorCode = 1
+	ErrCodeBadRequest          ErrorCode = 2
+	ErrCodeInternalServerError ErrorCode = 3
+	ErrForbidden               ErrorCode = 4
+	ErrNotRegistered           ErrorCode = 5
+)
+
+func (ec ErrorCode) Byte() byte {
+	return byte(ec)
+}
+
+func (ec ErrorCode) String() string {
+	switch ec {
+	case ErrCodeNotFound:
+		return "notFound"
+	case ErrCodeBadRequest:
+		return "badRequest"
+	case ErrCodeNil:
+		return "nil"
+	case ErrCodeInternalServerError:
+		return "internalServerError"
+	}
+	return "unknown"
+}
+
+type MessageType byte
 
 const (
 	TypeInstall       MessageType = 1
@@ -22,21 +51,12 @@ const (
 	TypeCreate        MessageType = 8
 	TypeUpdate        MessageType = 9
 	TypeSettingsReq   MessageType = 10
+	TypeRedirection   MessageType = 11
 
-	TypeOK MessageType = 15 // я хуй знает как назвать
+	TypeOAuthData MessageType = 12
 
-	TypeRedirection  MessageType = 11
-	TypeToken        MessageType = 12
-	TypeGrant        MessageType = 16
-	TypeAuthData     MessageType = 13
-	TypeIntroduction MessageType = 14
-)
+	TypeOK MessageType = 14 // я хуй знает как назвать
 
-const (
-	ErrCodeNil                 ErrorCode = 0
-	ErrCodeNotFound            ErrorCode = 1
-	ErrCodeBadRequest          ErrorCode = 2
-	ErrCodeInternalServerError ErrorCode = 3
 )
 
 func (mt MessageType) String() string {
@@ -63,44 +83,16 @@ func (mt MessageType) String() string {
 		return "SettingsReq"
 	case TypeRedirection:
 		return "Redirection"
-	case TypeToken:
-		return "Token"
-	case TypeAuthData:
-		return "AuthData"
-	case TypeIntroduction:
-		return "Introduction"
+	// case TypeToken:
+	// 	return "Token"
+	// case TypeAuthData:
+	// 	return "AuthData"
 	case TypeOK:
 		return "OK"
-	case TypeGrant:
-		return "Grant"
+		// case TypeGrant:
+		// return "Grant"
 	}
-	return "Unknown"
-}
-
-func (ec ErrorCode) String() string {
-	switch ec {
-	case ErrCodeNotFound:
-		return "NotFound"
-	case ErrCodeBadRequest:
-		return "BadRequest"
-	case ErrCodeNil:
-		return "Nil"
-	case ErrCodeInternalServerError:
-		return "InternalServerError"
-	}
-	return "Unknown"
-}
-
-type IdentityServerMessage_Headers struct {
-	Grant string `json:"grant,omitempty"`
-
-	App_Id     string `json:"appid,omitempty"`
-	App_Secret string `json:"appsecret,omitempty"`
-
-	Access_Token  string `json:"a_token,omitempty"`
-	Refresh_Token string `json:"r_token,omitempty"`
-
-	AuthCode string `json:"code,omitempty"`
+	return ""
 }
 
 // Протокол:

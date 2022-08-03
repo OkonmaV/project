@@ -109,20 +109,25 @@ func (listener *listener) acceptWorker() {
 			conn.Close()
 			continue
 		}
-		if err = con.StartServing(); err != nil {
-			listener.l.Error("acceptWorker/StartServing", err)
-			conn.Close()
-			con.ClearFromCache()
-			continue
-		}
 
 		listener.appserv.Lock()
 
 		listener.appserv.conn = con
 		listener.appserv.connAlive = true
-		listener.l.Debug("acceptWorker", suckutils.ConcatTwo("connected from: ", conn.RemoteAddr().String()))
+
+		if err = con.StartServing(); err != nil {
+			listener.appserv.conn = nil
+			listener.appserv.connAlive = false
+			listener.appserv.Unlock()
+
+			listener.l.Error("acceptWorker/StartServing", err)
+			conn.Close()
+			con.ClearFromCache()
+			continue
+		}
 		listener.appserv.Unlock()
 
+		listener.l.Debug("acceptWorker", suckutils.ConcatTwo("connected from: ", conn.RemoteAddr().String()))
 	}
 }
 

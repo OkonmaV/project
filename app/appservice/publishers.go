@@ -45,9 +45,11 @@ type Publisher struct {
 }
 
 type IdentityServer struct {
-	pub    Publisher
-	AppID  string
-	Secret string
+	pub          Publisher
+	ClientID     string
+	ClientSecret string
+
+	keysfilemux sync.Mutex
 }
 
 type OuterConns_getter interface {
@@ -289,7 +291,8 @@ func (pubs *publishers) newIdentityServer(name ServiceName) (*IdentityServer, er
 	}
 }
 
-func (idserv *IdentityServer) Send(message []byte) (headers *protocol.IdentityServerMessage_Headers, response *protocol.AppMessage, err error) {
+//resp_params_dstn - destination for unmarshalling response params (see protocol/oauth.go) on success
+func (idserv *IdentityServer) Send(message []byte, resp_params_dstn interface{}) (response *protocol.AppMessage, err error) {
 	idserv.pub.mux.Lock()
 	defer idserv.pub.mux.Unlock()
 	if idserv.pub.conn != nil {
@@ -311,12 +314,18 @@ func (idserv *IdentityServer) Send(message []byte) (headers *protocol.IdentitySe
 	}
 	response = &protocol.AppMessage{}
 	if err = response.Read(idserv.pub.conn); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	headers = &protocol.IdentityServerMessage_Headers{}
+	if response.Type == protocol.TypeError {
+		if len(response.Body) > 0 {
+			return nil, errors.New(protocol.ErrorCode(response.Body[0]).String())
+		} else {
+			return nil, errors.New("message type error, error code not specified")
+		}
+	}
 	if len(response.Headers) != 0 {
-		if err = json.Unmarshal(response.Headers, headers); err != nil {
-			return nil, nil, err
+		if err = json.Unmarshal(response.Headers, resp_params_dstn); err != nil {
+			return nil, err
 		}
 	}
 	return
@@ -412,75 +421,81 @@ success:
 
 // TODO: если приложение зарегалось, но проебало appid и/или secret - шо делать? + если на ~420 не смогли сохранить в файл ключи - шо делать?
 func (idserv *IdentityServer) connect() error {
-	if err := idserv.pub.connect(); err == nil {
-		hdrs, err := json.Marshal(protocol.IdentityServerMessage_Headers{App_Id: idserv.AppID})
-		if err != nil {
-			panic(err)
-		}
-		msg, err := protocol.EncodeAppMessage(protocol.TypeAuthData, 0, time.Now().UnixNano(), hdrs, nil)
-		if err != nil {
-			panic(err)
-		}
-		// (помнить, что эта ебала дальше написана исходя из того, чтобы ошибки логались)
-		if _, err = idserv.pub.conn.Write(msg); err == nil {
-			resp := &protocol.AppMessage{}
+	return idserv.pub.connect()
+	// if err := idserv.pub.connect(); err == nil {
+	// 	hdrs, err := json.Marshal(struct {
+	// 		//////
+	// 	}{})
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	msg, err := protocol.EncodeAppMessage(protocol.TypeOAuthData, 0, time.Now().UnixNano(), hdrs, nil)
+	// 	if err != nil {
+	// 		panic(err)
+	// 	}
+	// 	// (помнить, что эта ебала дальше написана исходя из того, чтобы ошибки логались)
+	// 	if _, err = idserv.pub.conn.Write(msg); err == nil {
+	// 		resp := &protocol.AppMessage{}
 
-			if err = resp.Read(idserv.pub.conn); err == nil {
-				if resp.Type == protocol.TypeOK {
-					idserv.pub.l.Debug("Conn", "auth passed")
-					return nil
-				} else if resp.Type == protocol.TypeError {
-					if len(resp.Body) != 0 {
-						if protocol.ErrorCode(resp.Body[0]) == protocol.ErrCodeNotFound {
-							idserv.pub.l.Debug("Conn", "not registered, registering now")
-							msg, err = protocol.EncodeAppMessage(protocol.TypeRegistration, 0, time.Now().UnixNano(), nil, []byte(thisservicename))
-							if err != nil {
-								panic(err)
-							}
-							if _, err = idserv.pub.conn.Write(msg); err == nil {
-								if err = resp.Read(idserv.pub.conn); err == nil {
-									if resp.Type == protocol.TypeAuthData {
-										h := protocol.IdentityServerMessage_Headers{}
-										if err = json.Unmarshal(resp.Headers, &h); err == nil {
-											if h.App_Id != "" && h.App_Secret != "" {
-												if err = idserv.saveAppKeys(); err == nil {
-													idserv.AppID = h.App_Id
-													idserv.Secret = h.App_Secret
-													return nil
-												}
-												panic(err) //?????????????????????????????????????????????????????????????
-											}
-										}
-									} else if resp.Type == protocol.TypeError && len(resp.Body) != 0 {
-										return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on registration message: ErrorCode", protocol.ErrorCode(resp.Body[0]).String()))
-									} else {
-										return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on registration message: Type", resp.Type.String()))
-									}
-								}
-							}
-						}
+	// 		if err = resp.Read(idserv.pub.conn); err == nil {
+	// 			if resp.Type == protocol.TypeOK {
+	// 				idserv.pub.l.Debug("Conn", "auth passed")
+	// 				return nil
+	// 			} else if resp.Type == protocol.TypeError {
+	// 				if len(resp.Body) != 0 {
+	// 					if protocol.ErrorCode(resp.Body[0]) == protocol.ErrCodeNotFound {
+	// 						idserv.pub.l.Debug("Conn", "not registered, registering now")
+	// 						msg, err = protocol.EncodeAppMessage(protocol.TypeRegistration, 0, time.Now().UnixNano(), nil, []byte(thisservicename))
+	// 						if err != nil {
+	// 							panic(err)
+	// 						}
+	// 						if _, err = idserv.pub.conn.Write(msg); err == nil {
+	// 							if err = resp.Read(idserv.pub.conn); err == nil {
+	// 								if resp.Type == protocol.TypeAuthData {
+	// 									h := protocol.IdentityServerMessage_Headers{}
+	// 									if err = json.Unmarshal(resp.Headers, &h); err == nil {
+	// 										if h.App_Id != "" && h.App_Secret != "" {
+	// 											if err = idserv.saveAppKeys(); err == nil {
+	// 												idserv.AppID = h.App_Id
+	// 												idserv.Secret = h.App_Secret
+	// 												return nil
+	// 											}
+	// 											panic(err) //?????????????????????????????????????????????????????????????
+	// 										}
+	// 									}
+	// 								} else if resp.Type == protocol.TypeError && len(resp.Body) != 0 {
+	// 									return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on registration message: ErrorCode", protocol.ErrorCode(resp.Body[0]).String()))
+	// 								} else {
+	// 									return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on registration message: Type", resp.Type.String()))
+	// 								}
+	// 							}
+	// 						}
+	// 					}
 
-					} else {
-						err = errors.New("nil errCode on TypeError")
-					}
+	// 				} else {
+	// 					err = errors.New("nil errCode on TypeError")
+	// 				}
 
-				} else {
-					return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on auth message: Type", resp.Type.String()))
-				}
-			}
-		}
-		return errors.New(suckutils.ConcatTwo("appauth not passed, err: ", err.Error()))
-	} else {
-		return err
-	}
+	// 			} else {
+	// 				return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on auth message: Type", resp.Type.String()))
+	// 			}
+	// 		}
+	// 	}
+	// 	return errors.New(suckutils.ConcatTwo("appauth not passed, err: ", err.Error()))
+	// } else {
+	// 	return err
+	// }
 }
 
 func (idserv *IdentityServer) saveAppKeys() error {
-	file, err := suckutils.OpenConcurrentFile(context.Background(), "idservs_keys.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664, time.Second*5)
+	idserv.keysfilemux.Lock()
+	defer idserv.keysfilemux.Unlock()
+	file, err := os.OpenFile("idservs_keys.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664)
+	//file, err := suckutils.OpenConcurrentFile(context.Background(), "idservs_keys.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0664, time.Second*5)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-	_, err = file.File.WriteString(suckutils.Concat(string(idserv.pub.servicename), " ", idserv.AppID, " ", idserv.Secret, "\n"))
+	_, err = file.WriteString(suckutils.Concat(string(idserv.pub.servicename), " ", idserv.ClientID, " ", idserv.ClientSecret, "\n"))
 	return err
 }

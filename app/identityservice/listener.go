@@ -13,10 +13,10 @@ import (
 
 type listener struct {
 	listener net.Listener
-	appserv  *appserver
 
-	servStatus *serviceStatus
-	l          logger.Logger
+	servStatus    *serviceStatus
+	l             logger.Logger
+	connections_l logger.Logger
 
 	ctx context.Context
 
@@ -25,16 +25,20 @@ type listener struct {
 	sync.RWMutex
 }
 
+var handler Handler
+
+var cur_connid uint16
+
 // const handlerCallTimeout time.Duration = time.Second * 5
 // const handlerCallMaxExceededTimeouts = 3
 
-func newListener(ctx context.Context, l logger.Logger, appserv *appserver, servStatus *serviceStatus) *listener {
+func newListener(ctx context.Context, l logger.Logger, connections_l logger.Logger, handler Handler, servStatus *serviceStatus) *listener {
 	return &listener{
-		ctx:          ctx,
-		servStatus:   servStatus,
-		appserv:      appserv,
-		cancelAccept: false,
-		l:            l,
+		ctx:           ctx,
+		servStatus:    servStatus,
+		cancelAccept:  false,
+		l:             l,
+		connections_l: connections_l,
 	}
 }
 
@@ -91,22 +95,14 @@ func (listener *listener) acceptWorker() {
 			continue
 		}
 
-		listener.appserv.RLock()
-		if listener.appserv.connAlive {
-			//listener.appserv.RUnlock()
-			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("conn with appserver is alive, but accepted new one from: ", conn.RemoteAddr().String()))
-			//conn.Close()
-			//continue
-		}
-		listener.appserv.RUnlock()
-
 		if !listener.servStatus.onAir() {
 			listener.l.Warning("acceptWorker", suckutils.ConcatTwo("service suspended, discard handling conn from ", conn.RemoteAddr().String()))
 			conn.Close()
 			continue
 		}
+		cni := &conninfo{l: listener.connections_l.NewSubLogger(suckutils.ConcatTwo("conn-", suckutils.Itoa(uint32(cur_connid))))}
 
-		con, err := connector.NewEpollConnector(conn, listener.appserv)
+		con, err := connector.NewEpollConnector(conn, cni)
 		if err != nil {
 			listener.l.Error("acceptWorker/NewEpollConnector", err)
 			conn.Close()
@@ -118,13 +114,8 @@ func (listener *listener) acceptWorker() {
 			con.ClearFromCache()
 			continue
 		}
-
-		listener.appserv.Lock()
-
-		listener.appserv.conn = con
-		listener.appserv.connAlive = true
+		cur_connid++
 		listener.l.Debug("acceptWorker", suckutils.ConcatTwo("connected from: ", conn.RemoteAddr().String()))
-		listener.appserv.Unlock()
 
 	}
 }

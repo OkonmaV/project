@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"project/app/protocol"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -149,14 +151,27 @@ func (s *ssdfg) gh() {
 }
 
 func main() {
-	tb := make([]byte, 5+3)
 
-	n := copy(tb[1:], []byte{51, 52, 53, 54, 55})
-	tb[0] = 1
-	tb[n+1] = 2
-	tb[n+2] = 3
-	fmt.Println(tb)
+	tb := make(map[string]interface{})
+	tb[string(protocol.ParamClientID)] = byte(5)
+	sb := &struct {
+		Id   byte
+		Prms map[string]interface{}
+	}{Id: 4, Prms: tb}
 
+	tbb, err := json.Marshal(sb)
+	fmt.Println(string(tbb), err)
+
+	fbb := &struct {
+		Id   byte
+		Prms map[protocol.OAuth_Param]interface{}
+	}{}
+	err = json.Unmarshal(tbb, fbb)
+	fmt.Println(fbb, err)
+
+	xType := reflect.TypeOf(fbb.Prms[protocol.ParamClientID])
+	fbstrr, ok := fbb.Prms[protocol.ParamClientID].(float64)
+	fmt.Println(byte(fbstrr), fbb.Id, xType, ok)
 	return
 
 	// connuid := uint32(50)
