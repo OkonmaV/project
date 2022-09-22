@@ -1,7 +1,7 @@
 #!/bin/bash
 num=0
-eval echo "~$okonma"
-for DIR in `ls /home/okonma/goworkspace/src/github.com/okonma-violet/`;
+cd /home/okonma/goworkspace/src/github.com/okonma-violet/
+for DIR in `ls`;
 do
     if [ -d $DIR/.git ];
     then
@@ -11,15 +11,18 @@ do
         git add .
         git commit -m 'multiple commit'
         git push
-        echo -e "\""$DIR"\" updated\n";
+        echo -e "\n\""$DIR"\" updated\n";
         cd ..
+    else
+    echo $DIR "not pass"
     fi
 done
 
+cd /home/okonma/goworkspace/src/
 echo "---------------"$num") updating \"project\"---------------";
-if [ -d  /home/okonma/goworkspace/src/project/.git ];
+if [ -d project/.git ];
 then
-    cd /home/okonma/goworkspace/src/project/
+    cd project/
     git add .
     git commit -m 'multiple commit'
     git push
