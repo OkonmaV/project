@@ -1,0 +1,31 @@
+#!/bin/bash
+num=0
+eval echo "~$okonma"
+for DIR in `ls /home/okonma/goworkspace/src/github.com/okonma-violet/`;
+do
+    if [ -d $DIR/.git ];
+    then
+        num=$((num+1))
+        echo "---------------"$num") updating \""$DIR"\"---------------";
+        cd $DIR 
+        git add .
+        git commit -m 'multiple commit'
+        git push
+        echo -e "\""$DIR"\" updated\n";
+        cd ..
+    fi
+done
+
+echo "---------------"$num") updating \"project\"---------------";
+if [ -d  /home/okonma/goworkspace/src/project/.git ];
+then
+    cd /home/okonma/goworkspace/src/project/
+    git add .
+    git commit -m 'multiple commit'
+    git push
+    echo -e "\n\"project\" updated\n";
+else
+    echo -e "\n\"project\" dir not found\n";
+fi
+
+echo "---------------shit done---------------";
