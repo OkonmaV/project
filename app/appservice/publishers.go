@@ -2,12 +2,12 @@ package appservice
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net"
 	"os"
+	"project/app/anystorage"
 	"project/app/protocol"
-	"project/connector"
+
 	"project/logs/logger"
 	"project/types/configuratortypes"
 
@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type address struct {
@@ -36,13 +36,16 @@ type publishers struct {
 }
 
 type Publisher struct {
-	conn        net.Conn
+	conn        *connector.EpollConnector[protocol.AppMessage, *protocol.AppMessage]
 	servicename ServiceName
 	addresses   []address
 	current_ind int
 	mux         sync.Mutex
 	l           logger.Logger
 }
+
+var resp_HanldeFunc_storage anystorage.Storage[int64, func(*protocol.AppMessage)]
+var resp_expires int64
 
 type IdentityServer struct {
 	pub          Publisher
@@ -131,7 +134,7 @@ loop:
 						pub.addresses = append(pub.addresses[:i], pub.addresses[i+1:]...)
 						if pub.conn != nil {
 							if pub.conn.RemoteAddr().String() == update.addr.addr {
-								pub.conn.Close()
+								pub.conn.Close(errors.New("update from configurator"))
 								pubs.l.Debug("publishersWorker", suckutils.ConcatFour("due to update, closed conn to \"", string(update.name), "\" from ", update.addr.addr))
 							}
 						}
@@ -291,51 +294,21 @@ func (pubs *publishers) newIdentityServer(name ServiceName) (*IdentityServer, er
 	}
 }
 
-//resp_params_dstn - destination for unmarshalling response params (see protocol/oauth.go) on success
-func (idserv *IdentityServer) Send(message []byte, resp_params_dstn interface{}) (response *protocol.AppMessage, err error) {
-	idserv.pub.mux.Lock()
-	defer idserv.pub.mux.Unlock()
-	if idserv.pub.conn != nil {
-		_, err = idserv.pub.conn.Write(message)
+// resp_params_dstn - destination for unmarshalling response params (see protocol/oauth.go) on success
+func (pub *Publisher) Send(message *protocol.AppMessage, response_handlefunc func(resp_message *protocol.AppMessage)) error {
+	message_byte, err := message.Byte()
+	if err != nil {
+		return err
 	}
-	if idserv.pub.conn == nil || err != nil {
-		if err != nil {
-			idserv.pub.l.Error("Send", err)
-		} else {
-			idserv.pub.l.Debug("Conn", "not connected, reconnect")
-		}
-		if err = idserv.connect(); err == nil {
-			if _, err = idserv.pub.conn.Write(message); err != nil {
-				return
-			}
-		} else {
-			return
-		}
+	if err = resp_HanldeFunc_storage.Add(message.Timestamp, response_handlefunc, resp_expires); err != nil {
+		return err
 	}
-	response = &protocol.AppMessage{}
-	if err = response.Read(idserv.pub.conn); err != nil {
-		return nil, err
-	}
-	if response.Type == protocol.TypeError {
-		if len(response.Body) > 0 {
-			return nil, errors.New(protocol.ErrorCode(response.Body[0]).String())
-		} else {
-			return nil, errors.New("message type error, error code not specified")
-		}
-	}
-	if len(response.Headers) != 0 {
-		if err = json.Unmarshal(response.Headers, resp_params_dstn); err != nil {
-			return nil, err
-		}
-	}
-	return
-}
 
-func (pub *Publisher) Send(message []byte) (err error) {
 	pub.mux.Lock()
 	defer pub.mux.Unlock()
+
 	if pub.conn != nil {
-		_, err = pub.conn.Write(message)
+		err = pub.conn.Send(message_byte)
 	}
 	if pub.conn == nil || err != nil {
 		if err != nil {
@@ -344,60 +317,26 @@ func (pub *Publisher) Send(message []byte) (err error) {
 			pub.l.Debug("Conn", "not connected, reconnect")
 		}
 		if err = pub.connect(); err == nil {
-			_, err = pub.conn.Write(message)
-			return err
+			if err = pub.conn.Send(message_byte); err != nil {
+				resp_HanldeFunc_storage.Remove(message.Timestamp)
+				return err
+			}
 		} else {
+			resp_HanldeFunc_storage.Remove(message.Timestamp)
 			return err
 		}
 	}
 	return nil
 }
 
-func (pub *Publisher) SendHTTP(request *suckhttp.Request) (response *suckhttp.Response, err error) {
-	pub.mux.Lock()
-	defer pub.mux.Unlock()
-	if pub.conn != nil {
-		response, err = request.Send(context.Background(), pub.conn)
-	}
-	if pub.conn == nil || err != nil {
-		if err != nil {
-			pub.l.Error("Send", err)
-		} else {
-			pub.l.Debug("Conn", "not connected, reconnect")
-		}
-		if err = pub.connect(); err == nil {
-
-			if response, err = request.Send(context.Background(), pub.conn); err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
-		}
-	}
-	return response, nil
-}
-
-func CreateHTTPRequestFrom(method suckhttp.HttpMethod, uri string, recievedRequest *suckhttp.Request) (*suckhttp.Request, error) {
-	req, err := suckhttp.NewRequest(method, uri)
-	if err != nil {
-		return nil, err
-	}
-	if recievedRequest == nil {
-		return nil, errors.New("not set recievedRequest")
-	}
-	if v := recievedRequest.GetHeader("cookie"); v != "" {
-		req.AddHeader("cookie", v)
-	}
-	return req, nil
-}
-func CreateHTTPRequest(method suckhttp.HttpMethod) (*suckhttp.Request, error) {
-	return suckhttp.NewRequest(method, "")
+func (idserv *IdentityServer) Send(message *protocol.AppMessage, response_handlefunc func(*protocol.AppMessage)) error {
+	return idserv.pub.Send(message, response_handlefunc)
 }
 
 // no mutex inside
 func (pub *Publisher) connect() error {
 	if pub.conn != nil {
-		pub.conn.Close()
+		pub.conn.Close(errors.New("connect() call"))
 		pub.conn = nil
 	}
 
@@ -405,86 +344,29 @@ func (pub *Publisher) connect() error {
 		if pub.current_ind == len(pub.addresses) {
 			pub.current_ind = 0
 		}
-		var err error
-		if pub.conn, err = net.DialTimeout(pub.addresses[pub.current_ind].netw, pub.addresses[pub.current_ind].addr, time.Second); err != nil {
+		if conn, err := net.DialTimeout(pub.addresses[pub.current_ind].netw, pub.addresses[pub.current_ind].addr, time.Second); err != nil {
 			pub.l.Error("connect/Dial", err)
-			pub.current_ind++
 		} else {
-			goto success
+			if connctr, err := connector.NewEpollConnector[protocol.AppMessage](conn, pub); err == nil {
+				pub.conn = connctr
+				if err = connctr.StartServing(); err == nil {
+					pub.l.Info("Conn", suckutils.ConcatTwo("Connected to ", pub.conn.RemoteAddr().String()))
+					return nil
+				} else {
+					pub.l.Error("connect/StartServing", err)
+				}
+			} else {
+				pub.l.Error("connect/NewEpollConnector", err)
+			}
 		}
+		pub.current_ind++
 	}
-	return errors.New("no available addresses")
-success:
-	pub.l.Info("Conn", suckutils.ConcatTwo("Connected to ", pub.conn.RemoteAddr().String()))
-	return nil
+	return errors.New("no alive addresses")
 }
 
-// TODO: если приложение зарегалось, но проебало appid и/или secret - шо делать? + если на ~420 не смогли сохранить в файл ключи - шо делать?
+// TODO: если приложение зарегалось, но проебало appid и/или secret - шо делать? + если не смогли сохранить в файл ключи - шо делать?
 func (idserv *IdentityServer) connect() error {
 	return idserv.pub.connect()
-	// if err := idserv.pub.connect(); err == nil {
-	// 	hdrs, err := json.Marshal(struct {
-	// 		//////
-	// 	}{})
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	msg, err := protocol.EncodeAppMessage(protocol.TypeOAuthData, 0, time.Now().UnixNano(), hdrs, nil)
-	// 	if err != nil {
-	// 		panic(err)
-	// 	}
-	// 	// (помнить, что эта ебала дальше написана исходя из того, чтобы ошибки логались)
-	// 	if _, err = idserv.pub.conn.Write(msg); err == nil {
-	// 		resp := &protocol.AppMessage{}
-
-	// 		if err = resp.Read(idserv.pub.conn); err == nil {
-	// 			if resp.Type == protocol.TypeOK {
-	// 				idserv.pub.l.Debug("Conn", "auth passed")
-	// 				return nil
-	// 			} else if resp.Type == protocol.TypeError {
-	// 				if len(resp.Body) != 0 {
-	// 					if protocol.ErrorCode(resp.Body[0]) == protocol.ErrCodeNotFound {
-	// 						idserv.pub.l.Debug("Conn", "not registered, registering now")
-	// 						msg, err = protocol.EncodeAppMessage(protocol.TypeRegistration, 0, time.Now().UnixNano(), nil, []byte(thisservicename))
-	// 						if err != nil {
-	// 							panic(err)
-	// 						}
-	// 						if _, err = idserv.pub.conn.Write(msg); err == nil {
-	// 							if err = resp.Read(idserv.pub.conn); err == nil {
-	// 								if resp.Type == protocol.TypeAuthData {
-	// 									h := protocol.IdentityServerMessage_Headers{}
-	// 									if err = json.Unmarshal(resp.Headers, &h); err == nil {
-	// 										if h.App_Id != "" && h.App_Secret != "" {
-	// 											if err = idserv.saveAppKeys(); err == nil {
-	// 												idserv.AppID = h.App_Id
-	// 												idserv.Secret = h.App_Secret
-	// 												return nil
-	// 											}
-	// 											panic(err) //?????????????????????????????????????????????????????????????
-	// 										}
-	// 									}
-	// 								} else if resp.Type == protocol.TypeError && len(resp.Body) != 0 {
-	// 									return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on registration message: ErrorCode", protocol.ErrorCode(resp.Body[0]).String()))
-	// 								} else {
-	// 									return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on registration message: Type", resp.Type.String()))
-	// 								}
-	// 							}
-	// 						}
-	// 					}
-
-	// 				} else {
-	// 					err = errors.New("nil errCode on TypeError")
-	// 				}
-
-	// 			} else {
-	// 				return errors.New(suckutils.ConcatTwo("appauth not passed, idserv response on auth message: Type", resp.Type.String()))
-	// 			}
-	// 		}
-	// 	}
-	// 	return errors.New(suckutils.ConcatTwo("appauth not passed, err: ", err.Error()))
-	// } else {
-	// 	return err
-	// }
 }
 
 func (idserv *IdentityServer) saveAppKeys() error {
@@ -498,4 +380,19 @@ func (idserv *IdentityServer) saveAppKeys() error {
 	defer file.Close()
 	_, err = file.WriteString(suckutils.Concat(string(idserv.pub.servicename), " ", idserv.ClientID, " ", idserv.ClientSecret, "\n"))
 	return err
+}
+
+func (p *Publisher) Handle(message *protocol.AppMessage) error {
+	if hfunc, err := resp_HanldeFunc_storage.Get(message.Timestamp); err != nil {
+		p.l.Warning("Response_HandleFunc_Storage", err.Error())
+	} else {
+		hfunc(message)
+	}
+	return nil
+}
+func (p *Publisher) HandleClose(reason error) {
+	p.mux.Lock()
+	p.l.Warning("Conn", suckutils.ConcatTwo("closed, reason: ", reason.Error()))
+	p.conn = nil
+	p.mux.Unlock()
 }

@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"net"
-	"project/connector"
-	"project/types/configuratortypes"
-	"project/types/netprotocol"
 	"time"
 
+	"project/types/configuratortypes"
+	"project/types/netprotocol"
+
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 var reconnectReq chan *service
@@ -59,7 +60,7 @@ func serveReconnects(ctx context.Context, ticktime time.Duration, targetbufsize 
 						continue
 					}
 
-					newcon, err := connector.NewEpollConnector(conn, buf[i])
+					newcon, err := connector.NewEpollConnector[connector.BasicMessage](conn, buf[i])
 					if err != nil {
 						buf[i].statusmux.Unlock()
 						buf[i].l.Error("Reconnect/NewEpollConnector", err)

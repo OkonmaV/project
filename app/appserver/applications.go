@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"project/app/protocol"
-	"project/connector"
+
 	"project/logs/logger"
 	"project/types/configuratortypes"
 	"strconv"
@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 // TODO: при обычном коннекторе (не реконнекторе, как здесь), когда мы получаем обновление от конфигуратора о нерабочем статусе
@@ -57,7 +58,6 @@ func newApplications(ctx context.Context, l logger.Logger, appsIndex []byte, con
 
 	go a.appsUpdateWorker(ctx, l.NewSubLogger("AppsUpdateWorker"), updateWorkerStart, pubscheckTicktime)
 	return a, func() { close(updateWorkerStart) }
-
 }
 
 func (apps *applications) newApp(appid protocol.AppID, settings []byte, clients *clientsConnsList, appname ServiceName) (*app, error) {
@@ -78,7 +78,7 @@ func (apps *applications) newApp(appid protocol.AppID, settings []byte, clients 
 		apps.list[appid] = app{
 			servicename: appname,
 			appid:       appid,
-			conns:       make([]*connector.EpollReConnector, 0, 1),
+			conns:       make([]*connector.EpollReConnector[protocol.AppServerMessage, *protocol.AppServerMessage], 0, 1),
 			clients:     clients,
 			l:           apps.l.NewSubLogger("App", suckutils.ConcatTwo("AppID:", strconv.Itoa(int(appid))), string(appname)),
 		}
@@ -152,7 +152,6 @@ loop:
 						apps.list[i].connect(update.netw, update.addr)
 						apps.list[i].Unlock()
 						continue loop
-
 					} else if update.status == configuratortypes.StatusOff || update.status == configuratortypes.StatusSuspended { // если нужно отрубать = ошибка
 						l.Error("Update", errors.New(suckutils.Concat("appupdate to status_off for already updated status_off for \"", string(apps.list[i].servicename), "\" from ", update.addr)))
 						continue loop

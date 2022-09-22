@@ -2,26 +2,22 @@ package main
 
 import (
 	"errors"
-	"project/connector"
-	"project/types/configuratortypes"
-	"project/types/netprotocol"
 	"strconv"
 	"strings"
 
+	"project/types/configuratortypes"
+	"project/types/netprotocol"
+
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
-func (s *service) NewMessage() connector.MessageReader {
-	return connector.NewBasicMessage()
-}
+func (s *service) Handle(message *connector.BasicMessage) error {
 
-func (s *service) Handle(message interface{}) error {
-
-	payload := message.(*connector.BasicMessage).Payload
-	if len(payload) == 0 {
+	if len(message.Payload) == 0 {
 		return connector.ErrEmptyPayload
 	}
-	switch configuratortypes.OperationCode(payload[0]) {
+	switch configuratortypes.OperationCode(message.Payload[0]) {
 	case configuratortypes.OperationCodePing:
 		s.l.Debug("New message", "OperationCodePing")
 		return nil
@@ -38,7 +34,7 @@ func (s *service) Handle(message interface{}) error {
 		}
 	case configuratortypes.OperationCodeSubscribeToServices:
 		s.l.Debug("New message", "OperationCodeSubscribeToServices")
-		raw_pubnames := configuratortypes.SeparatePayload(payload[1:])
+		raw_pubnames := configuratortypes.SeparatePayload(message.Payload[1:])
 		if raw_pubnames == nil {
 			return connector.ErrWeirdData
 		}
@@ -54,7 +50,7 @@ func (s *service) Handle(message interface{}) error {
 	case configuratortypes.OperationCodeUpdatePubs:
 		s.l.Debug("New message", "OperationCodeUpdatePubs")
 		if s.name == ServiceName(configuratortypes.ConfServiceName) {
-			updates := configuratortypes.SeparatePayload(payload[1:])
+			updates := configuratortypes.SeparatePayload(message.Payload[1:])
 			if len(updates) != 0 {
 				foo := s.connector.RemoteAddr().String()
 				external_ip := (foo)[:strings.Index(foo, ":")]
@@ -85,21 +81,21 @@ func (s *service) Handle(message interface{}) error {
 		}
 	case configuratortypes.OperationCodeMyStatusChanged:
 		s.l.Debug("New message", "OperationCodeMyStatusChanged")
-		if len(payload) < 2 {
+		if len(message.Payload) < 2 {
 			return connector.ErrWeirdData
 		}
-		s.changeStatus(configuratortypes.ServiceStatus(payload[1]))
+		s.changeStatus(configuratortypes.ServiceStatus(message.Payload[1]))
 	case configuratortypes.OperationCodeMyOuterPort:
 		s.l.Debug("New message", "OperationCodeMyOuterPort")
 		if s.name == ServiceName(configuratortypes.ConfServiceName) {
-			if len(payload) < 2 {
+			if len(message.Payload) < 2 {
 				return connector.ErrWeirdData
 			}
-			if p, err := strconv.Atoi(string(payload[1:])); err != nil || p == 0 {
+			if p, err := strconv.Atoi(string(message.Payload[1:])); err != nil || p == 0 {
 				return connector.ErrWeirdData
 			} else {
 				s.statusmux.Lock()
-				s.outerAddr.port = string(payload)
+				s.outerAddr.port = string(message.Payload)
 				s.statusmux.Unlock()
 			}
 		} else {

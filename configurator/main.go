@@ -1,18 +1,21 @@
 package main
 
 import (
-	"confdecoder"
 	"context"
+	"errors"
 	"os"
 	"os/signal"
-	"project/connector"
+	"time"
+
+	"github.com/okonma-violet/confdecoder"
+	"github.com/okonma-violet/connector"
+	"github.com/okonma-violet/dynamicworkerspool"
+
 	"project/epolllistener"
 	"project/logs/encode"
 	"project/logs/logger"
 	"strings"
 	"syscall"
-
-	"time"
 )
 
 type config struct {
@@ -21,7 +24,9 @@ type config struct {
 	Settings       string
 }
 
-const connectors_gopool_size int = 5
+const connectors_min_threads int = 1
+const connectors_max_threads int = 5
+const threadkilling_timeout time.Duration = time.Second * 5
 const settingsCheckTicktime time.Duration = time.Second * 5
 const reconnectsCheckTicktime time.Duration = time.Second * 10
 const reconnectsTargetBufSize int = 4
@@ -44,16 +49,15 @@ func main() {
 
 	flsh := logger.NewFlusher(encode.DebugLevel)
 	l := flsh.NewLogsContainer("configurator")
-	connector.SetupEpoll(func(e error) {
-		l.Error("Epoll", e)
-		cancel()
-	})
-	connector.SetupGopoolHandling(connectors_gopool_size, 1, connectors_gopool_size/2)
 
-	epolllistener.SetupEpollErrorHandler(func(e error) {
+	epolllistener.SetEpoll(connector.SetupEpoll(func(e error) {
 		l.Error("Epoll", e)
 		cancel()
-	})
+	}))
+
+	pool := dynamicworkerspool.NewPool(connectors_min_threads, connectors_max_threads, threadkilling_timeout)
+	connector.SetupPoolHandling(pool)
+
 	initReconnection(ctx, reconnectsCheckTicktime, reconnectsTargetBufSize, 1)
 
 	subs := newSubscriptions(ctx, l, 5, nil)
@@ -86,6 +90,10 @@ func main() {
 	local_ln.close()
 	if external_ln != nil {
 		external_ln.close()
+	}
+	pool.Close()
+	if err = pool.DoneWithTimeout(time.Second * 5); err != nil {
+		l.Error("Gopool", errors.New("break gopool.done waiting: timed out"))
 	}
 	flsh.Close()
 	flsh.DoneWithTimeout(time.Second * 5)

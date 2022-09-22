@@ -7,13 +7,14 @@ import (
 
 	"project/app/protocol"
 	"project/logs/logger"
-	"project/wsconnector"
+
 	"strconv"
 	"sync"
 
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/wsconnector"
 )
 
 type clientsConnsList struct {
@@ -55,7 +56,7 @@ func (cc *clientsConnsList) newClient() (*client, error) {
 		for i := 1; i < len(cc.conns); i++ {
 			cc.conns[i].Lock()
 			if cc.conns[i].conn == nil {
-				cc.conns[i].conn = &wsconnector.EpollWSConnector{}
+				cc.conns[i].conn = &wsconnector.EpollWSConnector[protocol.AppServerMessage, *protocol.AppServerMessage]{}
 				cc.conns[i].curr_gen++
 
 				cc.conns[i].Unlock()
@@ -105,15 +106,14 @@ func (cc *clientsConnsList) get(connuid protocol.ConnUID, generation byte) (*cli
 }
 
 // wsservice.Handler {wsconnector.WsHandler} interface implementation
-func (cl *client) Handle(msg interface{}) error {
+func (cl *client) Handle(message *protocol.AppServerMessage) error {
 	//cl.l.Info("NEW MESSAGE", fmt.Sprint(msg))
 
 	cl.Lock()
 	ts := time.Now().UnixNano()
 
-	asmessage := msg.(*protocol.AppServerMessage)
-	if asmessage.Type == protocol.TypeSettingsReq {
-		if asmessage.ApplicationID == 0 {
+	if message.Type == protocol.TypeSettingsReq {
+		if message.ApplicationID == 0 {
 			hdrs, _ := json.Marshal(struct {
 				C string `json:"content-type"`
 			}{C: "appsindex"})
@@ -127,7 +127,7 @@ func (cl *client) Handle(msg interface{}) error {
 			cl.Unlock()
 			return err
 		} else {
-			if body, err := cl.apps.getSettings(asmessage.ApplicationID); err != nil {
+			if body, err := cl.apps.getSettings(message.ApplicationID); err != nil {
 				cl.l.Error("GetSettings", err)
 				cl.Unlock()
 				return err
@@ -147,7 +147,7 @@ func (cl *client) Handle(msg interface{}) error {
 			}
 		}
 	}
-	app, err := cl.apps.get(asmessage.ApplicationID)
+	app, err := cl.apps.get(message.ApplicationID)
 	if err != nil {
 		// TODO: send UpdateSettings?
 		cl.l.Error("Handle/Message.ApplicationID", err)
@@ -165,10 +165,10 @@ func (cl *client) Handle(msg interface{}) error {
 	}
 	cl.Unlock()
 
-	asmessage.Timestamp = ts
-	asmessage.ConnectionUID = cl.connuid
-	asmessage.Generation = cl.curr_gen
-	appmessage, err := asmessage.EncodeToAppMessage()
+	message.Timestamp = ts
+	message.ConnectionUID = cl.connuid
+	message.Generation = cl.curr_gen
+	appmessage, err := message.EncodeToAppMessage()
 	if err != nil {
 		panic(err)
 	}
@@ -204,28 +204,4 @@ func (cl *client) HandleClose(err error) {
 			cl.l.Error("Conn", errors.New(suckutils.ConcatTwo("error on closehandler, err: ", err.Error())))
 		}
 	}
-}
-
-// wsservice.Handler {wsconnector.WsHandler {wsconnector.UpgradeReqChecker}} interface implementation
-func (cl *client) CheckPath(path []byte) wsconnector.StatusCode {
-	return 200
-}
-
-// wsservice.Handler {wsconnector.WsHandler {wsconnector.UpgradeReqChecker}} interface implementation
-func (cl *client) CheckHost(host []byte) wsconnector.StatusCode {
-	return 200
-}
-
-// wsservice.Handler {wsconnector.WsHandler {wsconnector.UpgradeReqChecker}} interface implementation
-func (cl *client) CheckHeader(key []byte, value []byte) wsconnector.StatusCode {
-	return 200
-}
-
-// wsservice.Handler {wsconnector.WsHandler {wsconnector.UpgradeReqChecker}} interface implementation
-func (cl *client) CheckBeforeUpgrade() wsconnector.StatusCode {
-	return 200
-}
-
-func (cl *client) NewMessage() wsconnector.MessageReader {
-	return &protocol.AppServerMessage{}
 }

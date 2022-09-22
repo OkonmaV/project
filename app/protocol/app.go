@@ -48,12 +48,9 @@ func (m *AppMessage) Read(conn net.Conn) error {
 
 	head := make([]byte, App_message_head_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err := conn.Read(head)
+	_, err := io.ReadFull(conn, head)
 	if err != nil {
 		return err
-	}
-	if n != App_message_head_len {
-		return errors.New("readed less head bytes than expected")
 	}
 
 	headers_len := byteOrder.Uint16(head[14:16])
@@ -61,22 +58,16 @@ func (m *AppMessage) Read(conn net.Conn) error {
 
 	m.Headers = make([]byte, headers_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err = conn.Read(m.Headers)
+	_, err = io.ReadFull(conn, m.Headers)
 	if err != nil {
 		return err
-	}
-	if n != int(headers_len) {
-		return errors.New("readed less headers bytes than expected")
 	}
 
 	m.Body = make([]byte, body_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err = conn.Read(m.Body)
+	_, err = io.ReadFull(conn, m.Body)
 	if err != nil {
 		return err
-	}
-	if n != int(body_len) {
-		return errors.New("readed less body bytes than expected")
 	}
 
 	m.Type = MessageType(head[0])
@@ -86,11 +77,41 @@ func (m *AppMessage) Read(conn net.Conn) error {
 	return nil
 }
 
-func (m *AppMessage) Encode() ([]byte, error) {
+func (m *AppMessage) ReadWithoutDeadline(conn net.Conn) error {
+
+	head := make([]byte, App_message_head_len)
+	_, err := io.ReadFull(conn, head)
+	if err != nil {
+		return err
+	}
+
+	headers_len := byteOrder.Uint16(head[14:16])
+	body_len := byteOrder.Uint32(head[16:20])
+
+	m.Headers = make([]byte, headers_len)
+	_, err = io.ReadFull(conn, m.Headers)
+	if err != nil {
+		return err
+	}
+
+	m.Body = make([]byte, body_len)
+	_, err = io.ReadFull(conn, m.Body)
+	if err != nil {
+		return err
+	}
+
+	m.Type = MessageType(head[0])
+	m.ConnectionUID = ConnUID(byteOrder.Uint32(head[2:6]))
+	m.Timestamp = int64(byteOrder.Uint64(head[6:14]))
+
+	return nil
+}
+
+func (m *AppMessage) Byte() ([]byte, error) {
 	return EncodeAppMessage(m.Type, m.ConnectionUID, m.Timestamp, m.Headers, m.Body)
 }
 
-//do not knows about generation in connUID
+// do not knows about generation in connUID
 func EncodeAppMessage(messagetype MessageType, connUID ConnUID, timestamp int64, headers []byte, body []byte) ([]byte, error) {
 	// if connUID == 0 {
 	// 	return nil, errors.New("connUID is zero")
@@ -137,4 +158,8 @@ func DecodeAppMessage(rawmessage []byte) (*AppMessage, error) {
 		Body:          rawmessage[App_message_head_len+headers_len:],
 		Timestamp:     int64(byteOrder.Uint64(rawmessage[6:14])),
 	}, nil
+}
+
+func (m *AppMessage) MessageID() int64 {
+	return m.Timestamp
 }

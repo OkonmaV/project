@@ -4,21 +4,24 @@ import (
 	"context"
 	"errors"
 	"project/app/protocol"
-	"project/connector"
+
 	"project/logs/logger"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type Sender interface {
 	Send(message []byte) error
 }
 
+type handleFunc func(*protocol.AppMessage) error
+
 type appserver struct {
-	conn       *connector.EpollConnector
+	conn       *connector.EpollConnector[protocol.AppMessage, *protocol.AppMessage]
 	handlefunc handleFunc
 
 	sendQueue    chan []byte
@@ -44,14 +47,8 @@ func newAppService(ctx context.Context, l logger.Logger, sendqueueSize int, hand
 	return as
 }
 
-type handleFunc func(*protocol.AppMessage) error
-
-func (*appserver) NewMessage() connector.MessageReader {
-	return &protocol.AppMessage{}
-}
-
-func (as *appserver) Handle(message interface{}) error {
-	if err := as.handlefunc(message.(*protocol.AppMessage)); err != nil {
+func (as *appserver) Handle(message *protocol.AppMessage) error {
+	if err := as.handlefunc(message); err != nil {
 		as.l.Error("Handle", err)
 	}
 	return nil

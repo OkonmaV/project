@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"project/connector"
 	"project/logs/logger"
 
 	"project/types/configuratortypes"
@@ -13,10 +12,11 @@ import (
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type configurator struct {
-	conn            *connector.EpollReConnector
+	conn            *connector.EpollReConnector[connector.BasicMessage, *connector.BasicMessage]
 	thisServiceName ServiceName
 
 	apps       *applications
@@ -50,7 +50,7 @@ func newConfigurator(ctx context.Context, l logger.Logger, startAppsUpdateWroker
 				l.Error("handshake", err)
 				goto timeout
 			}
-			if c.conn, err = connector.NewEpollReConnector(conn, c, c.handshake, c.afterConnProc); err != nil {
+			if c.conn, err = connector.NewEpollReConnector[connector.BasicMessage](conn, c, c.handshake, c.afterConnProc); err != nil {
 				l.Error("NewEpollReConnector", err)
 				goto timeout
 			}
@@ -163,16 +163,11 @@ func (c *configurator) onUnSuspend() {
 	c.send([]byte{byte(configuratortypes.OperationCodeMyStatusChanged), byte(configuratortypes.StatusOn)})
 }
 
-func (c *configurator) NewMessage() connector.MessageReader {
-	return connector.NewBasicMessage()
-}
-
-func (c *configurator) Handle(message interface{}) error {
-	payload := message.(*connector.BasicMessage).Payload
-	if len(payload) == 0 {
+func (c *configurator) Handle(message *connector.BasicMessage) error {
+	if len(message.Payload) == 0 {
 		return connector.ErrEmptyPayload
 	}
-	switch configuratortypes.OperationCode(payload[0]) {
+	switch configuratortypes.OperationCode(message.Payload[0]) {
 	case configuratortypes.OperationCodePing:
 		return nil
 	case configuratortypes.OperationCodeMyStatusChanged:
@@ -180,13 +175,13 @@ func (c *configurator) Handle(message interface{}) error {
 	case configuratortypes.OperationCodeImSupended:
 		return nil
 	case configuratortypes.OperationCodeSetOutsideAddr:
-		if len(payload) < 2 {
+		if len(message.Payload) < 2 {
 			return connector.ErrWeirdData
 		}
-		if len(payload) < 2+int(payload[1]) {
+		if len(message.Payload) < 2+int(message.Payload[1]) {
 			return connector.ErrWeirdData
 		}
-		if netw, addr, err := configuratortypes.UnformatAddress(payload[2 : 2+int(payload[1])]); err != nil {
+		if netw, addr, err := configuratortypes.UnformatAddress(message.Payload[2 : 2+int(message.Payload[1])]); err != nil {
 			return err
 		} else {
 			if netw == netprotocol.NetProtocolNil {
@@ -209,7 +204,7 @@ func (c *configurator) Handle(message interface{}) error {
 			return err
 		}
 	case configuratortypes.OperationCodeUpdatePubs:
-		updates := configuratortypes.SeparatePayload(payload[1:])
+		updates := configuratortypes.SeparatePayload(message.Payload[1:])
 		if len(updates) != 0 {
 			for _, update := range updates {
 				appname, raw_addr, status, err := configuratortypes.UnformatOpcodeUpdatePubMessage(update)

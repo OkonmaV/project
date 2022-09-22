@@ -1,21 +1,25 @@
 package main
 
 import (
-	"confdecoder"
 	"context"
 	"encoding/json"
+	"errors"
 
 	"os"
 	"os/signal"
 	"project/app/protocol"
-	"project/connector"
+
 	"project/logs/encode"
 	"project/logs/logger"
-	"project/wsconnector"
+
 	"syscall"
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/confdecoder"
+	"github.com/okonma-violet/connector"
+	"github.com/okonma-violet/dynamicworkerspool"
+	"github.com/okonma-violet/wsconnector"
 )
 
 type ServiceName string
@@ -25,10 +29,14 @@ type file_config struct {
 }
 
 const pubscheckTicktime time.Duration = time.Second * 5
-const reconnectTimeout time.Duration = time.Second * 3
+const reconnectTimeout time.Duration = time.Second * 10
 const clientsConnectionsLimit = 100 // max = 16777215
-const clientsServingThreads = 5
-const appsServingThreads = 5
+const clientsServingThreads_min = 2
+const clientsServingThreads_max = 5
+const clientsServingThread_killing_timeout = time.Second * 5
+const appsServingThreads_min = 2
+const appsServingThreads_max = 5
+const appsServingThread_killing_timeout = time.Second * 5
 const listenerAcceptThreads = 2
 
 // TODO: конфигурировать кол-во горутин-хендлеров конфигуратором
@@ -46,7 +54,7 @@ func main() {
 	}
 
 	if servconf.ConfiguratorAddr == "" {
-		panic("ConfiguratorAddr in config.toml not specified")
+		panic("ConfiguratorAddr in config.txt not specified")
 	}
 	pfdapps, err := confdecoder.ParseFile("apps.index")
 	if err != nil {
@@ -61,21 +69,15 @@ func main() {
 	logsflusher := logger.NewFlusher(encode.DebugLevel)
 	l := logsflusher.NewLogsContainer(string(thisservicename))
 
-	connector.InitReconnection(ctx, reconnectTimeout, 1, 1)
-	wsconnector.SetupEpoll(func(e error) {
+	wsconnector.SetEpoll(connector.SetupEpoll(func(e error) {
 		l.Error("epoll OnWaitError", e)
 		cancel()
-	})
-	connector.SetupEpoll(func(e error) {
-		l.Error("epoll OnWaitError", e)
-		cancel()
-	})
-	if err := wsconnector.SetupGopoolHandling(clientsServingThreads, 1, clientsServingThreads); err != nil {
-		panic(err)
-	}
-	if err := connector.SetupGopoolHandling(appsServingThreads, 1, appsServingThreads); err != nil {
-		panic(err)
-	}
+	}))
+	connector.SetupReconnection(ctx, reconnectTimeout, ((len(pfd.Keys) / 2) + 1), 2)
+	apool := dynamicworkerspool.NewPool(appsServingThreads_min, appsServingThreads_max, appsServingThread_killing_timeout)
+	connector.SetupPoolHandling(apool)
+	cpool := dynamicworkerspool.NewPool(clientsServingThreads_min, clientsServingThreads_max, clientsServingThread_killing_timeout)
+	wsconnector.SetupPoolHandling(cpool)
 
 	servStatus := newServiceStatus()
 
@@ -108,21 +110,30 @@ func main() {
 
 	ln := newListener(l.NewSubLogger("Listener"), l.NewSubLogger("Client"), servStatus, apps, clients, listenerAcceptThreads)
 
-	configurator := newConfigurator(ctx, l.NewSubLogger("Configurator"), startAppsUpdateWorker, servStatus, apps, ln, servconf.ConfiguratorAddr, thisservicename)
-	apps.configurator = configurator
-	servStatus.setOnSuspendFunc(configurator.onSuspend)
-	servStatus.setOnUnSuspendFunc(configurator.onUnSuspend)
+	conf := newConfigurator(ctx, l.NewSubLogger("Configurator"), startAppsUpdateWorker, servStatus, apps, ln, servconf.ConfiguratorAddr, thisservicename)
+	apps.configurator = conf
+	servStatus.setOnSuspendFunc(conf.onSuspend)
+	servStatus.setOnUnSuspendFunc(conf.onUnSuspend)
 
 	select {
 	case <-ctx.Done():
 		l.Info("Shutdown", "reason: context done")
 		break
-	case <-configurator.terminationByConfigurator:
+	case <-conf.terminationByConfigurator:
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
 
 	ln.close()
+
+	cpool.Close()
+	apool.Close()
+	if err = cpool.DoneWithTimeout(time.Second * 5); err != nil {
+		l.Error("Gopool", errors.New("break gopool.done clients waiting: timed out"))
+	}
+	if err = cpool.DoneWithTimeout(time.Second * 5); err != nil {
+		l.Error("Gopool", errors.New("break gopool.done (apps) waiting: timed out"))
+	}
 	logsflusher.Close()
 	<-logsflusher.Done()
 }

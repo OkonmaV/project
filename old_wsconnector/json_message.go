@@ -1,4 +1,4 @@
-package wsconnector
+package old_wsconnector
 
 import (
 	"encoding/json"

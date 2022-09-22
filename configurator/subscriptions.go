@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"errors"
-	"project/connector"
-	"project/logs/logger"
-	"project/types/configuratortypes"
-	"project/types/netprotocol"
+
 	"strconv"
 	"sync"
 
+	"project/logs/logger"
+	"project/types/configuratortypes"
+	"project/types/netprotocol"
+
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type subscriptions struct {
@@ -232,7 +234,7 @@ func (subs *subscriptions) getAllPubNames() []ServiceName {
 	defer subs.RUnlock()
 
 	pubnames := make([]ServiceName, 0, len(subs.subs_list))
-	for pubname, _ := range subs.subs_list {
+	for pubname := range subs.subs_list {
 		pubnames = append(pubnames, pubname)
 	}
 	return pubnames

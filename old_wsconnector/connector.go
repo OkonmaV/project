@@ -1,8 +1,11 @@
-package connector
+package old_wsconnector
 
 import (
 	"errors"
+	"io"
 	"net"
+
+	"github.com/gobwas/ws"
 )
 
 var ErrWeirdData error = errors.New("weird data")
@@ -12,16 +15,40 @@ var ErrNilConn error = errors.New("conn is nil")
 var ErrNilGopool error = errors.New("gopool is nil, setup gopool first")
 var ErrReadTimeout error = errors.New("read timeout")
 
-// for user's implementation
+type StatusCode int
+
+type CreateWsHandler func() WsHandler
+
+//type CreateNewMessage func() MessageReader
+
+type PoolScheduler interface {
+	Schedule(task func())
+}
+
 type MessageReader interface {
-	Read(net.Conn) error
+	ReadWS(r io.Reader, h ws.Header) error
 }
 
 // for user's implementation
-type MessageHandler interface {
+type WsHandler interface {
 	NewMessage() MessageReader
+
+	//UpgradeReqChecker
 	Handle(message interface{}) error
 	HandleClose(error)
+}
+
+// for user's implementation
+// for ckecking headers while reading request in ws.Upgrade()
+type UpgradeReqChecker interface {
+	// 200 = no err
+	CheckPath(path []byte) StatusCode
+	// 200 = no err
+	CheckHost(host []byte) StatusCode
+	// 200 = no err
+	CheckHeader(key []byte, value []byte) StatusCode
+	// 200 = no err
+	CheckBeforeUpgrade() StatusCode
 }
 
 type Conn interface {
@@ -32,16 +59,9 @@ type Conn interface {
 	Sender
 }
 
-type ReConn interface {
-	Conn
-	ReconnectedItself(net.Conn) error
-	IsReconnectStopped() bool
-	CancelReconnect()
-}
-
 // implemented by connector
 type Sender interface {
-	Send([]byte) error
+	Send(payload []byte) error
 }
 
 // implemented by connector

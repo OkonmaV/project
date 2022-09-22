@@ -1,10 +1,9 @@
-package wsconnector
+package old_wsconnector
 
 import (
 	"context"
 	"errors"
 	"net"
-	"project/test/gopool"
 	"sync"
 	"time"
 
@@ -22,45 +21,7 @@ type EpollWSConnector struct {
 	isclosed bool
 }
 
-var (
-	poller   netpoll.Poller
-	pool     *gopool.Pool
-	thisSide ws.State = ws.StateServerSide
-	//otherSide ws.State = ws.StateClientSide
-)
-
-type EpollErrorHandler func(error) // must start exiting the program
-
 var DefaultUpgrader ws.Upgrader
-
-// user's handlers will be called in goroutines
-func SetupGopoolHandling(poolsize, queuesize, prespawned int) error {
-	if pool != nil {
-		return errors.New("pool is already setup")
-	}
-	pool = gopool.NewPool(poolsize, queuesize, prespawned)
-	return nil
-}
-
-func SetupEpoll(errhandler EpollErrorHandler) error {
-	var err error
-	if poller != nil {
-		return errors.New("epoll is already setted up")
-	}
-	if errhandler == nil {
-		errhandler = func(e error) { panic(e) }
-	}
-	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: errhandler}); err != nil {
-		return err
-	}
-	return nil
-}
-
-// default: thisEndpoint = serverside
-func SetupConnectionsEndpointSide(thisEndpoint ws.State) {
-	thisSide = thisEndpoint
-	//otherSide = otherEndpoint
-}
 
 func createUpgrader(v UpgradeReqChecker) ws.Upgrader {
 	return ws.Upgrader{

@@ -60,12 +60,9 @@ func (m *ClientMessage) Read(conn net.Conn) error {
 
 	head := make([]byte, Client_message_head_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err := conn.Read(head)
+	_, err := io.ReadFull(conn, head)
 	if err != nil {
 		return err
-	}
-	if n != Client_message_head_len {
-		return errors.New("readed less head bytes than expected")
 	}
 
 	headers_len := byteOrder.Uint16(head[12:14])
@@ -73,22 +70,16 @@ func (m *ClientMessage) Read(conn net.Conn) error {
 
 	m.Headers = make([]byte, headers_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err = conn.Read(m.Headers)
+	_, err = io.ReadFull(conn, m.Headers) //conn.Read(m.Headers)
 	if err != nil {
 		return err
-	}
-	if n != int(headers_len) {
-		return errors.New("readed less headers bytes than expected")
 	}
 
 	m.Body = make([]byte, body_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err = conn.Read(m.Body)
+	_, err = io.ReadFull(conn, m.Body)
 	if err != nil {
 		return err
-	}
-	if n != int(body_len) {
-		return errors.New("readed less body bytes than expected")
 	}
 
 	m.Type = MessageType(head[0])
@@ -98,7 +89,37 @@ func (m *ClientMessage) Read(conn net.Conn) error {
 	return nil
 }
 
-func (m *ClientMessage) Encode() ([]byte, error) {
+func (m *ClientMessage) ReadWithoutDeadline(conn net.Conn) error {
+
+	head := make([]byte, Client_message_head_len)
+	_, err := io.ReadFull(conn, head)
+	if err != nil {
+		return err
+	}
+
+	headers_len := byteOrder.Uint16(head[12:14])
+	body_len := byteOrder.Uint32(head[14:18])
+
+	m.Headers = make([]byte, headers_len)
+	_, err = io.ReadFull(conn, m.Headers) //conn.Read(m.Headers)
+	if err != nil {
+		return err
+	}
+
+	m.Body = make([]byte, body_len)
+	_, err = io.ReadFull(conn, m.Body)
+	if err != nil {
+		return err
+	}
+
+	m.Type = MessageType(head[0])
+	m.ApplicationID = AppID(byteOrder.Uint16(head[2:4]))
+	m.Timestamp = int64(byteOrder.Uint64(head[4:12])) // нужно ли читать таймстемп присланный клиентом???
+
+	return nil
+}
+
+func (m *ClientMessage) Byte() ([]byte, error) {
 	return EncodeClientMessage(m.Type, m.ApplicationID, m.Timestamp, m.Headers, m.Body)
 }
 

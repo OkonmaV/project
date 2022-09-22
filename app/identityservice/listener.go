@@ -4,11 +4,12 @@ import (
 	"context"
 	"net"
 	"os"
-	"project/connector"
+	"project/app/protocol"
 	"project/logs/logger"
 	"sync"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type listener struct {
@@ -102,7 +103,7 @@ func (listener *listener) acceptWorker() {
 		}
 		cni := &conninfo{l: listener.connections_l.NewSubLogger(suckutils.ConcatTwo("conn-", suckutils.Itoa(uint32(cur_connid))))}
 
-		con, err := connector.NewEpollConnector(conn, cni)
+		con, err := connector.NewEpollConnector[protocol.AppMessage](conn, cni)
 		if err != nil {
 			listener.l.Error("acceptWorker/NewEpollConnector", err)
 			conn.Close()
@@ -156,11 +157,11 @@ func (listener *listener) close() {
 	listener.l.Debug("listener", "succesfully closed")
 }
 
-func (listener *listener) onAir() bool {
-	listener.RLock()
-	defer listener.RUnlock()
-	return listener.listener != nil
-}
+// func (listener *listener) onAir() bool {
+// 	listener.RLock()
+// 	defer listener.RUnlock()
+// 	return listener.listener != nil
+// }
 
 func (listener *listener) Addr() (string, string) {
 	if listener == nil {

@@ -10,34 +10,39 @@ import (
 	"github.com/mailru/easygo/netpoll"
 )
 
+var ErrWeirdData error = errors.New("weird data")
+var ErrReadTimeout error = errors.New("read timeout")
+var ErrAuthorizationDenied error = errors.New("authorization denied")
+
+// for user's implementation
+type PoolScheduler interface {
+	Schedule(task func())
+	//ScheduleWithTimeout(task func(), timeout time.Duration) error
+}
+
+// for user's implementation
+type ListenerHandler interface {
+	HandleNewConn(net.Conn)
+	AcceptError(error) // all errs during accept and so on, e.g. auth denied, accept errs
+}
+
+// implemented by listener
+type Informer interface {
+	RemoteAddr() net.Addr
+	IsClosed() bool
+}
+
+// implemented by listener
+type Closer interface {
+	Close(error)
+}
+
 type EpollListener struct {
 	listener        net.Listener
 	desc            *netpoll.Desc
 	listenerhandler ListenerHandler
 	mux             sync.RWMutex
 	isclosed        bool
-}
-
-var poller netpoll.Poller
-var errhandler EpollErrorHandler
-
-type EpollErrorHandler func(error) // must start exiting the program
-
-func defaulterrhandler(err error) {
-	if errhandler == nil {
-		panic(err.Error())
-	}
-}
-
-func init() {
-	var err error
-	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: defaulterrhandler}); err != nil {
-		panic(err.Error())
-	}
-}
-
-func SetupEpollErrorHandler(errorhandler EpollErrorHandler) {
-	errhandler = errorhandler
 }
 
 func EpollListen(network, address string, listenerhandler ListenerHandler) (*EpollListener, error) {
@@ -89,15 +94,20 @@ func (listener *EpollListener) ClearFromCache() {
 func (listener *EpollListener) handle(e netpoll.Event) {
 	defer poller.Resume(listener.desc)
 
-	listener.mux.RLock()
-	defer listener.mux.RUnlock()
-
 	conn, err := listener.listener.Accept()
 	if err != nil {
 		listener.listenerhandler.AcceptError(err)
+		listener.mux.RUnlock()
 		return
 	}
+	listener.mux.RUnlock()
 
+	if pool != nil {
+		pool.Schedule(func() {
+			listener.listenerhandler.HandleNewConn(conn)
+		})
+		return
+	}
 	listener.listenerhandler.HandleNewConn(conn)
 }
 

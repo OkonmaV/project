@@ -4,11 +4,13 @@ import (
 	"context"
 	"net"
 	"os"
-	"project/connector"
+
+	"project/app/protocol"
 	"project/logs/logger"
 	"sync"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type listener struct {
@@ -103,7 +105,7 @@ func (listener *listener) acceptWorker() {
 			continue
 		}
 
-		con, err := connector.NewEpollConnector(conn, listener.appserv)
+		con, err := connector.NewEpollConnector[protocol.AppMessage](conn, listener.appserv)
 		if err != nil {
 			listener.l.Error("acceptWorker/NewEpollConnector", err)
 			conn.Close()

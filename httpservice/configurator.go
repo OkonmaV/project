@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
-	"project/connector"
+
 	"project/logs/logger"
 	"project/types/configuratortypes"
 	"project/types/netprotocol"
@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type configurator struct {

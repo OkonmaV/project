@@ -4,17 +4,17 @@ import (
 	"context"
 	"errors"
 	"net"
-	"project/connector"
-	"project/logs/logger"
-	"project/types/configuratortypes"
-
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"project/logs/logger"
+	"project/types/configuratortypes"
+
 	"github.com/big-larry/suckhttp"
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 // TODO: рассмотреть идею о white и grey листах паблишеров

@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"project/app/protocol"
-	"project/connector"
 	"project/logs/logger"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type Sender interface {
@@ -15,7 +15,7 @@ type Sender interface {
 }
 
 type conninfo struct {
-	conn *connector.EpollConnector
+	conn *connector.EpollConnector[protocol.AppMessage, *protocol.AppMessage]
 	l    logger.Logger
 }
 
@@ -43,12 +43,7 @@ type tokenreq_hdrs struct {
 	} `json:"params"`
 }
 
-func (*conninfo) NewMessage() connector.MessageReader {
-	return &protocol.AppMessage{}
-}
-
-func (ci *conninfo) Handle(msg interface{}) (err error) {
-	message := msg.(*protocol.AppMessage)
+func (ci *conninfo) Handle(message *protocol.AppMessage) (err error) {
 
 	response := &protocol.AppMessage{Type: protocol.TypeOAuthData, ConnectionUID: message.ConnectionUID, Timestamp: message.Timestamp}
 	var hdrsPart oauth_hdrspart
@@ -138,10 +133,10 @@ bad_req:
 	response.Type = protocol.TypeError
 	response.Body = []byte{protocol.ErrCodeBadRequest.Byte()}
 sending:
-	resp_encoded, err := response.Encode()
+	resp_encoded, err := response.Byte()
 	if err != nil {
 		ci.l.Error("Encode response", err)
-		resp_encoded, _ = (&protocol.AppMessage{Type: protocol.TypeError, Body: []byte{protocol.ErrCodeInternalServerError.Byte()}}).Encode()
+		resp_encoded, _ = (&protocol.AppMessage{Type: protocol.TypeError, Body: []byte{protocol.ErrCodeInternalServerError.Byte()}}).Byte()
 	}
 	if err = ci.conn.Send(resp_encoded); err != nil {
 		ci.l.Error("Send", err)

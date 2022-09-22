@@ -1,54 +1,30 @@
-package connector
+package old_connector
 
 import (
 	"errors"
 	"net"
-	"project/test/gopool"
 	"sync"
 
 	"github.com/mailru/easygo/netpoll"
 )
 
-type EpollConnector struct {
+type EpollConnector[Tm any, PTm interface {
+	Readable
+	*Tm
+}, Th MessageHandler[PTm]] struct {
 	conn       net.Conn
 	desc       *netpoll.Desc
-	msghandler MessageHandler
+	msghandler Th
 	mux        sync.RWMutex
 	isclosed   bool
 }
 
-var (
-	poller netpoll.Poller
-	pool   *gopool.Pool
-)
+func NewEpollConnector[Tmessage any,
+	PTmessage interface {
+		Readable
+		*Tmessage
+	}, Thandler MessageHandler[PTmessage]](conn net.Conn, messagehandler Thandler) (*EpollConnector[Tmessage, PTmessage, Thandler], error) {
 
-type EpollErrorHandler func(error) // must start exiting the program
-
-// епул однопоточен, т.е. пока не обслужит первый ивент, второй ивент будет ждать
-// user's handlers will be called in goroutines
-func SetupGopoolHandling(poolsize, queuesize, prespawned int) error {
-	if pool != nil {
-		return errors.New("pool is already setup")
-	}
-	pool = gopool.NewPool(poolsize, queuesize, prespawned)
-	return nil
-}
-
-func SetupEpoll(errhandler EpollErrorHandler) error {
-	var err error
-	if poller != nil {
-		return errors.New("epoll is already setup")
-	}
-	if errhandler == nil {
-		errhandler = func(e error) { panic(e) }
-	}
-	if poller, err = netpoll.New(&netpoll.Config{OnWaitError: errhandler}); err != nil {
-		return err
-	}
-	return nil
-}
-
-func NewEpollConnector(conn net.Conn, messagehandler MessageHandler) (*EpollConnector, error) {
 	if conn == nil {
 		return nil, ErrNilConn
 	}
@@ -58,25 +34,25 @@ func NewEpollConnector(conn net.Conn, messagehandler MessageHandler) (*EpollConn
 		return nil, err
 	}
 
-	connector := &EpollConnector{conn: conn, desc: desc, msghandler: messagehandler}
+	connector := &EpollConnector[Tmessage, PTmessage, Thandler]{conn: conn, desc: desc, msghandler: messagehandler}
 
 	return connector, nil
 }
 
-func (connector *EpollConnector) StartServing() error {
+func (connector *EpollConnector[_, _, _]) StartServing() error {
 	return poller.Start(connector.desc, connector.handle)
 }
 
 // MUST be called after StartServing() failure to prevent memory leak!
 // (если мы  ловим ошибку в StartServing(), то мы забиваем на созданный коннектор, а его нужно закрыть, чтоб память не засирать)
-func (connector *EpollConnector) ClearFromCache() {
+func (connector *EpollConnector[_, _, _]) ClearFromCache() {
 	connector.mux.Lock()
 	defer connector.mux.Unlock()
 
 	connector.stopserving()
 }
 
-func (connector *EpollConnector) handle(e netpoll.Event) {
+func (connector *EpollConnector[Tm, PTm, Th]) handle(e netpoll.Event) {
 	defer poller.Resume(connector.desc)
 
 	if e&(netpoll.EventReadHup|netpoll.EventHup) != 0 {
@@ -92,7 +68,7 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 	}
 
 	var err error
-	message := connector.msghandler.NewMessage()
+	message := PTm(new(Tm))
 	if err = message.Read(connector.conn); err != nil {
 		connector.mux.Unlock() //
 		connector.Close(err)
@@ -114,7 +90,7 @@ func (connector *EpollConnector) handle(e netpoll.Event) {
 	}
 }
 
-func (connector *EpollConnector) Send(message []byte) error {
+func (connector *EpollConnector[_, _, _]) Send(message []byte) error {
 
 	//connector.conn.SetWriteDeadline(time.Now().Add(time.Second))
 	connector.mux.Lock()
@@ -125,11 +101,11 @@ func (connector *EpollConnector) Send(message []byte) error {
 
 	defer connector.mux.Unlock()
 	_, err := connector.conn.Write(message)
-	//fmt.Println("CONNECTOR MESSAGE SEND: ", message, " LEN: ", len(message)) ////////////////////////////////////
+
 	return err
 }
 
-func (connector *EpollConnector) Close(reason error) {
+func (connector *EpollConnector[_, _, _]) Close(reason error) {
 	connector.mux.Lock()
 	defer connector.mux.Unlock()
 
@@ -140,7 +116,7 @@ func (connector *EpollConnector) Close(reason error) {
 	connector.msghandler.HandleClose(reason)
 }
 
-func (connector *EpollConnector) stopserving() error {
+func (connector *EpollConnector[_, _, _]) stopserving() error {
 	connector.isclosed = true
 	poller.Stop(connector.desc)
 	connector.desc.Close()
@@ -148,12 +124,12 @@ func (connector *EpollConnector) stopserving() error {
 }
 
 // call in HandleClose() will cause deadlock
-func (connector *EpollConnector) IsClosed() bool {
+func (connector *EpollConnector[_, _, _]) IsClosed() bool {
 	connector.mux.RLock()
 	defer connector.mux.RUnlock()
 	return connector.isclosed
 }
 
-func (connector *EpollConnector) RemoteAddr() net.Addr {
+func (connector *EpollConnector[_, _, _]) RemoteAddr() net.Addr {
 	return connector.conn.RemoteAddr()
 }

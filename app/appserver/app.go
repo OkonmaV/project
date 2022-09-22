@@ -5,16 +5,16 @@ import (
 
 	"net"
 	"project/app/protocol"
-	"project/connector"
 	"project/logs/logger"
 	"sync"
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 )
 
 type app struct {
-	conns       []*connector.EpollReConnector
+	conns       []*connector.EpollReConnector[protocol.AppServerMessage, *protocol.AppServerMessage]
 	appid       protocol.AppID
 	servicename ServiceName
 	clients     *clientsConnsList
@@ -63,14 +63,14 @@ func (a *app) SendToAll(message []byte) {
 }
 
 func (a *app) connect(netw, addr string) {
-	var recon *connector.EpollReConnector
+	var recon *connector.EpollReConnector[protocol.AppServerMessage, *protocol.AppServerMessage]
 
 	conn, err := net.DialTimeout(netw, addr, time.Second)
 	if err != nil {
 		a.l.Error("Dial", errors.New(suckutils.ConcatTwo("err catched, reconnect inited, err: ", err.Error())))
 		goto conn_failed
 	}
-	if recon, err = connector.NewEpollReConnector(conn, a, nil, a.doAfterReconnect); err != nil {
+	if recon, err = connector.NewEpollReConnector[protocol.AppServerMessage](conn, a, nil, a.doAfterReconnect); err != nil {
 		a.l.Error("NewEpollReConnector", errors.New(suckutils.ConcatTwo("err catched, reconnect inited, err: ", err.Error())))
 		goto conn_failed
 	}
@@ -82,7 +82,7 @@ func (a *app) connect(netw, addr string) {
 	goto conn_succeeded
 
 conn_failed:
-	recon = connector.DialWithReconnect(netw, addr, a, nil, a.doAfterReconnect)
+	recon = connector.AddToReconnectionQueue[protocol.AppServerMessage](netw, addr, a, nil, a.doAfterReconnect)
 
 conn_succeeded:
 	a.l.Info("Conn", suckutils.ConcatTwo("Connected to ", addr))
@@ -95,29 +95,24 @@ func (a *app) doAfterReconnect() error {
 	return nil
 }
 
-func (a *app) NewMessage() connector.MessageReader {
-	return &protocol.AppServerMessage{}
-}
+func (a *app) Handle(message *protocol.AppServerMessage) error {
 
-func (a *app) Handle(message interface{}) error {
-
-	appservmessage := message.(*protocol.AppServerMessage)
-	a.l.Debug("Handle", suckutils.ConcatTwo("recieved message, messagetype: ", appservmessage.Type.String()))
-	cl, err := a.clients.get(appservmessage.ConnectionUID, appservmessage.Generation)
+	a.l.Debug("Handle", suckutils.ConcatTwo("recieved message, messagetype: ", message.Type.String()))
+	cl, err := a.clients.get(message.ConnectionUID, message.Generation)
 	if err != nil {
 		// TODO: send error?
 		a.l.Error("Handle/GetClient", err)
-		msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: appservmessage.ConnectionUID, Generation: appservmessage.Generation, Timestamp: time.Now().UnixNano(), RawMessageData: make([]byte, 6)}).EncodeToAppMessage()
+		msg, _ := (&protocol.AppServerMessage{Type: protocol.TypeDisconnection, ConnectionUID: message.ConnectionUID, Generation: message.Generation, Timestamp: time.Now().UnixNano(), RawMessageData: make([]byte, 6)}).EncodeToAppMessage()
 		a.SendToAll(msg)
 		return nil
 	}
 
-	if appservmessage.Timestamp == 0 {
-		appservmessage.Timestamp = time.Now().UnixNano() // TODO: Придумать поведение на случай сообщения без таймстампа
+	if message.Timestamp == 0 {
+		message.Timestamp = time.Now().UnixNano() // TODO: Придумать поведение на случай сообщения без таймстампа
 	}
-	appservmessage.ApplicationID = a.appid
+	message.ApplicationID = a.appid
 
-	if err = cl.send(appservmessage.EncodeToClientMessage()); err != nil {
+	if err = cl.send(message.EncodeToClientMessage()); err != nil {
 		a.l.Error("Handle/Send", err)
 		return nil
 	}

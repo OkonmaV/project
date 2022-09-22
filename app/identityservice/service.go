@@ -1,16 +1,19 @@
 package identityserver
 
 import (
-	"confdecoder"
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"project/app/protocol"
-	"project/connector"
 	"project/logs/encode"
 	"project/logs/logger"
 	"syscall"
 	"time"
+
+	"github.com/okonma-violet/confdecoder"
+	"github.com/okonma-violet/connector"
+	"github.com/okonma-violet/dynamicworkerspool"
 )
 
 type Servicier interface {
@@ -44,20 +47,11 @@ type file_config struct {
 type ServiceName string
 
 const pubscheckTicktime time.Duration = time.Second * 5
+const reconnection_check_ticktime time.Duration = time.Second * 5
 
 // TODO: придумать шото для неторчащих наружу сервисов
 
-func InitNewService(servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
-	initNewService(true, servicename, config, handlethreads, publishers_names...)
-}
-func InitNewServiceWithoutConfigurator(servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
-	if len(publishers_names) > 0 {
-		panic("cant use publishers without configurator")
-	}
-	initNewService(false, servicename, config, handlethreads, publishers_names...)
-}
-
-func initNewService(configurator_enabled bool, servicename ServiceName, config Servicier, handlethreads int, publishers_names ...ServiceName) {
+func InitNewService(servicename ServiceName, config Servicier, min_handlethreads, max_handlingthreads int, threadkilling_timeout time.Duration, publishers_names ...ServiceName) {
 	servconf := &file_config{}
 	pfd, err := confdecoder.ParseFile("config.txt")
 	if err != nil {
@@ -67,8 +61,8 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 		panic("decoding config.txt err: " + err.Error())
 	}
 
-	if configurator_enabled && servconf.ConfiguratorAddr == "" {
-		panic("ConfiguratorAddr in config.toml not specified")
+	if servconf.ConfiguratorAddr == "" {
+		panic("ConfiguratorAddr in config.txt not specified")
 	}
 
 	ctx, cancel := createContextWithInterruptSignal()
@@ -82,9 +76,8 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 		l.Error("epoll OnWaitError", e)
 		cancel()
 	})
-	if err := connector.SetupGopoolHandling(handlethreads, 1, handlethreads); err != nil {
-		panic(err)
-	}
+	pool := dynamicworkerspool.NewPool(min_handlethreads, max_handlingthreads, threadkilling_timeout)
+	connector.SetupPoolHandling(pool)
 
 	var pubs *publishers
 
@@ -103,36 +96,34 @@ func initNewService(configurator_enabled bool, servicename ServiceName, config S
 
 	ln := newListener(ctx, l.NewSubLogger("Listener"), l, handler, servStatus)
 
-	var configurator *configurator
+	connector.SetupReconnection(ctx, reconnection_check_ticktime, (len(publishers_names)/2)+1, 1)
 
-	if configurator_enabled {
-		configurator = newConfigurator(ctx, l.NewSubLogger("Configurator"), servStatus, pubs, ln, servconf.ConfiguratorAddr, servicename, time.Second*5)
-		if pubs != nil {
-			pubs.configurator = configurator
-		}
-	} else {
-		if configurator = newFakeConfigurator(ctx, l.NewSubLogger("FakeConfigurator"), servStatus, ln); configurator == nil {
-			cancel()
-		}
+	conf := newConfigurator(ctx, l.NewSubLogger("Configurator"), servStatus, pubs, ln, servconf.ConfiguratorAddr, servicename)
+	if pubs != nil {
+		pubs.configurator = conf
 	}
-
 	//ln.configurator = configurator
-	servStatus.setOnSuspendFunc(configurator.onSuspend)
-	servStatus.setOnUnSuspendFunc(configurator.onUnSuspend)
+	servStatus.setOnSuspendFunc(conf.onSuspend)
+	servStatus.setOnUnSuspendFunc(conf.onUnSuspend)
 
 	select {
 	case <-ctx.Done():
 		l.Info("Shutdown", "reason: context done")
 		break
-	case <-configurator.terminationByConfigurator:
+	case <-conf.terminationByConfigurator:
 		l.Info("Shutdown", "reason: termination by configurator")
 		break
 	}
+
 	ln.close()
 	if closehandler, ok := handler.(closer); ok {
 		if err = closehandler.Close(); err != nil {
 			l.Error("CloseFunc", err)
 		}
+	}
+	pool.Close()
+	if err = pool.DoneWithTimeout(time.Second * 5); err != nil {
+		l.Error("Gopool", errors.New("break gopool.done waiting: timed out"))
 	}
 	logsflusher.Close()
 	<-logsflusher.Done()

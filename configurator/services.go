@@ -5,15 +5,17 @@ import (
 	"errors"
 	"net"
 	"os"
-	"project/connector"
-	"project/logs/logger"
-	"project/types/configuratortypes"
+
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"project/logs/logger"
+	"project/types/configuratortypes"
+
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/connector"
 	"github.com/segmentio/fasthash/fnv1a"
 )
 
@@ -226,7 +228,7 @@ func (state *service_state) initNewConnection(conn net.Conn, isLocalhosted bool,
 					goto failure
 				}
 			}
-			if con, err = connector.NewEpollConnector(conn, state.connections[i]); err != nil {
+			if con, err = connector.NewEpollConnector[connector.BasicMessage](conn, state.connections[i]); err != nil {
 				goto failure
 			}
 			goto success

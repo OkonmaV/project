@@ -3,13 +3,15 @@ package main
 import (
 	"net"
 	"os"
+	"project/app/protocol"
 	"project/logs/logger"
-	"project/wsconnector"
+
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/big-larry/suckutils"
+	"github.com/okonma-violet/wsconnector"
 )
 
 type listener struct {
@@ -152,7 +154,7 @@ func (listener *listener) acceptHandlingWorker() {
 		newclient.apps = listener.apps
 		newclient.l = listener.clients_l.NewSubLogger(suckutils.ConcatTwo("ConnUID:", strconv.Itoa(int(newclient.connuid))), suckutils.ConcatTwo("Gen:", strconv.Itoa(int(newclient.curr_gen))))
 		newclient.closehandler = func() error { return listener.clients.remove(newclient.connuid) }
-		connector, err := wsconnector.NewWSConnectorWithUpgrade(conn, newclient)
+		connector, err := wsconnector.NewWSConnector[protocol.AppServerMessage](conn, newclient)
 		if err != nil {
 			listener.l.Error("acceptHandlingWorker/NewWSConnector", err)
 			listener.clients.remove(newclient.connuid)

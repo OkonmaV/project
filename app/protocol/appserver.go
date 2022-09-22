@@ -51,12 +51,9 @@ func (m *AppServerMessage) Read(conn net.Conn) error {
 
 	head := make([]byte, App_message_head_len)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err := conn.Read(head)
+	_, err := io.ReadFull(conn, head)
 	if err != nil {
 		return err
-	}
-	if n != App_message_head_len {
-		return errors.New("readed less head bytes than expected")
 	}
 
 	headers_len := byteOrder.Uint16(head[14:16])
@@ -64,12 +61,36 @@ func (m *AppServerMessage) Read(conn net.Conn) error {
 
 	m.RawMessageData = make([]byte, uint32(headers_len)+body_len+6)
 	conn.SetReadDeadline(time.Now().Add(time.Second * 5))
-	n, err = conn.Read(m.RawMessageData[6:])
+	_, err = io.ReadFull(conn, m.RawMessageData[6:])
 	if err != nil {
 		return err
 	}
-	if n != len(m.RawMessageData)-6 {
-		return errors.New("readed less headers & body bytes than expected")
+	copy(m.RawMessageData[0:2], head[14:16]) // headers len
+	copy(m.RawMessageData[2:6], head[16:20]) // body len
+
+	m.Type = MessageType(head[0])
+	m.ConnectionUID = ConnUID(byteOrder.Uint32(head[2:6]) & 16777215)
+	m.Generation = head[2]
+	m.Timestamp = int64(byteOrder.Uint64(head[6:14]))
+
+	return nil
+}
+
+func (m *AppServerMessage) ReadWithoutDeadline(conn net.Conn) error {
+
+	head := make([]byte, App_message_head_len)
+	_, err := io.ReadFull(conn, head)
+	if err != nil {
+		return err
+	}
+
+	headers_len := byteOrder.Uint16(head[14:16])
+	body_len := byteOrder.Uint32(head[16:20])
+
+	m.RawMessageData = make([]byte, uint32(headers_len)+body_len+6)
+	_, err = io.ReadFull(conn, m.RawMessageData[6:])
+	if err != nil {
+		return err
 	}
 	copy(m.RawMessageData[0:2], head[14:16]) // headers len
 	copy(m.RawMessageData[2:6], head[16:20]) // body len
