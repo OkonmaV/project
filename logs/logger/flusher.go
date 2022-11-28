@@ -1,8 +1,9 @@
 package logger
 
 import (
-	"project/logs/encode"
 	"time"
+
+	"github.com/okonma-violet/project/logs/encode"
 )
 
 type Flusher struct {

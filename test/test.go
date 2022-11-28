@@ -1,14 +1,20 @@
 package main
 
 import (
+	"encoding/csv"
 	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"reflect"
+	"regexp"
+	"strings"
 	"time"
 
 	"strconv"
+
+	"github.com/okonma-violet/confdecoder"
 )
 
 type helloer interface {
@@ -56,7 +62,229 @@ func NewEpollConnector[Tmessage any,
 	fmt.Println(messagehandler)
 }
 
+var articulnormrx = regexp.MustCompile("[^а-яa-z0-9]")
+var str = "{kangaroo,кангару}"
+
+func normstring(s string) string {
+	return articulnormrx.ReplaceAllString(strings.ToLower(s), "")
+}
+func readNGKarticules(filepath string) map[string]string {
+	filedata, err := os.ReadFile(filepath)
+	if err != nil {
+		panic(err)
+	}
+	rx := regexp.MustCompile(`[0-9A-Za-z-]+`)
+	ngkArticules := make(map[string]string)
+	rows := strings.Split(string(filedata), "\n")
+	for i := 0; i < len(rows); i++ {
+		if arts := rx.FindAllString(rows[i], -1); len(arts) < 2 {
+			continue
+		} else {
+			if _, ok := ngkArticules[arts[0]]; ok {
+				println("doubling of articul in ngk.txt - " + arts[0])
+			} else {
+				ngkArticules[arts[0]] = arts[1]
+			}
+			if _, ok := ngkArticules[arts[1]]; ok {
+				println("doubling of articul in ngk.txt - " + arts[1])
+			} else {
+				ngkArticules[arts[1]] = arts[0]
+			}
+		}
+	}
+	return ngkArticules
+}
+
+// substr must be lowered
+func countMaxMatchLength(str string, substr []string) (count int) {
+	var subcnt int
+	subrs := make([][]rune, len(substr))
+	for i := 0; i < len(substr); i++ {
+		subrs[i] = []rune(substr[i])
+	}
+	r := []rune(strings.ToLower(str))
+	for i, maxsubcnt := 0, 0; i < len(subrs); i, maxsubcnt = i+1, 0 {
+
+		//fmt.Println("\n$$$ word", string(subrs[i]))
+		//fmt.Println("--- subcnt-- =", 0, ",was", subcnt, ",maxsubcnt =", maxsubcnt)
+		subcnt = 0
+		for k, j := 0, 0; k < len(r) && j < len(subrs[i]); k++ {
+			//fmt.Println("+++ compare ", string(r[:k])+"["+string(r[k])+"]"+string(r[k+1:]), "with", string(subrs[i][:j])+"["+string(subrs[i][j])+"]"+string(subrs[i][j+1:]))
+			if r[k] != subrs[i][j] {
+				if subcnt > maxsubcnt {
+					//fmt.Println("=== maxsubcnt now", subcnt, ",was", maxsubcnt)
+					maxsubcnt = subcnt
+				}
+				subcnt = 0
+				j = 0
+			} else {
+				subcnt++
+				j++
+				//fmt.Println("--- subcnt++ =", subcnt)
+			}
+		}
+		if subcnt > maxsubcnt {
+			//fmt.Println("=+= maxsubcnt now", subcnt, ",was", maxsubcnt)
+			maxsubcnt = subcnt
+		}
+		//fmt.Println("--- maxsubcnt =", maxsubcnt)
+		if maxsubcnt > 2 {
+			//fmt.Println("### count now", count+maxsubcnt, ",was", count)
+			count += maxsubcnt
+		}
+	}
+	//fmt.Println("total count", count, subcnt, string(r), substr)
+	return
+}
+func readCSV(path string) ([][]string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	data, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+type config struct {
+	Data         *Tts
+	DataIntSlice []string
+	//Num  int
+}
+type Tts struct {
+	I int
+	G string
+	K []int
+}
+
+// [^-]\b\d{1,5}\b|
 func main() {
+
+	//s := &config{Data: &Tts{}}
+	s := &config{}
+	//pv := reflect.ValueOf(s)
+
+	//sv := pv.Elem()
+	//b := "stgh"
+	//bb := reflect.ValueOf(b)
+	//fv := sv.Field(0)
+	//fmt.Println(s)
+	//ssv := reflect.ValueOf(ss).Elem().Field(0)
+	//ssv.Set(reflect.New(ssv.Type().Elem()))
+
+	//ssv.Set(reflect.New(ssv.Type()))
+	d := ";"
+	vv := reflect.ValueOf([]string{"1", "2", "3", "4"})
+
+	var dd int = 59
+
+	for i := 0; i < 3; i++ {
+		println("read")
+	}
+	p := "[1,2]"
+	pp := strings.Trim(p, "[]")
+	ppp := strings.Split(pp, ",")
+	fmt.Println(ppp)
+
+	fmt.Println(vv.Type().Elem().Kind(), rune(d[0]), string(rune(dd)))
+	//fmt.Println(ssv.Kind(), bb.Kind(), vv.Index(2))
+
+	pfd, err := confdecoder.ParseFile("config.txt")
+	if err != nil {
+		panic(err)
+	}
+	pfd.NestedStructsMode = confdecoder.NestedStructsModeTwo
+
+	err = pfd.DecodeTo(s)
+
+	fmt.Println(s.Data.I, s.Data.G, s.Data.K, err)
+
+	return
+	//countMaxMatchLength("Стойка стаб Стойк стабилизатора", []string{"стабилизатор", "стойк"})
+	g := make(map[int][]int)
+	g[1] = append(g[1])
+	fmt.Println(cap(g[1]))
+	return
+	inds := make([]int, 0, 3)
+	rxs := []*regexp.Regexp{regexp.MustCompile(`\bпроизводитель\b|\bбренд\b`), regexp.MustCompile(`артикул`), regexp.MustCompile(`наименование|название|имя`)}
+
+	rows, err := readCSV("example.csv")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(rows[0])
+
+	for i := 0; i < len(rxs); i++ {
+		for k := 0; k < len(rows[0]); k++ {
+			if rxs[i].MatchString(strings.ToLower(rows[0][k])) {
+				inds = append(inds, k)
+				println(rxs[i].String(), strconv.Itoa(k))
+				break
+			}
+
+		}
+	}
+
+	for i := 1; i < len(rows); i++ {
+		brand_normname := strings.ToLower(rows[i][inds[0]])
+		art := rows[i][inds[1]]
+		name := rows[i][inds[2]]
+
+		if len(inds) != 3 {
+			panic("not found one of regs")
+		}
+
+		println("\nbrand ", brand_normname)
+		println("art ", art)
+		println("name ", name)
+	}
+	return
+
+	ngkarts := readNGKarticules("/home/okonma/goworkspace/src/github.com/okonma-violet/spec/refs/ngk.txt")
+
+	ii := 0
+	for a1, a2 := range ngkarts {
+		if ii < 5 {
+			fmt.Println(ngkarts[a1], ngkarts[a2])
+		} else {
+			fmt.Println(ngkarts["BPR7EIX"], ngkarts["4055"])
+			break
+		}
+		ii++
+	}
+
+	return
+	rx := regexp.MustCompile(`[0-9A-Za-z-]+`)
+	res := rx.FindAllString("  2097  BCPR5EP-11  ", -1)
+	fmt.Println(res, len(res))
+
+	m, _ := regexp.MatchString("производитель|бренд", "производитель")
+	println(m)
+	return
+	f, err := os.Open("example.csv")
+	if err != nil {
+		panic(err)
+	}
+	data, err := csv.NewReader(f).ReadAll()
+	if err != nil {
+		panic(err)
+	}
+	for i, e := range data[0] {
+		fmt.Println(i, e)
+	}
+	for i, e := range data[1] {
+		fmt.Println(i, e)
+	}
+
+	f.Close()
+	a := []int{1, 2, 3, 4, 5}
+	fmt.Println(cap(a))
+	i := 2
+	a = a[:i+copy(a[i:], a[i+1:])]
+	fmt.Println(cap(a))
+	return
 	var conn1 net.Conn
 	go func() {
 		println("--- grt started")

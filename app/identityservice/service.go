@@ -16,7 +16,7 @@ import (
 	"github.com/okonma-violet/dynamicworkerspool"
 )
 
-type Servicier interface {
+type HandlerCreater interface {
 	CreateHandler(ctx context.Context, l logger.Logger, pubs_getter Publishers_getter) (Handler, error)
 }
 
@@ -51,7 +51,7 @@ const reconnection_check_ticktime time.Duration = time.Second * 5
 
 // TODO: придумать шото для неторчащих наружу сервисов
 
-func InitNewService(servicename ServiceName, config Servicier, min_handlethreads, max_handlingthreads int, threadkilling_timeout time.Duration, publishers_names ...ServiceName) {
+func InitNewService(servicename ServiceName, config HandlerCreater, min_handlethreads, max_handlingthreads int, threadkilling_timeout time.Duration, publishers_names ...ServiceName) {
 	servconf := &file_config{}
 	pfd, err := confdecoder.ParseFile("config.txt")
 	if err != nil {

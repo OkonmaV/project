@@ -4,4 +4,5 @@ DataInt 9
 DataIntSlice 1 2 3 4 5
 Text sometext
 Char c
-Num 5
+Num 55
+Data 5 G [7,8]

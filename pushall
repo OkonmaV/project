@@ -1,6 +1,6 @@
 #!/bin/bash
 num=0
-cd /home/okonma/goworkspace/src/github.com/okonma-violet/
+cd $GOPATH/src/github.com/okonma-violet/
 for DIR in `ls`;
 do
     if [ -d $DIR/.git ];
@@ -8,9 +8,9 @@ do
         num=$((num+1))
         echo "---------------"$num") updating \""$DIR"\"---------------";
         cd $DIR 
-        git add .
-        git commit -m 'multiple commit'
-        git push
+        #git add .
+        #git commit -m 'multiple commit'
+        #git push
         echo -e "\n\""$DIR"\" updated\n";
         cd ..
     else
@@ -18,14 +18,14 @@ do
     fi
 done
 
-cd /home/okonma/goworkspace/src/
+cd $GOPATH/src/
 echo "---------------"$num") updating \"project\"---------------";
 if [ -d project/.git ];
 then
     cd project/
-    git add .
-    git commit -m 'multiple commit'
-    git push
+    #git add .
+    #git commit -m 'multiple commit'
+    #git push
     echo -e "\n\"project\" updated\n";
 else
     echo -e "\n\"project\" dir not found\n";
