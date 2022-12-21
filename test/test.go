@@ -1,10 +1,15 @@
 package main
 
 import (
+	"context"
+	"crypto/md5"
+	"encoding/binary"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"reflect"
@@ -14,7 +19,9 @@ import (
 
 	"strconv"
 
+	"github.com/jackc/pgx"
 	"github.com/okonma-violet/confdecoder"
+	"golang.org/x/text/encoding/charmap"
 )
 
 type helloer interface {
@@ -62,12 +69,8 @@ func NewEpollConnector[Tmessage any,
 	fmt.Println(messagehandler)
 }
 
-var articulnormrx = regexp.MustCompile("[^а-яa-z0-9]")
 var str = "{kangaroo,кангару}"
 
-func normstring(s string) string {
-	return articulnormrx.ReplaceAllString(strings.ToLower(s), "")
-}
 func readNGKarticules(filepath string) map[string]string {
 	filedata, err := os.ReadFile(filepath)
 	if err != nil {
@@ -159,9 +162,284 @@ type Tts struct {
 	K []int
 }
 
+var articulnormrx = regexp.MustCompile("[^а-яa-z0-9]|-")
+
+func normstring(s string) string {
+	return articulnormrx.ReplaceAllString(strings.ToLower(s), "")
+}
+
+func findKeywords(prods []string) []string {
+	delim := rune(string(" ")[0])
+	res := make([]string, 0)
+loop:
+	for i, lk, k, entries := 0, 0, 0, 0; i < len(prods); i, lk, k, entries = i+1, 0, 0, 0 {
+		rw := []rune(strings.ToLower(strings.TrimSpace(prods[i])))
+
+		for k < len(rw) {
+			fmt.Println("word =", string(rw), "|elem =", string(rw[k]), "|entries = ", entries, "|k,lk =", k, ",", lk)
+			if rw[k] == delim {
+				if k-lk > 3 {
+					entries++
+				}
+				lk = k
+			}
+			if entries == 3 {
+				break
+			}
+			k++
+		}
+		if entries < 3 {
+			lk = k
+		}
+		if lk > 0 {
+			fmt.Println("word =", string(rw), "|entries = ", entries)
+			rs := string(rw[:lk])
+			for g := 0; g < len(res); g++ {
+				if res[g] == rs {
+					continue loop
+				}
+			}
+			res = append(res, rs)
+		}
+	}
+	return res
+}
+
+func unplural(str string) string {
+	rs := []rune(str)
+	if len(rs) < 2 {
+		if len(rs) == 0 {
+			return str
+		}
+		goto single
+	}
+	if (rs[len(rs)-2] == []rune("ы")[0] && (rs[len(rs)-1] == []rune("е")[0] || rs[len(rs)-1] == []rune("х")[0] || rs[len(rs)-1] == []rune("й")[0])) ||
+		(rs[len(rs)-2] == []rune("и")[0] && (rs[len(rs)-1] == []rune("е")[0] || rs[len(rs)-1] == []rune("х")[0] || rs[len(rs)-1] == []rune("й")[0])) ||
+		(rs[len(rs)-2] == []rune("о")[0] && (rs[len(rs)-1] == []rune("е")[0] || rs[len(rs)-1] == []rune("й")[0])) ||
+		(rs[len(rs)-2] == []rune("ь")[0] && (rs[len(rs)-1] == []rune("я")[0])) ||
+		(rs[len(rs)-2] == []rune("а")[0] && (rs[len(rs)-1] == []rune("я")[0])) ||
+		(rs[len(rs)-2] == []rune("я")[0] && (rs[len(rs)-1] == []rune("я")[0])) ||
+		(rs[len(rs)-2] == []rune("е")[0] && (rs[len(rs)-1] == []rune("е")[0])) {
+		return string(rs[:len(rs)-2])
+
+	}
+single:
+	if rs[len(rs)-1] == []rune("ы")[0] || rs[len(rs)-1] == []rune("а")[0] || rs[len(rs)-1] == []rune("я")[0] || rs[len(rs)-1] == []rune("и")[0] {
+		return string(rs[:len(rs)-1])
+	}
+	return str
+}
+
+var pricerx = regexp.MustCompile("[^а-яa-z0-9.,]")
+var naimrx = regexp.MustCompile(`\s{2,}`)
+var artrx = regexp.MustCompile("[^а-яa-z0-9]")
+
+func normart(s string) string {
+	return artrx.ReplaceAllString(strings.ToLower(s), "")
+}
+
+func normprice(s string) string {
+	return pricerx.ReplaceAllString(strings.ToLower(s), "")
+}
+func normnaim(s string) string {
+	return naimrx.ReplaceAllString(strings.TrimSpace(s), " ")
+}
+
+func encode(filename string) error {
+	f, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	decoder := charmap.Windows1251.NewDecoder()
+	reader := decoder.Reader(f)
+	b, err := ioutil.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	return ioutil.WriteFile(filename+"win", b, os.ModePerm)
+}
+
+type repo struct {
+	db *pgx.Conn
+}
+
+func OpenRepository() *repo {
+	db, err := pgx.Connect(context.Background(), "postgres://ozon:q13471347@localhost:5432/ozondb")
+	if err != nil {
+		panic(err)
+	}
+	return &repo{db: db}
+}
+
+var nonrussianrx = regexp.MustCompile(`[^а-я ]`)
+var specialrx = regexp.MustCompile(`[\(\)\[\]\{\}\\\/]`)
+
+func normspecialsrx(s string) string {
+	return specialrx.ReplaceAllString(strings.ToLower(s), " ")
+}
+func normrussifyrx(s string) string {
+	return nonrussianrx.ReplaceAllString(strings.ToLower(s), "")
+}
+func containsOnlyRussian(s string) bool {
+	return !nonrussianrx.MatchString(s)
+}
+func findMatch(str string) string {
+	ca := []string{"мост первый", "мост второй", "abcd     efg", "efg"}
+	var kwords, words []string
+	str = normspecialsrx(str)
+	for i, eq, s := 0, 0, str; i < len(ca); i, eq, s = i+1, 0, str {
+		if containsOnlyRussian(ca[i]) {
+			s = normrussifyrx(s)
+		}
+		kwords = strings.Split(ca[i], " ")
+		words = strings.Split(s, " ")
+		fmt.Println("------------")
+		for wi, ki := 0, 0; wi < len(words) && ki < len(kwords); wi++ {
+			fmt.Println("|"+words[wi]+"|", "with", "|"+kwords[ki]+"|")
+			if len(words[wi]) == 0 {
+				continue
+			}
+			if len(kwords[ki]) == 0 {
+				ki++
+				eq++
+				wi--
+				continue
+			}
+			if strings.Compare(words[wi], kwords[ki]) == 0 {
+				eq++
+				ki++
+			} else {
+				if eq != 0 {
+					ki = 0
+				}
+			}
+		}
+		if eq == len(kwords) {
+			return ca[i]
+		}
+	}
+	return ""
+}
+
+type product struct {
+	id         int
+	categoryid int
+	supplierid int
+	brandid    int
+	name       string
+	articul    string
+	partnum    string
+	price      float32
+	quantity   int
+	rest       int
+}
+
+func (r *repo) UpsertProduct(articul string, supplierid, brandid int, name string, partnum string, price float32, quantity, rest int, t time.Time) (*product, error) {
+	id := 0
+	if err := r.db.QueryRow(context.Background(), `INSERT INTO unsorted_products(articul,supplierid,brandid,name,price,partnum,quantity,rest,updated)
+	values($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	ON CONFLICT (supplierid,name,brandid,articul) 
+	DO UPDATE SET price=EXCLUDED.price,quantity=EXCLUDED.quantity,rest=EXCLUDED.rest,updated=EXCLUDED.updated
+	WHERE unsorted_products.updated < EXCLUDED.updated
+	RETURNING id`, articul, supplierid, brandid, name, price, partnum, quantity, rest, t).Scan(&id); err != nil {
+		return nil, err
+	}
+	return &product{
+		id:         id,
+		supplierid: supplierid,
+		brandid:    brandid,
+		name:       name,
+		price:      price,
+		partnum:    partnum,
+		quantity:   quantity,
+		rest:       rest,
+	}, nil
+}
+func (r *repo) AppendNormToBrand(brandid int, norm []string) error {
+	_, err := r.db.Exec(context.Background(), `
+	UPDATE brands
+	SET norm = (select array_agg(distinct e) from unnest(norm || $2) e)
+	WHERE  not norm @> $2 AND id=$1`, brandid, norm)
+	return err
+}
+
+func GetProductMD5(brandid int, articul, name string) (string, error) {
+	hash := md5.New()
+	b := make([]byte, 4+len(articul)+len(name))
+	binary.LittleEndian.PutUint32(b, uint32(brandid))
+	copy(b[4:], []byte(articul))
+	copy(b[4+len(articul):], []byte(name))
+	fmt.Println(b)
+	_, err := hash.Write(b)
+	if err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func moveNgkToCsv() {
+	outfile, err := os.Create("/home/okonma/goworkspace/src/github.com/okonma-violet/spec/docs/refs/alternative_articules.csv")
+	if err != nil {
+		panic(err)
+	}
+	defer outfile.Close()
+	w := csv.NewWriter(outfile)
+	w.Comma = []rune(";")[0]
+	filedata, err := os.ReadFile("/home/okonma/goworkspace/src/github.com/okonma-violet/spec/docs/refs/ngk.txt")
+	if err != nil {
+		panic(err)
+	}
+	rx := regexp.MustCompile(`[0-9A-Za-z-]+`)
+	readedarticules := make(map[string][]string)
+	rowss := strings.Split(string(filedata), "\n")
+	fmt.Println("rows num:", len(rowss))
+	for i := 0; i < len(rowss); i++ {
+		if arts := rx.FindAllString(rowss[i], -1); len(arts) < 2 {
+			panic("len of a row < 2")
+		} else {
+			readedarticules[arts[1]] = append(readedarticules[arts[1]], arts[0])
+		}
+	}
+	if err := w.Write([]string{"PRIMARY ARTICUL", "ALTERNATIVE ARTICUL"}); err != nil {
+		panic(err)
+	}
+	for mainart, altarts := range readedarticules {
+		if len(mainart) == 0 || len(altarts) == 0 {
+			panic("this 1")
+		}
+		for _, alt := range altarts {
+			if err := w.Write([]string{mainart, alt}); err != nil {
+				panic(err)
+			}
+		}
+	}
+	w.Flush()
+}
+
 // [^-]\b\d{1,5}\b|
 func main() {
+	// file, err := os.Open("/home/okonma/goworkspace/src/github.com/okonma-violet/spec/docs/test/rawcsv/╨Я╤А╨░╨╣╤Б ╨Р╨а╨Ь╨в╨Х╨Ъ ╨Х╨║╨░╤В╨╡╤А╨╕╨╜╨▒╤Г╤А╨│.csv")
+	// if err != nil {
+	// 	panic(err)
+	// }
+	// stat, err := file.Stat()
+	// if err != nil {
+	// 	panic(err)
+	// }
+	ghj := reflect.ValueOf([]string{"1", "2", "3"}).Interface().([]string)
 
+	fmt.Println(ghj)
+	return
+	gah := []string{"aaaa bbbb cccc dddd", "eeee ff g", " AAAA bbbb cccc ", " h y n g lll "}
+	resgah := findKeywords(gah)
+	for i, g := range resgah {
+		fmt.Println(i, g+"|")
+	}
+
+	fmt.Println(normstring("abc-dfg1 2 3"), unplural("мосты"))
+
+	return
 	//s := &config{Data: &Tts{}}
 	s := &config{}
 	//pv := reflect.ValueOf(s)
@@ -256,13 +534,7 @@ func main() {
 	}
 
 	return
-	rx := regexp.MustCompile(`[0-9A-Za-z-]+`)
-	res := rx.FindAllString("  2097  BCPR5EP-11  ", -1)
-	fmt.Println(res, len(res))
 
-	m, _ := regexp.MatchString("производитель|бренд", "производитель")
-	println(m)
-	return
 	f, err := os.Open("example.csv")
 	if err != nil {
 		panic(err)
