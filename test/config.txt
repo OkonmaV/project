@@ -6,3 +6,6 @@ Text sometext
 Char c
 Num 55
 Data 5 G [7,8]
+
+A aa                        5                         ac,acc,accc
+B 1,2           ,,,,,,,,,,,,,        3
